@@ -7,8 +7,9 @@ FROM node:20-alpine AS builder
 WORKDIR /app
 
 # Install dependencies first (caching layer)
+# Using --legacy-peer-deps to handle minor version conflicts in transitive deps
 COPY package.json package-lock.json* pnpm-lock.yaml* ./
-RUN npm install --frozen-lockfile 2>/dev/null || npm install
+RUN npm install --legacy-peer-deps
 
 # Copy source and build
 COPY . .
@@ -24,7 +25,7 @@ ENV PORT=3000
 
 # Copy production dependencies
 COPY package.json package-lock.json* pnpm-lock.yaml* ./
-RUN npm install --production --frozen-lockfile 2>/dev/null || npm install --production
+RUN npm install --omit=dev --legacy-peer-deps
 
 # Copy built assets
 COPY --from=builder /app/dist ./dist
