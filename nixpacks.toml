@@ -1,0 +1,11 @@
+# Force Nixpacks to use npm (not pnpm)
+# Our package-lock.json is the source of truth; pnpm-lock.yaml was from Manus
+
+[phases.install]
+cmds = ["npm install --legacy-peer-deps"]
+
+[phases.build]
+cmds = ["npm run build"]
+
+[start]
+cmd = "node dist/index.js"
