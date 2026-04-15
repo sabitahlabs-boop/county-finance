@@ -5,37 +5,32 @@
 
 import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
-import path from "path";
+import tailwindcss from "@tailwindcss/vite";
+import path from "node:path";
 
 export default defineConfig({
   plugins: [
     react(),
+    tailwindcss(),
     // REMOVED: vitePluginManusRuntime() — Manus-specific
     // REMOVED: vitePluginManusDebugCollector() — Manus debug logging
+    // REMOVED: @builder.io/vite-plugin-jsx-loc — incompatible with Vite 7
   ],
 
   resolve: {
     alias: {
-      "@": path.resolve(__dirname, "client/src"),
-      "@server": path.resolve(__dirname, "server"),
-      "@shared": path.resolve(__dirname, "shared"),
+      "@": path.resolve(import.meta.dirname, "client", "src"),
+      "@shared": path.resolve(import.meta.dirname, "shared"),
+      "@assets": path.resolve(import.meta.dirname, "attached_assets"),
     },
   },
 
-  // REMOVED: allowedHosts with Manus domains
-  // Now only our own domains are served
-  server: {
-    port: 5173,
-    proxy: {
-      "/api": {
-        target: "http://localhost:3000",
-        changeOrigin: true,
-      },
-    },
-  },
+  envDir: path.resolve(import.meta.dirname),
+  root: path.resolve(import.meta.dirname, "client"),
+  publicDir: path.resolve(import.meta.dirname, "client", "public"),
 
   build: {
-    outDir: "dist/public",
+    outDir: path.resolve(import.meta.dirname, "dist/public"),
     emptyOutDir: true,
     sourcemap: false,
     rollupOptions: {
@@ -45,6 +40,17 @@ export default defineConfig({
           ui: ["@radix-ui/react-dialog", "@radix-ui/react-dropdown-menu"],
           charts: ["recharts"],
         },
+      },
+    },
+  },
+
+  server: {
+    host: true,
+    port: 5173,
+    proxy: {
+      "/api": {
+        target: "http://localhost:3000",
+        changeOrigin: true,
       },
     },
   },
