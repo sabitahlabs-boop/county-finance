@@ -1,5 +1,8 @@
-# Force Nixpacks to use npm (not pnpm)
-# Our package-lock.json is the source of truth; pnpm-lock.yaml was from Manus
+# Force Nixpacks to use Node 20 + npm (not Node 18 + pnpm)
+# Our package-lock.json is the source of truth
+
+[phases.setup]
+nixPkgs = ["nodejs_20", "npm-10_x"]
 
 [phases.install]
 cmds = ["npm install --legacy-peer-deps"]
