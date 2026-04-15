@@ -1,17 +1,15 @@
 export { COOKIE_NAME, ONE_YEAR_MS } from "@shared/const";
 
-// Generate login URL at runtime so redirect URI reflects the current origin.
+/**
+ * Get the sign-in URL (now powered by Clerk, replacing Manus OAuth)
+ * Returns Clerk's hosted sign-in page with redirect back to current origin
+ */
 export const getLoginUrl = () => {
-  const oauthPortalUrl = import.meta.env.VITE_OAUTH_PORTAL_URL;
-  const appId = import.meta.env.VITE_APP_ID;
-  const redirectUri = `${window.location.origin}/api/oauth/callback`;
-  const state = btoa(redirectUri);
+  const redirectUrl = `${window.location.origin}/onboarding`;
+  return `/sign-in?redirect_url=${encodeURIComponent(redirectUrl)}`;
+};
 
-  const url = new URL(`${oauthPortalUrl}/app-auth`);
-  url.searchParams.set("appId", appId);
-  url.searchParams.set("redirectUri", redirectUri);
-  url.searchParams.set("state", state);
-  url.searchParams.set("type", "signIn");
-
-  return url.toString();
+export const getSignUpUrl = () => {
+  const redirectUrl = `${window.location.origin}/onboarding`;
+  return `/sign-up?redirect_url=${encodeURIComponent(redirectUrl)}`;
 };
