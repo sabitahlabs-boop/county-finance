@@ -8,15 +8,17 @@
 import express from "express";
 import cors from "cors";
 import path from "node:path";
-import { fileURLToPath } from "node:url";
 import { clerkMiddleware } from "@clerk/express";
+import { createExpressMiddleware } from "@trpc/server/adapters/express";
 import { ENV } from "./env";
+import { createContext } from "./context";
 import { registerAuthRoutes } from "./auth";
 import { registerChatRoutes } from "./chat";
 import { registerStorageRoutes } from "../storage";
 import { registerReceiptRoutes } from "../receiptScanner";
 import { registerAIAdvisorRoutes } from "../aiAdvisor";
 import { registerScalevWebhookRoutes } from "../scalevWebhook";
+import { appRouter } from "../routers";
 
 const app = express();
 
@@ -79,19 +81,19 @@ registerStorageRoutes(app);
 registerScalevWebhookRoutes(app);
 
 // ── tRPC API ──
-// Uncomment when router is migrated
-// app.use(
-//   "/api/trpc",
-//   createExpressMiddleware({
-//     router: appRouter,
-//     createContext,
-//     onError: ({ error }) => {
-//       if (error.code === "INTERNAL_SERVER_ERROR") {
-//         console.error("[tRPC] Internal error:", error.message);
-//       }
-//     },
-//   })
-// );
+
+app.use(
+  "/api/trpc",
+  createExpressMiddleware({
+    router: appRouter,
+    createContext,
+    onError: ({ error, path }) => {
+      if (error.code === "INTERNAL_SERVER_ERROR") {
+        console.error(`[tRPC] Internal error at ${path}:`, error.message);
+      }
+    },
+  })
+);
 
 // ── Static Files (Production) ──
 

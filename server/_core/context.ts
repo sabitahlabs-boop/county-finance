@@ -1,20 +1,22 @@
 /**
  * County Finance — tRPC Context
  * Creates authenticated context for all tRPC procedures
- * Uses Clerk for authentication (replacing Manus SDK)
+ * Uses Clerk for authentication + syncs to local DB user
  */
 
 import type { Request, Response } from "express";
-import { getAuth } from "@clerk/express";
-import { getAuthenticatedUser, type AuthUser } from "./auth";
+import { getAuth, clerkClient } from "@clerk/express";
+import { upsertUser, getUserByClerkId } from "../db";
+import type { User } from "../../drizzle/schema";
 
 // ── Context Type ──
+// ctx.user is the LOCAL database user (with numeric id), not Clerk user
 
 export interface TrpcContext {
   req: Request;
   res: Response;
-  user: AuthUser | null;
-  businessId: string | null;
+  user: User | null;
+  requestedBusinessId: number | null;
 }
 
 // ── Context Factory ──
@@ -26,27 +28,50 @@ export async function createContext({
   req: Request;
   res: Response;
 }): Promise<TrpcContext> {
-  // Try to get authenticated user via Clerk
-  let user: AuthUser | null = null;
+  let user: User | null = null;
 
   try {
-    const { userId } = getAuth(req);
-    if (userId) {
-      user = await getAuthenticatedUser(req);
+    const { userId: clerkUserId } = getAuth(req);
+
+    if (clerkUserId) {
+      // Try to find existing user in local DB
+      user = (await getUserByClerkId(clerkUserId)) ?? null;
+
+      // If not in DB yet, fetch from Clerk and upsert (first login)
+      if (!user) {
+        try {
+          const clerkUser = await clerkClient.users.getUser(clerkUserId);
+          const email = clerkUser.emailAddresses[0]?.emailAddress ?? "";
+          const name = `${clerkUser.firstName ?? ""} ${clerkUser.lastName ?? ""}`.trim() || email;
+
+          await upsertUser({
+            clerkUserId,
+            email,
+            name,
+            loginMethod: "clerk",
+          });
+
+          // Re-fetch after upsert to get numeric id
+          user = (await getUserByClerkId(clerkUserId)) ?? null;
+        } catch (err) {
+          console.error("[Context] Failed to sync Clerk user to DB:", err);
+        }
+      }
     }
   } catch {
-    // Not authenticated — that's okay for public procedures
     user = null;
   }
 
-  // Get business ID from header (set by frontend)
-  const businessId =
-    (req.headers["x-business-id"] as string) ?? null;
+  // Parse requested business ID from header
+  const businessIdHeader = req.headers["x-business-id"];
+  const requestedBusinessId = businessIdHeader
+    ? parseInt(String(businessIdHeader), 10)
+    : null;
 
   return {
     req,
     res,
     user,
-    businessId,
+    requestedBusinessId: isNaN(requestedBusinessId as number) ? null : requestedBusinessId,
   };
 }
