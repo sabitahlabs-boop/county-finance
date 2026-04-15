@@ -1,0 +1,1314 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Panduan County — Buku Pintar Usher</title>
+  <style>
+    :root {
+      --navy: #1a2744;
+      --navy-light: #243460;
+      --green: #22c55e;
+      --green-dark: #16a34a;
+      --amber: #f59e0b;
+      --orange: #f97316;
+      --red: #ef4444;
+      --blue: #3b82f6;
+      --purple: #8b5cf6;
+      --bg: #f0f4ff;
+      --card: #ffffff;
+      --text: #1e293b;
+      --muted: #64748b;
+      --border: #e2e8f0;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      line-height: 1.6;
+    }
+
+    /* ===== TOP NAV ===== */
+    .topnav {
+      background: var(--navy);
+      color: white;
+      padding: 14px 24px;
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      position: sticky;
+      top: 0;
+      z-index: 100;
+      box-shadow: 0 2px 12px rgba(0,0,0,0.3);
+    }
+    .topnav .logo {
+      font-size: 22px;
+      font-weight: 800;
+      color: var(--green);
+      letter-spacing: -0.5px;
+    }
+    .topnav .badge {
+      background: var(--green);
+      color: white;
+      font-size: 11px;
+      font-weight: 700;
+      padding: 2px 8px;
+      border-radius: 20px;
+    }
+    .topnav .title {
+      font-size: 14px;
+      color: #94a3b8;
+      margin-left: auto;
+    }
+    .menu-btn {
+      display: none;
+      background: none;
+      border: none;
+      color: white;
+      font-size: 22px;
+      cursor: pointer;
+      margin-left: auto;
+    }
+
+    /* ===== LAYOUT ===== */
+    .layout {
+      display: flex;
+      min-height: calc(100vh - 56px);
+    }
+
+    /* ===== SIDEBAR ===== */
+    .sidebar {
+      width: 260px;
+      background: var(--navy);
+      color: white;
+      padding: 20px 0;
+      position: sticky;
+      top: 56px;
+      height: calc(100vh - 56px);
+      overflow-y: auto;
+      flex-shrink: 0;
+    }
+    .sidebar::-webkit-scrollbar { width: 4px; }
+    .sidebar::-webkit-scrollbar-thumb { background: #334155; border-radius: 4px; }
+    .sidebar-section {
+      padding: 8px 16px 4px;
+      font-size: 10px;
+      font-weight: 700;
+      color: #64748b;
+      text-transform: uppercase;
+      letter-spacing: 1px;
+    }
+    .sidebar a {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 9px 20px;
+      color: #94a3b8;
+      text-decoration: none;
+      font-size: 13.5px;
+      transition: all 0.15s;
+      border-left: 3px solid transparent;
+    }
+    .sidebar a:hover, .sidebar a.active {
+      color: white;
+      background: rgba(255,255,255,0.06);
+      border-left-color: var(--green);
+    }
+    .sidebar a .icon { font-size: 16px; width: 20px; text-align: center; }
+    .sidebar a .badge-num {
+      margin-left: auto;
+      background: var(--green);
+      color: white;
+      font-size: 10px;
+      font-weight: 700;
+      padding: 1px 6px;
+      border-radius: 10px;
+    }
+
+    /* ===== MAIN CONTENT ===== */
+    .main {
+      flex: 1;
+      padding: 32px 40px;
+      max-width: 860px;
+    }
+
+    /* ===== HERO ===== */
+    .hero {
+      background: linear-gradient(135deg, var(--navy) 0%, #1e3a8a 100%);
+      border-radius: 20px;
+      padding: 40px;
+      color: white;
+      margin-bottom: 40px;
+      position: relative;
+      overflow: hidden;
+    }
+    .hero::before {
+      content: '';
+      position: absolute;
+      top: -40px; right: -40px;
+      width: 200px; height: 200px;
+      background: rgba(34,197,94,0.15);
+      border-radius: 50%;
+    }
+    .hero .emoji-big { font-size: 56px; margin-bottom: 16px; display: block; }
+    .hero h1 { font-size: 32px; font-weight: 800; margin-bottom: 8px; line-height: 1.2; }
+    .hero h1 span { color: var(--green); }
+    .hero p { color: #94a3b8; font-size: 16px; margin-bottom: 24px; }
+    .hero-stats {
+      display: flex;
+      gap: 24px;
+      flex-wrap: wrap;
+    }
+    .hero-stat {
+      background: rgba(255,255,255,0.08);
+      border-radius: 12px;
+      padding: 12px 20px;
+      text-align: center;
+    }
+    .hero-stat .num { font-size: 24px; font-weight: 800; color: var(--green); }
+    .hero-stat .label { font-size: 12px; color: #94a3b8; }
+
+    /* ===== SECTION ===== */
+    .section {
+      background: var(--card);
+      border-radius: 16px;
+      padding: 32px;
+      margin-bottom: 28px;
+      border: 1px solid var(--border);
+      box-shadow: 0 1px 4px rgba(0,0,0,0.04);
+    }
+    .section-header {
+      display: flex;
+      align-items: center;
+      gap: 14px;
+      margin-bottom: 24px;
+      padding-bottom: 16px;
+      border-bottom: 2px solid var(--bg);
+    }
+    .section-icon {
+      width: 48px; height: 48px;
+      border-radius: 12px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 24px;
+      flex-shrink: 0;
+    }
+    .section-header h2 {
+      font-size: 20px;
+      font-weight: 700;
+      color: var(--text);
+    }
+    .section-header p {
+      font-size: 13px;
+      color: var(--muted);
+      margin-top: 2px;
+    }
+
+    /* ===== STEPS ===== */
+    .steps { display: flex; flex-direction: column; gap: 16px; }
+    .step {
+      display: flex;
+      gap: 16px;
+      align-items: flex-start;
+    }
+    .step-num {
+      width: 36px; height: 36px;
+      border-radius: 50%;
+      background: var(--navy);
+      color: white;
+      font-weight: 800;
+      font-size: 15px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      flex-shrink: 0;
+      margin-top: 2px;
+    }
+    .step-content h4 {
+      font-size: 15px;
+      font-weight: 700;
+      margin-bottom: 4px;
+      color: var(--text);
+    }
+    .step-content p {
+      font-size: 14px;
+      color: var(--muted);
+      line-height: 1.5;
+    }
+
+    /* ===== CHECKLIST ===== */
+    .checklist { list-style: none; display: flex; flex-direction: column; gap: 10px; }
+    .checklist li {
+      display: flex;
+      align-items: flex-start;
+      gap: 10px;
+      font-size: 14.5px;
+      color: var(--text);
+      padding: 10px 14px;
+      background: #f8faff;
+      border-radius: 10px;
+      border: 1px solid var(--border);
+    }
+    .checklist li .check {
+      color: var(--green);
+      font-size: 18px;
+      flex-shrink: 0;
+      margin-top: 1px;
+    }
+    .checklist li strong { color: var(--navy); }
+
+    /* ===== TABLE ===== */
+    .table-wrap { overflow-x: auto; border-radius: 10px; border: 1px solid var(--border); }
+    table { width: 100%; border-collapse: collapse; font-size: 14px; }
+    th {
+      background: var(--navy);
+      color: white;
+      padding: 12px 16px;
+      text-align: left;
+      font-weight: 600;
+      font-size: 13px;
+    }
+    td {
+      padding: 11px 16px;
+      border-bottom: 1px solid var(--border);
+      color: var(--text);
+    }
+    tr:last-child td { border-bottom: none; }
+    tr:nth-child(even) td { background: #f8faff; }
+
+    /* ===== CALLOUT ===== */
+    .callout {
+      border-radius: 12px;
+      padding: 16px 20px;
+      display: flex;
+      gap: 12px;
+      align-items: flex-start;
+      margin: 16px 0;
+      font-size: 14px;
+    }
+    .callout.tip { background: #f0fdf4; border: 1px solid #bbf7d0; color: #166534; }
+    .callout.warn { background: #fffbeb; border: 1px solid #fde68a; color: #92400e; }
+    .callout.info { background: #eff6ff; border: 1px solid #bfdbfe; color: #1e40af; }
+    .callout .icon { font-size: 20px; flex-shrink: 0; margin-top: 1px; }
+    .callout p { margin: 0; line-height: 1.5; }
+    .callout strong { display: block; margin-bottom: 4px; font-size: 14px; }
+
+    /* ===== FEATURE GRID ===== */
+    .feature-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+      gap: 14px;
+      margin-top: 8px;
+    }
+    .feature-card {
+      background: var(--bg);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 16px;
+      text-align: center;
+    }
+    .feature-card .fc-icon { font-size: 32px; margin-bottom: 8px; }
+    .feature-card h4 { font-size: 13px; font-weight: 700; color: var(--text); margin-bottom: 4px; }
+    .feature-card p { font-size: 12px; color: var(--muted); }
+
+    /* ===== MODE COMPARE ===== */
+    .mode-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 16px;
+      margin-top: 8px;
+    }
+    .mode-card {
+      border-radius: 14px;
+      padding: 20px;
+      border: 2px solid transparent;
+    }
+    .mode-card.pribadi { background: #eff6ff; border-color: #bfdbfe; }
+    .mode-card.umkm { background: #f0fdf4; border-color: #bbf7d0; }
+    .mode-card h3 { font-size: 16px; font-weight: 800; margin-bottom: 4px; }
+    .mode-card.pribadi h3 { color: #1d4ed8; }
+    .mode-card.umkm h3 { color: #15803d; }
+    .mode-card p { font-size: 13px; color: var(--muted); margin-bottom: 12px; }
+    .mode-card ul { list-style: none; display: flex; flex-direction: column; gap: 6px; }
+    .mode-card ul li { font-size: 13px; display: flex; gap: 6px; align-items: center; }
+
+    /* ===== BADGE ===== */
+    .badge-tag {
+      display: inline-block;
+      padding: 2px 10px;
+      border-radius: 20px;
+      font-size: 11px;
+      font-weight: 700;
+    }
+    .badge-tag.green { background: #dcfce7; color: #166534; }
+    .badge-tag.blue { background: #dbeafe; color: #1e40af; }
+    .badge-tag.orange { background: #ffedd5; color: #9a3412; }
+    .badge-tag.purple { background: #ede9fe; color: #5b21b6; }
+
+    /* ===== FAQ ===== */
+    .faq-item {
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      margin-bottom: 10px;
+      overflow: hidden;
+    }
+    .faq-q {
+      padding: 14px 18px;
+      font-weight: 600;
+      font-size: 14.5px;
+      cursor: pointer;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      background: white;
+      user-select: none;
+    }
+    .faq-q:hover { background: #f8faff; }
+    .faq-q .arrow { transition: transform 0.2s; font-size: 12px; color: var(--muted); }
+    .faq-q.open .arrow { transform: rotate(180deg); }
+    .faq-a {
+      padding: 0 18px;
+      font-size: 14px;
+      color: var(--muted);
+      max-height: 0;
+      overflow: hidden;
+      transition: max-height 0.3s ease, padding 0.2s;
+      line-height: 1.6;
+    }
+    .faq-a.open { max-height: 300px; padding: 0 18px 14px; }
+
+    /* ===== PROGRESS BAR ===== */
+    .progress-demo { margin: 12px 0; }
+    .progress-label { display: flex; justify-content: space-between; font-size: 13px; margin-bottom: 4px; }
+    .progress-bar-wrap { background: #e2e8f0; border-radius: 8px; height: 10px; overflow: hidden; }
+    .progress-bar { height: 100%; border-radius: 8px; }
+
+    /* ===== TIPS GRID ===== */
+    .tips-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+      gap: 14px;
+    }
+    .tip-card {
+      border-radius: 14px;
+      padding: 18px;
+      border: 1px solid transparent;
+    }
+    .tip-card .tip-icon { font-size: 28px; margin-bottom: 10px; }
+    .tip-card h4 { font-size: 14px; font-weight: 700; margin-bottom: 6px; }
+    .tip-card p { font-size: 13px; line-height: 1.5; }
+    .tip-card.t1 { background: #fef9c3; border-color: #fde047; }
+    .tip-card.t1 h4 { color: #854d0e; }
+    .tip-card.t1 p { color: #92400e; }
+    .tip-card.t2 { background: #dcfce7; border-color: #86efac; }
+    .tip-card.t2 h4 { color: #14532d; }
+    .tip-card.t2 p { color: #166534; }
+    .tip-card.t3 { background: #dbeafe; border-color: #93c5fd; }
+    .tip-card.t3 h4 { color: #1e3a8a; }
+    .tip-card.t3 p { color: #1e40af; }
+    .tip-card.t4 { background: #ede9fe; border-color: #c4b5fd; }
+    .tip-card.t4 h4 { color: #3b0764; }
+    .tip-card.t4 p { color: #5b21b6; }
+
+    /* ===== FLOW CHART ===== */
+    .flow {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      flex-wrap: wrap;
+      margin: 12px 0;
+    }
+    .flow-step {
+      background: var(--navy);
+      color: white;
+      border-radius: 10px;
+      padding: 10px 16px;
+      font-size: 13px;
+      font-weight: 600;
+      text-align: center;
+    }
+    .flow-arrow { color: var(--green); font-size: 20px; font-weight: 900; }
+
+    /* ===== RESPONSIVE ===== */
+    @media (max-width: 768px) {
+      .sidebar { display: none; }
+      .sidebar.open { display: block; position: fixed; top: 56px; left: 0; z-index: 99; height: calc(100vh - 56px); }
+      .main { padding: 20px 16px; }
+      .hero { padding: 24px; }
+      .hero h1 { font-size: 24px; }
+      .hero-stats { gap: 12px; }
+      .mode-grid { grid-template-columns: 1fr; }
+      .menu-btn { display: block; }
+      .topnav .title { display: none; }
+      .section { padding: 20px; }
+    }
+  </style>
+</head>
+<body>
+
+<!-- TOP NAV -->
+<nav class="topnav">
+  <span class="logo">County</span>
+  <span class="badge">Panduan Usher</span>
+  <span class="title">Versi 2.0 — Maret 2026</span>
+  <button class="menu-btn" onclick="toggleSidebar()">☰</button>
+</nav>
+
+<div class="layout">
+
+  <!-- SIDEBAR -->
+  <aside class="sidebar" id="sidebar">
+    <div class="sidebar-section">Mulai dari sini</div>
+    <a href="#intro" class="active"><span class="icon">🏠</span> Apa itu County?</a>
+    <a href="#start"><span class="icon">🚀</span> Cara Mulai</a>
+    <a href="#mode"><span class="icon">🔄</span> Dua Mode County</a>
+
+    <div class="sidebar-section">Fitur Utama</div>
+    <a href="#dashboard"><span class="icon">📊</span> Dashboard</a>
+    <a href="#transaksi"><span class="icon">💸</span> Transaksi</a>
+    <a href="#scan"><span class="icon">📷</span> Scan Struk (AI)</a>
+    <a href="#stok"><span class="icon">📦</span> Stok Produk</a>
+    <a href="#kasir"><span class="icon">🛒</span> Kasir (POS)</a>
+
+    <div class="sidebar-section">Fitur Lanjutan</div>
+    <a href="#client"><span class="icon">👥</span> Manajemen Client</a>
+    <a href="#hutang"><span class="icon">🤝</span> Hutang & Piutang</a>
+    <a href="#anggaran"><span class="icon">🎯</span> Anggaran Bulanan</a>
+    <a href="#transfer"><span class="icon">🔁</span> Transfer Antar Akun</a>
+    <a href="#analitik"><span class="icon">📈</span> Analitik Penjualan</a>
+    <a href="#laporan"><span class="icon">📋</span> Laporan Keuangan</a>
+    <a href="#pajak"><span class="icon">🧾</span> Pajak</a>
+
+    <div class="sidebar-section">Pengaturan & Ekstra</div>
+    <a href="#pengaturan"><span class="icon">⚙️</span> Pengaturan</a>
+    <a href="#extras"><span class="icon">✨</span> Fitur Ekstra</a>
+    <a href="#tips"><span class="icon">💡</span> Tips & Trik</a>
+    <a href="#faq"><span class="icon">❓</span> FAQ</a>
+  </aside>
+
+  <!-- MAIN CONTENT -->
+  <main class="main">
+
+    <!-- HERO -->
+    <div class="hero" id="intro">
+      <span class="emoji-big">📚</span>
+      <h1>Panduan Lengkap <span>County</span></h1>
+      <p>Buku pintar untuk usher County. Semua yang perlu kamu tahu, dari A sampai Z — dengan bahasa yang mudah dipahami.</p>
+      <div class="hero-stats">
+        <div class="hero-stat">
+          <div class="num">20</div>
+          <div class="label">Topik Lengkap</div>
+        </div>
+        <div class="hero-stat">
+          <div class="num">Rp 299K</div>
+          <div class="label">Sekali Bayar</div>
+        </div>
+        <div class="hero-stat">
+          <div class="num">∞</div>
+          <div class="label">Akses Selamanya</div>
+        </div>
+        <div class="hero-stat">
+          <div class="num">AI</div>
+          <div class="label">Scan Struk Otomatis</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- SECTION 1: APA ITU COUNTY -->
+    <div class="section" id="intro-detail">
+      <div class="section-header">
+        <div class="section-icon" style="background:#eff6ff">🏦</div>
+        <div>
+          <h2>Apa itu County?</h2>
+          <p>Kenalan dulu sebelum mulai</p>
+        </div>
+      </div>
+
+      <p style="font-size:15px; color:var(--muted); margin-bottom:20px; line-height:1.7">
+        County adalah <strong style="color:var(--text)">aplikasi keuangan all-in-one</strong> yang dibuat khusus untuk pemilik UMKM dan perorangan di Indonesia. Bisa dipakai di HP, tablet, maupun laptop — tanpa perlu install apapun, cukup buka browser.
+      </p>
+
+      <div class="feature-grid">
+        <div class="feature-card">
+          <div class="fc-icon">📷</div>
+          <h4>Scan Struk AI</h4>
+          <p>Foto struk → langsung tercatat otomatis</p>
+        </div>
+        <div class="feature-card">
+          <div class="fc-icon">📊</div>
+          <h4>Laporan Real-Time</h4>
+          <p>Laba rugi & arus kas selalu up-to-date</p>
+        </div>
+        <div class="feature-card">
+          <div class="fc-icon">🛒</div>
+          <h4>Kasir (POS)</h4>
+          <p>Sistem kasir terintegrasi langsung</p>
+        </div>
+        <div class="feature-card">
+          <div class="fc-icon">📦</div>
+          <h4>Stok Otomatis</h4>
+          <p>Stok berkurang saat ada penjualan</p>
+        </div>
+        <div class="feature-card">
+          <div class="fc-icon">🧾</div>
+          <h4>Invoice Profesional</h4>
+          <p>Invoice dengan logo & tanda tangan</p>
+        </div>
+        <div class="feature-card">
+          <div class="fc-icon">📱</div>
+          <h4>Bisa di HP (PWA)</h4>
+          <p>Install di home screen seperti app native</p>
+        </div>
+      </div>
+
+      <div class="callout tip" style="margin-top:20px">
+        <span class="icon">💰</span>
+        <p><strong>Model Harga County</strong>Bayar <strong>Rp 299.000 SEKALI</strong> — akses selamanya. Tidak ada biaya bulanan. Tidak ada biaya tahunan. Tidak ada kejutan tagihan.</p>
+      </div>
+    </div>
+
+    <!-- SECTION 2: CARA MULAI -->
+    <div class="section" id="start">
+      <div class="section-header">
+        <div class="section-icon" style="background:#f0fdf4">🚀</div>
+        <div>
+          <h2>Cara Mulai Pakai County</h2>
+          <p>4 langkah mudah, selesai dalam 5 menit</p>
+        </div>
+      </div>
+
+      <div class="steps">
+        <div class="step">
+          <div class="step-num">1</div>
+          <div class="step-content">
+            <h4>Buka county.finance di browser</h4>
+            <p>Bisa pakai Chrome, Safari, atau Firefox. Di HP maupun laptop. Tidak perlu download apapun.</p>
+          </div>
+        </div>
+        <div class="step">
+          <div class="step-num">2</div>
+          <div class="step-content">
+            <h4>Klik tombol "Masuk" dan login</h4>
+            <p>County pakai sistem login aman. Kalau belum punya akun, otomatis dibuat saat pertama kali login. Tidak perlu daftar terpisah.</p>
+          </div>
+        </div>
+        <div class="step">
+          <div class="step-num">3</div>
+          <div class="step-content">
+            <h4>Isi wizard setup (3 langkah singkat)</h4>
+            <p>Masukkan nama bisnis, pilih tipe usaha, isi info pajak (opsional), dan pilih mode (Pribadi atau UMKM). Selesai dalam 2 menit.</p>
+          </div>
+        </div>
+        <div class="step">
+          <div class="step-num">4</div>
+          <div class="step-content">
+            <h4>Siap! County langsung bisa dipakai</h4>
+            <p>Kamu langsung masuk ke Dashboard. Mulai catat transaksi, scan struk, atau tambah produk.</p>
+          </div>
+        </div>
+      </div>
+
+      <div class="callout info" style="margin-top:20px">
+        <span class="icon">📲</span>
+        <p><strong>Mau install di HP?</strong> Buka county.finance di Chrome (Android) → ketuk menu ⋮ → pilih "Tambahkan ke layar utama". Di iPhone: buka di Safari → ketuk ikon Share → "Tambah ke Layar Utama". County akan muncul seperti aplikasi biasa!</p>
+      </div>
+    </div>
+
+    <!-- SECTION 3: DUA MODE -->
+    <div class="section" id="mode">
+      <div class="section-header">
+        <div class="section-icon" style="background:#fef9c3">🔄</div>
+        <div>
+          <h2>Dua Mode County</h2>
+          <p>Pilih sesuai kebutuhan — bisa ganti kapan saja</p>
+        </div>
+      </div>
+
+      <div class="mode-grid">
+        <div class="mode-card pribadi">
+          <h3>👤 Mode Pribadi</h3>
+          <p>Untuk keuangan personal — catat pemasukan & pengeluaran sehari-hari</p>
+          <ul>
+            <li>✅ Jurnal Keuangan Multi-Akun</li>
+            <li>✅ Transaksi & Kategori</li>
+            <li>✅ Hutang & Piutang</li>
+            <li>✅ Anggaran Bulanan</li>
+            <li>✅ Laporan Keuangan</li>
+            <li>✅ AI Ringkasan</li>
+          </ul>
+        </div>
+        <div class="mode-card umkm">
+          <h3>🏪 Mode UMKM</h3>
+          <p>Untuk bisnis — semua fitur Mode Pribadi + fitur bisnis lengkap</p>
+          <ul>
+            <li>✅ Semua fitur Mode Pribadi</li>
+            <li>✅ Stok Produk & Inventaris</li>
+            <li>✅ Kasir (POS)</li>
+            <li>✅ Manajemen Client</li>
+            <li>✅ Analitik Penjualan</li>
+            <li>✅ Pajak Otomatis</li>
+          </ul>
+        </div>
+      </div>
+
+      <div class="callout tip" style="margin-top:16px">
+        <span class="icon">💡</span>
+        <p><strong>Cara ganti mode:</strong> Buka <strong>Pengaturan</strong> → scroll ke bagian <strong>Mode Aplikasi</strong> → pilih mode → klik Simpan. Sidebar langsung berubah!</p>
+      </div>
+    </div>
+
+    <!-- SECTION 4: DASHBOARD -->
+    <div class="section" id="dashboard">
+      <div class="section-header">
+        <div class="section-icon" style="background:#ede9fe">📊</div>
+        <div>
+          <h2>Dashboard — Pusat Kontrol</h2>
+          <p>Semua info penting ada di satu halaman</p>
+        </div>
+      </div>
+
+      <p style="font-size:14px; color:var(--muted); margin-bottom:16px">Dashboard adalah halaman pertama yang muncul setelah login. Semua kondisi keuangan bisa dilihat sekilas dari sini.</p>
+
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Elemen</th><th>Keterangan</th></tr></thead>
+          <tbody>
+            <tr><td>💰 Kartu KPI</td><td>Total pemasukan, pengeluaran, dan saldo bulan ini</td></tr>
+            <tr><td>📈 Grafik Tren</td><td>Pergerakan omzet bulan ke bulan dalam setahun</td></tr>
+            <tr><td>⚠️ Stok Kritis</td><td>Produk yang stoknya hampir habis (Mode UMKM)</td></tr>
+            <tr><td>🤖 AI Ringkasan</td><td>Analisis otomatis kondisi keuangan bulan ini</td></tr>
+            <tr><td>💊 Health Score</td><td>Nilai kesehatan keuangan bisnis + rekomendasi (UMKM)</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- SECTION 5: TRANSAKSI -->
+    <div class="section" id="transaksi">
+      <div class="section-header">
+        <div class="section-icon" style="background:#fef9c3">💸</div>
+        <div>
+          <h2>Transaksi</h2>
+          <p>Catat semua uang masuk dan keluar</p>
+        </div>
+      </div>
+
+      <div class="steps">
+        <div class="step">
+          <div class="step-num">1</div>
+          <div class="step-content">
+            <h4>Klik "+ Transaksi Baru"</h4>
+            <p>Ada di pojok kanan atas halaman Transaksi.</p>
+          </div>
+        </div>
+        <div class="step">
+          <div class="step-num">2</div>
+          <div class="step-content">
+            <h4>Pilih tab: Pemasukan, Pengeluaran, atau Transfer</h4>
+            <p>Pemasukan = uang masuk. Pengeluaran = uang keluar. Transfer = pindah antar rekening.</p>
+          </div>
+        </div>
+        <div class="step">
+          <div class="step-num">3</div>
+          <div class="step-content">
+            <h4>Isi form dan klik Simpan</h4>
+            <p>Isi tanggal, jumlah, kategori, metode bayar, dan keterangan. Klik Simpan — selesai!</p>
+          </div>
+        </div>
+      </div>
+
+      <div class="callout tip" style="margin-top:16px">
+        <span class="icon">🖨️</span>
+        <p><strong>Cetak Invoice:</strong> Klik ikon printer di baris transaksi untuk cetak invoice profesional dengan logo bisnis dan tanda tangan digital.</p>
+      </div>
+    </div>
+
+    <!-- SECTION 6: SCAN STRUK -->
+    <div class="section" id="scan">
+      <div class="section-header">
+        <div class="section-icon" style="background:#f0fdf4">📷</div>
+        <div>
+          <h2>Scan Struk dengan AI</h2>
+          <p>Fitur paling canggih County — foto struk, langsung tercatat!</p>
+        </div>
+      </div>
+
+      <div class="callout warn">
+        <span class="icon">⭐</span>
+        <p><strong>Ini fitur terfavorit pengguna County!</strong> Tidak perlu ketik manual — cukup foto struk belanja, AI akan baca dan catat otomatis dalam 5-15 detik.</p>
+      </div>
+
+      <div class="steps" style="margin-top:16px">
+        <div class="step">
+          <div class="step-num">1</div>
+          <div class="step-content">
+            <h4>Klik tombol "Scan Struk"</h4>
+            <p>Ada di Dashboard (tombol kamera) atau halaman Transaksi.</p>
+          </div>
+        </div>
+        <div class="step">
+          <div class="step-num">2</div>
+          <div class="step-content">
+            <h4>Pilih sumber: Kamera atau Galeri</h4>
+            <p>Langsung foto struk, atau pilih foto yang sudah ada di galeri HP. Bisa juga upload file PDF.</p>
+          </div>
+        </div>
+        <div class="step">
+          <div class="step-num">3</div>
+          <div class="step-content">
+            <h4>AI proses otomatis (5-15 detik)</h4>
+            <p>AI membaca: nama toko, tanggal, daftar item + harga, total, dan metode bayar.</p>
+          </div>
+        </div>
+        <div class="step">
+          <div class="step-num">4</div>
+          <div class="step-content">
+            <h4>Cek hasil, lalu Simpan</h4>
+            <p>Koreksi jika ada yang kurang tepat, pilih tipe transaksi, klik Simpan. Selesai!</p>
+          </div>
+        </div>
+      </div>
+
+      <div class="callout info" style="margin-top:16px">
+        <span class="icon">📦</span>
+        <p><strong>Scan-to-Stock (Mode UMKM):</strong> Setelah scan berhasil, muncul opsi "Tambah ke Stok?" untuk setiap item. Klik untuk langsung tambah ke inventaris — nama, harga, dan kuantitas sudah terisi otomatis!</p>
+      </div>
+    </div>
+
+    <!-- SECTION 7: STOK -->
+    <div class="section" id="stok">
+      <div class="section-header">
+        <div class="section-icon" style="background:#fff7ed">📦</div>
+        <div>
+          <h2>Stok Produk</h2>
+          <p>Kelola inventaris bisnis dengan mudah <span class="badge-tag orange">Mode UMKM</span></p>
+        </div>
+      </div>
+
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Field</th><th>Keterangan</th><th>Wajib?</th></tr></thead>
+          <tbody>
+            <tr><td>Nama Produk</td><td>Nama produk yang dijual</td><td>✅ Ya</td></tr>
+            <tr><td>SKU</td><td>Kode produk (auto-generate jika kosong)</td><td>Opsional</td></tr>
+            <tr><td>Harga Jual</td><td>Harga ke konsumen</td><td>✅ Ya</td></tr>
+            <tr><td>HPP</td><td>Harga beli / biaya produksi</td><td>Opsional</td></tr>
+            <tr><td>Stok</td><td>Jumlah stok saat ini</td><td>✅ Ya</td></tr>
+            <tr><td>Stok Minimum</td><td>Batas sebelum muncul alert</td><td>Opsional</td></tr>
+            <tr><td>Foto Produk</td><td>Gambar produk</td><td>Opsional</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <div class="callout tip" style="margin-top:16px">
+        <span class="icon">📥</span>
+        <p><strong>Import Massal:</strong> Punya banyak produk? Klik "Import CSV" untuk upload semua produk sekaligus. Template CSV bisa didownload dari halaman yang sama.</p>
+      </div>
+    </div>
+
+    <!-- SECTION 8: KASIR -->
+    <div class="section" id="kasir">
+      <div class="section-header">
+        <div class="section-icon" style="background:#fdf4ff">🛒</div>
+        <div>
+          <h2>Kasir (POS)</h2>
+          <p>Sistem kasir terintegrasi — cocok untuk toko fisik <span class="badge-tag purple">Mode UMKM</span></p>
+        </div>
+      </div>
+
+      <div class="callout warn">
+        <span class="icon">⚙️</span>
+        <p><strong>Aktifkan dulu:</strong> Buka Pengaturan → Mode Aplikasi → toggle "Aktifkan POS" → Simpan. Baru menu Kasir muncul di sidebar.</p>
+      </div>
+
+      <div class="steps" style="margin-top:16px">
+        <div class="step">
+          <div class="step-num">1</div>
+          <div class="step-content">
+            <h4>Cari produk dan klik untuk tambah ke keranjang</h4>
+            <p>Gunakan search bar atau scroll daftar produk di sebelah kiri.</p>
+          </div>
+        </div>
+        <div class="step">
+          <div class="step-num">2</div>
+          <div class="step-content">
+            <h4>Atur jumlah di keranjang</h4>
+            <p>Bisa ubah harga jual langsung di keranjang untuk produk harga dinamis.</p>
+          </div>
+        </div>
+        <div class="step">
+          <div class="step-num">3</div>
+          <div class="step-content">
+            <h4>Pilih metode bayar dan klik "Proses Pembayaran"</h4>
+            <p>Tunai, Transfer, QRIS, atau E-Wallet. Transaksi tercatat otomatis, stok berkurang otomatis.</p>
+          </div>
+        </div>
+        <div class="step">
+          <div class="step-num">4</div>
+          <div class="step-content">
+            <h4>Cetak struk (opsional)</h4>
+            <p>Klik "Cetak Struk" — QRIS bisnis akan muncul di struk jika sudah diupload.</p>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- SECTION 9: CLIENT -->
+    <div class="section" id="client">
+      <div class="section-header">
+        <div class="section-icon" style="background:#eff6ff">👥</div>
+        <div>
+          <h2>Manajemen Client</h2>
+          <p>Kelola data pelanggan dan supplier <span class="badge-tag blue">Mode UMKM</span></p>
+        </div>
+      </div>
+
+      <p style="font-size:14px; color:var(--muted); margin-bottom:16px">Simpan data pelanggan (customer) dan pemasok (supplier) untuk memudahkan tracking hutang/piutang dan riwayat transaksi per client.</p>
+
+      <ul class="checklist">
+        <li><span class="check">✅</span><div><strong>Tambah Client:</strong> Klik "+ Tambah Client" → isi nama, email, telepon, alamat, tipe (Customer/Supplier)</div></li>
+        <li><span class="check">✅</span><div><strong>Lacak Hutang per Client:</strong> Setiap client punya riwayat hutang/piutang tersendiri</div></li>
+        <li><span class="check">✅</span><div><strong>Invoice per Client:</strong> Saat cetak invoice, bisa pilih client tujuan — nama & alamat otomatis terisi</div></li>
+        <li><span class="check">✅</span><div><strong>Riwayat Transaksi:</strong> Lihat semua transaksi dengan client tertentu dalam satu tempat</div></li>
+      </ul>
+    </div>
+
+    <!-- SECTION 10: HUTANG PIUTANG -->
+    <div class="section" id="hutang">
+      <div class="section-header">
+        <div class="section-icon" style="background:#fef9c3">🤝</div>
+        <div>
+          <h2>Hutang & Piutang</h2>
+          <p>Tracking semua utang dengan mudah — tidak ada yang terlewat</p>
+        </div>
+      </div>
+
+      <div class="mode-grid" style="margin-bottom:16px">
+        <div class="mode-card pribadi">
+          <h3>💸 Hutang</h3>
+          <p>Kamu yang berhutang ke orang lain</p>
+          <ul>
+            <li>📅 Ada tanggal jatuh tempo</li>
+            <li>💰 Bisa bayar cicilan</li>
+            <li>🔔 Notifikasi mendekati jatuh tempo</li>
+          </ul>
+        </div>
+        <div class="mode-card umkm">
+          <h3>💰 Piutang</h3>
+          <p>Orang lain yang berhutang ke kamu</p>
+          <ul>
+            <li>📅 Ada tanggal jatuh tempo</li>
+            <li>💰 Tracking pembayaran cicilan</li>
+            <li>🔔 Notifikasi kalau terlambat bayar</li>
+          </ul>
+        </div>
+      </div>
+
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Status</th><th>Artinya</th></tr></thead>
+          <tbody>
+            <tr><td>🟢 Lunas</td><td>Sudah dibayar penuh</td></tr>
+            <tr><td>🟡 Belum Lunas</td><td>Masih ada sisa yang harus dibayar</td></tr>
+            <tr><td>🔴 Terlambat</td><td>Melewati jatuh tempo dan belum lunas</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- SECTION 11: ANGGARAN -->
+    <div class="section" id="anggaran">
+      <div class="section-header">
+        <div class="section-icon" style="background:#f0fdf4">🎯</div>
+        <div>
+          <h2>Anggaran Bulanan</h2>
+          <p>Rencanakan pengeluaran agar tidak bocor</p>
+        </div>
+      </div>
+
+      <div class="steps">
+        <div class="step">
+          <div class="step-num">1</div>
+          <div class="step-content">
+            <h4>Pilih bulan dan klik "+ Tambah Anggaran"</h4>
+            <p>Pilih bulan yang mau direncanakan, lalu tambah anggaran per kategori.</p>
+          </div>
+        </div>
+        <div class="step">
+          <div class="step-num">2</div>
+          <div class="step-content">
+            <h4>Isi kategori dan jumlah anggaran</h4>
+            <p>Contoh: Operasional Rp 2.000.000, Gaji Rp 5.000.000, Marketing Rp 1.000.000.</p>
+          </div>
+        </div>
+        <div class="step">
+          <div class="step-num">3</div>
+          <div class="step-content">
+            <h4>Monitor progress sepanjang bulan</h4>
+            <p>Progress bar warna berubah sesuai kondisi anggaran.</p>
+          </div>
+        </div>
+      </div>
+
+      <div class="progress-demo" style="margin-top:16px">
+        <div class="progress-label"><span>Operasional</span><span>65% terpakai</span></div>
+        <div class="progress-bar-wrap"><div class="progress-bar" style="width:65%; background:#22c55e"></div></div>
+      </div>
+      <div class="progress-demo">
+        <div class="progress-label"><span>Marketing</span><span>82% terpakai</span></div>
+        <div class="progress-bar-wrap"><div class="progress-bar" style="width:82%; background:#f59e0b"></div></div>
+      </div>
+      <div class="progress-demo">
+        <div class="progress-label"><span>Gaji</span><span>97% terpakai ⚠️</span></div>
+        <div class="progress-bar-wrap"><div class="progress-bar" style="width:97%; background:#ef4444"></div></div>
+      </div>
+    </div>
+
+    <!-- SECTION 12: TRANSFER -->
+    <div class="section" id="transfer">
+      <div class="section-header">
+        <div class="section-icon" style="background:#ede9fe">🔁</div>
+        <div>
+          <h2>Transfer Antar Akun</h2>
+          <p>Pindah saldo antar rekening — saldo selalu akurat</p>
+        </div>
+      </div>
+
+      <div class="flow">
+        <div class="flow-step">Buka Transaksi</div>
+        <div class="flow-arrow">→</div>
+        <div class="flow-step">+ Transaksi Baru</div>
+        <div class="flow-arrow">→</div>
+        <div class="flow-step">Tab Transfer</div>
+        <div class="flow-arrow">→</div>
+        <div class="flow-step">Pilih Akun Asal & Tujuan</div>
+        <div class="flow-arrow">→</div>
+        <div class="flow-step">Klik Transfer ✅</div>
+      </div>
+
+      <div class="callout info" style="margin-top:16px">
+        <span class="icon">ℹ️</span>
+        <p>Sistem otomatis buat 2 transaksi: pengeluaran dari akun asal dan pemasukan ke akun tujuan. Saldo kedua akun langsung terupdate.</p>
+      </div>
+    </div>
+
+    <!-- SECTION 13: ANALITIK -->
+    <div class="section" id="analitik">
+      <div class="section-header">
+        <div class="section-icon" style="background:#fef9c3">📈</div>
+        <div>
+          <h2>Analitik Penjualan</h2>
+          <p>Lihat tren bisnis dalam grafik interaktif <span class="badge-tag orange">Mode UMKM</span></p>
+        </div>
+      </div>
+
+      <ul class="checklist">
+        <li><span class="check">📊</span><div><strong>Grafik Penjualan Bulanan</strong> — bar chart perbulan dalam setahun</div></li>
+        <li><span class="check">🥧</span><div><strong>Penjualan per Kategori</strong> — pie chart kategori produk terlaris</div></li>
+        <li><span class="check">💳</span><div><strong>Metode Pembayaran</strong> — berapa % bayar tunai vs transfer vs QRIS</div></li>
+        <li><span class="check">🏆</span><div><strong>Top Produk Terlaris</strong> — daftar produk dengan penjualan tertinggi</div></li>
+        <li><span class="check">📉</span><div><strong>Tren Pengeluaran</strong> — grafik pengeluaran bulanan untuk kontrol biaya</div></li>
+      </ul>
+    </div>
+
+    <!-- SECTION 14: LAPORAN -->
+    <div class="section" id="laporan">
+      <div class="section-header">
+        <div class="section-icon" style="background:#eff6ff">📋</div>
+        <div>
+          <h2>Laporan Keuangan</h2>
+          <p>Laba Rugi dan Arus Kas otomatis — siap untuk audit</p>
+        </div>
+      </div>
+
+      <div class="mode-grid">
+        <div class="mode-card pribadi">
+          <h3>📊 Laba Rugi</h3>
+          <p>Ringkasan pendapatan vs pengeluaran</p>
+          <ul>
+            <li>💰 Total pendapatan per kategori</li>
+            <li>💸 Total pengeluaran per kategori</li>
+            <li>✅ Laba bersih periode terpilih</li>
+          </ul>
+        </div>
+        <div class="mode-card umkm">
+          <h3>💧 Arus Kas</h3>
+          <p>Aliran uang masuk dan keluar detail</p>
+          <ul>
+            <li>📥 Kas masuk per metode bayar</li>
+            <li>📤 Kas keluar per kategori</li>
+            <li>📅 Bisa filter per periode</li>
+          </ul>
+        </div>
+      </div>
+
+      <div class="callout tip" style="margin-top:16px">
+        <span class="icon">📥</span>
+        <p><strong>Export Laporan:</strong> Klik tombol Export → pilih format CSV, Excel, atau PDF. Cocok untuk laporan ke investor, bank, atau arsip pajak.</p>
+      </div>
+    </div>
+
+    <!-- SECTION 15: PAJAK -->
+    <div class="section" id="pajak">
+      <div class="section-header">
+        <div class="section-icon" style="background:#fff7ed">🧾</div>
+        <div>
+          <h2>Pajak</h2>
+          <p>Estimasi pajak otomatis — tidak perlu hitung manual <span class="badge-tag orange">Mode UMKM</span></p>
+        </div>
+      </div>
+
+      <p style="font-size:14px; color:var(--muted); margin-bottom:16px">County menghitung estimasi pajak berdasarkan data bisnis yang sudah diisi di Pengaturan — tipe usaha, status PKP, jumlah karyawan, dan omzet tahunan.</p>
+
+      <ul class="checklist">
+        <li><span class="check">🧮</span><div><strong>Kalkulator Pajak Otomatis</strong> — jenis pajak, tarif, estimasi jumlah, dan dasar hukum</div></li>
+        <li><span class="check">📅</span><div><strong>Tanggal Jatuh Tempo</strong> — tahu kapan harus bayar pajak</div></li>
+        <li><span class="check">📝</span><div><strong>Riwayat Pembayaran Pajak</strong> — catat bukti setor untuk arsip</div></li>
+      </ul>
+    </div>
+
+    <!-- SECTION 16: PENGATURAN -->
+    <div class="section" id="pengaturan">
+      <div class="section-header">
+        <div class="section-icon" style="background:#f1f5f9">⚙️</div>
+        <div>
+          <h2>Pengaturan</h2>
+          <p>Kustomisasi County sesuai bisnis kamu</p>
+        </div>
+      </div>
+
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Tab</th><th>Isi</th></tr></thead>
+          <tbody>
+            <tr><td>👤 Profil Bisnis</td><td>Nama bisnis, tipe usaha, alamat, telepon</td></tr>
+            <tr><td>🧾 Pajak</td><td>NPWP, status PKP, karyawan, omzet tahunan</td></tr>
+            <tr><td>🎨 Branding</td><td>Upload logo + warna brand (muncul di invoice & sidebar)</td></tr>
+            <tr><td>🏦 Bank</td><td>Info rekening bank untuk ditampilkan di invoice</td></tr>
+            <tr><td>📱 QRIS</td><td>Upload gambar QRIS untuk struk POS</td></tr>
+            <tr><td>📂 Kategori</td><td>Buat & kelola kategori produk</td></tr>
+            <tr><td>🖊️ Invoice</td><td>Footer kustom, tanda tangan digital, toggle kalkulator</td></tr>
+            <tr><td>🔄 Mode</td><td>Switch Pribadi/UMKM, toggle POS</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- SECTION 17: FITUR EKSTRA -->
+    <div class="section" id="extras">
+      <div class="section-header">
+        <div class="section-icon" style="background:#fdf4ff">✨</div>
+        <div>
+          <h2>Fitur Ekstra</h2>
+          <p>Kalkulator, notifikasi, dan PWA</p>
+        </div>
+      </div>
+
+      <div class="feature-grid">
+        <div class="feature-card">
+          <div class="fc-icon">🧮</div>
+          <h4>Mini Kalkulator</h4>
+          <p>Widget floating di pojok layar. Aktifkan di Pengaturan → Invoice → toggle Kalkulator.</p>
+        </div>
+        <div class="feature-card">
+          <div class="fc-icon">🔔</div>
+          <h4>Notifikasi Jatuh Tempo</h4>
+          <p>Ikon lonceng di header menampilkan hutang/piutang yang mau jatuh tempo.</p>
+        </div>
+        <div class="feature-card">
+          <div class="fc-icon">📱</div>
+          <h4>Install di HP (PWA)</h4>
+          <p>Buka di Chrome → menu ⋮ → "Tambahkan ke layar utama". County jadi seperti app!</p>
+        </div>
+      </div>
+    </div>
+
+    <!-- SECTION 18: TIPS -->
+    <div class="section" id="tips">
+      <div class="section-header">
+        <div class="section-icon" style="background:#fef9c3">💡</div>
+        <div>
+          <h2>Tips & Trik Penggunaan Maksimal</h2>
+          <p>Cara pakai County seperti pro</p>
+        </div>
+      </div>
+
+      <div class="tips-grid">
+        <div class="tip-card t1">
+          <div class="tip-icon">🌅</div>
+          <h4>Rutinitas Pagi</h4>
+          <p>Cek Dashboard setiap pagi — lihat ringkasan keuangan dan notifikasi jatuh tempo sebelum mulai kerja.</p>
+        </div>
+        <div class="tip-card t2">
+          <div class="tip-icon">📷</div>
+          <h4>Scan Semua Struk</h4>
+          <p>Setiap beli stok atau bayar operasional, langsung scan struk — lebih cepat dari ketik manual.</p>
+        </div>
+        <div class="tip-card t3">
+          <div class="tip-icon">📅</div>
+          <h4>Buat Anggaran Tiap Awal Bulan</h4>
+          <p>Luangkan 5 menit di awal bulan untuk set anggaran per kategori — cegah pengeluaran bocor.</p>
+        </div>
+        <div class="tip-card t4">
+          <div class="tip-icon">📊</div>
+          <h4>Review Akhir Bulan</h4>
+          <p>Cek Laporan Laba Rugi dan Analitik Penjualan setiap akhir bulan — identifikasi tren dan perbaiki strategi.</p>
+        </div>
+        <div class="tip-card t1">
+          <div class="tip-icon">🏷️</div>
+          <h4>Setup Kategori Dulu</h4>
+          <p>Sebelum tambah produk, buat dulu kategori di Pengaturan → Kategori. Ini bikin laporan lebih rapi.</p>
+        </div>
+        <div class="tip-card t2">
+          <div class="tip-icon">🖼️</div>
+          <h4>Upload Logo Bisnis</h4>
+          <p>Upload logo di Pengaturan → Branding. Logo akan muncul di invoice dan sidebar — terlihat lebih profesional.</p>
+        </div>
+      </div>
+    </div>
+
+    <!-- SECTION 19: FAQ -->
+    <div class="section" id="faq">
+      <div class="section-header">
+        <div class="section-icon" style="background:#eff6ff">❓</div>
+        <div>
+          <h2>FAQ — Pertanyaan yang Sering Ditanya</h2>
+          <p>Klik pertanyaan untuk lihat jawaban</p>
+        </div>
+      </div>
+
+      <div class="faq-item">
+        <div class="faq-q" onclick="toggleFaq(this)">
+          💰 Apakah ada biaya bulanan setelah bayar?
+          <span class="arrow">▼</span>
+        </div>
+        <div class="faq-a">
+          <strong>Tidak ada!</strong> County menggunakan model bayar sekali Rp 299.000 — akses selamanya. Tidak ada biaya bulanan, tidak ada biaya tahunan, tidak ada kejutan tagihan.
+        </div>
+      </div>
+
+      <div class="faq-item">
+        <div class="faq-q" onclick="toggleFaq(this)">
+          📱 Apakah County bisa dipakai di HP?
+          <span class="arrow">▼</span>
+        </div>
+        <div class="faq-a">
+          Bisa! County bisa dipakai di HP, tablet, maupun laptop — cukup buka browser. Bahkan bisa diinstall di home screen HP seperti aplikasi biasa (PWA). Di Android: Chrome → menu ⋮ → "Tambahkan ke layar utama". Di iPhone: Safari → Share → "Tambah ke Layar Utama".
+        </div>
+      </div>
+
+      <div class="faq-item">
+        <div class="faq-q" onclick="toggleFaq(this)">
+          🔒 Apakah data saya aman?
+          <span class="arrow">▼</span>
+        </div>
+        <div class="faq-a">
+          Ya, sangat aman. County menggunakan enkripsi dan sistem login OAuth yang aman. Data disimpan di server terproteksi dan hanya bisa diakses oleh pemilik akun.
+        </div>
+      </div>
+
+      <div class="faq-item">
+        <div class="faq-q" onclick="toggleFaq(this)">
+          💻 Bisa dipakai di banyak perangkat sekaligus?
+          <span class="arrow">▼</span>
+        </div>
+        <div class="faq-a">
+          Bisa! Karena County berbasis web, kamu bisa login dari perangkat manapun dan data selalu tersinkronisasi secara real-time.
+        </div>
+      </div>
+
+      <div class="faq-item">
+        <div class="faq-q" onclick="toggleFaq(this)">
+          📊 Berapa batas transaksi dan produk?
+          <span class="arrow">▼</span>
+        </div>
+        <div class="faq-a">
+          Untuk pengguna Pro, tidak ada batasan! Transaksi, produk, client, laporan — semua unlimited.
+        </div>
+      </div>
+
+      <div class="faq-item">
+        <div class="faq-q" onclick="toggleFaq(this)">
+          ✏️ Bagaimana kalau salah input transaksi?
+          <span class="arrow">▼</span>
+        </div>
+        <div class="faq-a">
+          Gampang! Buka halaman Transaksi → cari transaksi yang salah → klik ikon pensil untuk edit, atau ikon tempat sampah untuk hapus. Konfirmasi akan muncul sebelum penghapusan.
+        </div>
+      </div>
+
+      <div class="faq-item">
+        <div class="faq-q" onclick="toggleFaq(this)">
+          📤 Bisa export data ke Excel atau PDF?
+          <span class="arrow">▼</span>
+        </div>
+        <div class="faq-a">
+          Bisa! Buka halaman Laporan → klik tombol Export → pilih format CSV, Excel, atau PDF. Data transaksi, produk, dan laporan keuangan semua bisa diexport.
+        </div>
+      </div>
+
+      <div class="faq-item">
+        <div class="faq-q" onclick="toggleFaq(this)">
+          🆘 Bagaimana cara hubungi support?
+          <span class="arrow">▼</span>
+        </div>
+        <div class="faq-a">
+          Hubungi admin County melalui WhatsApp yang tertera di halaman pembelian, atau kunjungi county.finance untuk informasi kontak terbaru.
+        </div>
+      </div>
+    </div>
+
+    <!-- FOOTER -->
+    <div style="text-align:center; padding:32px 0; color:var(--muted); font-size:13px; border-top:1px solid var(--border); margin-top:8px">
+      <div style="font-size:20px; font-weight:800; color:var(--navy); margin-bottom:8px">County</div>
+      <p>Panduan Resmi Usher County — Versi 2.0 | Maret 2026</p>
+      <p style="margin-top:4px"><a href="https://county.finance" style="color:var(--green); text-decoration:none; font-weight:600">county.finance</a></p>
+    </div>
+
+  </main>
+</div>
+
+<script>
+  function toggleFaq(el) {
+    const answer = el.nextElementSibling;
+    const isOpen = answer.classList.contains('open');
+    document.querySelectorAll('.faq-a.open').forEach(a => a.classList.remove('open'));
+    document.querySelectorAll('.faq-q.open').forEach(q => q.classList.remove('open'));
+    if (!isOpen) {
+      answer.classList.add('open');
+      el.classList.add('open');
+    }
+  }
+
+  function toggleSidebar() {
+    document.getElementById('sidebar').classList.toggle('open');
+  }
+
+  // Active sidebar link on scroll
+  const sections = document.querySelectorAll('[id]');
+  const links = document.querySelectorAll('.sidebar a');
+  window.addEventListener('scroll', () => {
+    let current = '';
+    sections.forEach(s => {
+      if (window.scrollY >= s.offsetTop - 80) current = s.id;
+    });
+    links.forEach(l => {
+      l.classList.remove('active');
+      if (l.getAttribute('href') === '#' + current) l.classList.add('active');
+    });
+  });
+
+  // Close sidebar on link click (mobile)
+  links.forEach(l => {
+    l.addEventListener('click', () => {
+      if (window.innerWidth <= 768) {
+        document.getElementById('sidebar').classList.remove('open');
+      }
+    });
+  });
+</script>
+
+</body>
+</html>

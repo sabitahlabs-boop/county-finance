@@ -1,0 +1,520 @@
+import { useAuth } from "@/_core/hooks/useAuth";
+import { Avatar, AvatarFallback } from "@/components/ui/avatar";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import {
+  Sidebar,
+  SidebarContent,
+  SidebarFooter,
+  SidebarHeader,
+  SidebarInset,
+  SidebarMenu,
+  SidebarMenuButton,
+  SidebarMenuItem,
+  SidebarProvider,
+  SidebarTrigger,
+  useSidebar,
+} from "@/components/ui/sidebar";
+import { getLoginUrl } from "@/const";
+import { useIsMobile } from "@/hooks/useMobile";
+import {
+  LayoutDashboard,
+  ArrowLeftRight,
+  Package,
+  FileText,
+  Calculator,
+  Settings,
+  Shield,
+  LogOut,
+  ShoppingBag,
+  PanelLeft,
+  AlertTriangle,
+  Sun,
+  Moon,
+  BookOpen,
+  History,
+  Users,
+  HandCoins,
+  PiggyBank,
+  BarChart3,
+  Warehouse,
+} from "lucide-react";
+import { useTheme } from "@/contexts/ThemeContext";
+import { CSSProperties, useEffect, useMemo, useRef, useState } from "react";
+import { useLocation } from "wouter";
+import { DashboardLayoutSkeleton } from "./DashboardLayoutSkeleton";
+import { Button } from "./ui/button";
+import { trpc } from "@/lib/trpc";
+import { formatRupiah } from "../../../shared/finance";
+import { PATH_PERMISSION_MAP } from "../../../shared/permissions";
+import NotificationCenter from "./NotificationCenter";
+import MiniCalculator from "./MiniCalculator";
+import { useBusinessContext } from "@/contexts/BusinessContext";
+import { Building2, ChevronDown, Check, HelpCircle } from "lucide-react";
+
+// ─── Menu items per mode ───
+const PERSONAL_MENU = [
+  { icon: LayoutDashboard, label: "Dashboard", path: "/", color: "from-blue-600 to-blue-800" },
+  { icon: BookOpen, label: "Jurnal Keuangan", path: "/jurnal", color: "from-emerald-500 to-teal-600" },
+  { icon: ArrowLeftRight, label: "Transaksi", path: "/transaksi", color: "from-sky-500 to-blue-600" },
+  { icon: HandCoins, label: "Hutang & Piutang", path: "/hutang-piutang", color: "from-rose-500 to-pink-600" },
+  { icon: PiggyBank, label: "Tagihan & Anggaran", path: "/anggaran", color: "from-emerald-500 to-green-600" },
+  { icon: FileText, label: "Laporan", path: "/laporan", color: "from-amber-500 to-orange-500" },
+  { icon: Settings, label: "Pengaturan", path: "/pengaturan", color: "from-slate-500 to-slate-700" },
+];
+
+const UMKM_MENU_BASE = [
+  { icon: LayoutDashboard, label: "Dashboard", path: "/", color: "from-blue-600 to-blue-800" },
+  { icon: ArrowLeftRight, label: "Transaksi", path: "/transaksi", color: "from-sky-500 to-blue-600" },
+  { icon: Package, label: "Stok Produk", path: "/stok", color: "from-green-500 to-green-600" },
+  { icon: History, label: "Riwayat Stok", path: "/riwayat-stok", color: "from-teal-500 to-teal-600" },
+  { icon: Warehouse, label: "Gudang", path: "/gudang", color: "from-amber-600 to-yellow-600" },
+  { icon: Users, label: "Client", path: "/client", color: "from-violet-500 to-purple-600" },
+  { icon: HandCoins, label: "Hutang & Piutang", path: "/hutang-piutang", color: "from-rose-500 to-pink-600" },
+  { icon: PiggyBank, label: "Tagihan & Anggaran", path: "/anggaran", color: "from-emerald-500 to-green-600" },
+  { icon: BarChart3, label: "Analitik", path: "/analitik", color: "from-cyan-500 to-blue-600" },
+  { icon: FileText, label: "Laporan", path: "/laporan", color: "from-amber-500 to-orange-500" },
+  { icon: Calculator, label: "Pajak", path: "/pajak", color: "from-blue-500 to-indigo-600" },
+  { icon: Settings, label: "Pengaturan", path: "/pengaturan", color: "from-slate-500 to-slate-700" },
+  { icon: HelpCircle, label: "Panduan", path: "/panduan", color: "from-indigo-400 to-purple-500" },
+];
+
+const POS_MENU_ITEM = { icon: ShoppingBag, label: "Kasir (POS)", path: "/pos", color: "from-orange-500 to-orange-600" };
+
+const SIDEBAR_WIDTH_KEY = "sidebar-width";
+const DEFAULT_WIDTH = 260;
+const MIN_WIDTH = 200;
+const MAX_WIDTH = 400;
+
+export default function DashboardLayout({
+  children,
+}: {
+  children: React.ReactNode;
+}) {
+  const [sidebarWidth, setSidebarWidth] = useState(() => {
+    const saved = localStorage.getItem(SIDEBAR_WIDTH_KEY);
+    return saved ? parseInt(saved, 10) : DEFAULT_WIDTH;
+  });
+  const { loading, user } = useAuth();
+
+  useEffect(() => {
+    localStorage.setItem(SIDEBAR_WIDTH_KEY, sidebarWidth.toString());
+  }, [sidebarWidth]);
+
+  if (loading) {
+    return <DashboardLayoutSkeleton />;
+  }
+
+  if (!user) {
+    return (
+      <div className="flex items-center justify-center min-h-screen bg-gradient-to-br from-blue-50 via-sky-50 to-indigo-50 dark:from-blue-950/30 dark:via-sky-950/20 dark:to-background">
+        <div className="flex flex-col items-center gap-8 p-8 max-w-md w-full">
+          <div className="flex flex-col items-center gap-3">
+            <img
+              src="https://d2xsxph8kpxj0f.cloudfront.net/310519663380060214/BWbi9ugLsQu4nq5jm7TSFB/county-logo-new_8e4282c5.png"
+              alt="County"
+              className="h-20 w-20 object-contain mb-2"
+            />
+            <span className="text-3xl font-bold text-[#1E4D9B]">
+              County
+            </span>
+            <h1 className="text-lg font-semibold tracking-tight text-center text-foreground">
+              Masuk untuk melanjutkan
+            </h1>
+            <p className="text-sm text-muted-foreground text-center max-w-sm">
+              Kelola keuangan Anda dengan mudah — pencatatan, laporan, dan analisis dalam satu platform.
+            </p>
+          </div>
+          <Button
+            onClick={() => { window.location.href = getLoginUrl(); }}
+            size="lg"
+            className="w-full shadow-lg shadow-primary/25 hover:shadow-xl hover:shadow-primary/30 transition-all bg-gradient-to-r from-[#1E4D9B] to-[#2563EB] hover:from-[#1a4389] hover:to-[#1d4ed8]"
+          >
+            Masuk
+          </Button>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <SidebarProvider
+      style={{ "--sidebar-width": `${sidebarWidth}px` } as CSSProperties}
+    >
+      <DashboardLayoutContent setSidebarWidth={setSidebarWidth}>
+        {children}
+      </DashboardLayoutContent>
+    </SidebarProvider>
+  );
+}
+
+function DashboardLayoutContent({
+  children,
+  setSidebarWidth,
+}: {
+  children: React.ReactNode;
+  setSidebarWidth: (width: number) => void;
+}) {
+  const { user, logout } = useAuth();
+  const [location, setLocation] = useLocation();
+  const { state, toggleSidebar } = useSidebar();
+  const isCollapsed = state === "collapsed";
+  const [isResizing, setIsResizing] = useState(false);
+  const sidebarRef = useRef<HTMLDivElement>(null);
+  const isMobile = useIsMobile();
+
+  // Get business data for mode
+  const { data: business } = trpc.business.mine.useQuery();
+  const appMode = business?.appMode ?? "umkm";
+  const posEnabled = business?.posEnabled ?? false;
+  const debtEnabled = business?.debtEnabled ?? true;
+  const isAdmin = user?.role === "admin";
+
+  // Business context for multi-business switching
+  const { businesses, activeBusinessId, switchBusiness, hasMultipleBusinesses, isOwnBusiness, activeRole, activePermissions } = useBusinessContext();
+
+  // Get team context — check if user is a team member (employee)
+  const { data: teamCtx } = trpc.team.myContext.useQuery(undefined, { enabled: !!user });
+  // Use business context to determine if viewing as team member
+  const isTeamMember = !isOwnBusiness;
+  const memberPermissions = isTeamMember ? activePermissions : null;
+
+  // Build menu items dynamically based on mode + permissions
+  const menuItems = useMemo(() => {
+    let items = appMode === "personal" ? [...PERSONAL_MENU] : [...UMKM_MENU_BASE];
+
+    // Insert POS after Dashboard if UMKM mode and POS enabled
+    if (appMode === "umkm" && posEnabled) {
+      items.splice(1, 0, POS_MENU_ITEM);
+    }
+
+    // Hide Hutang & Piutang if debtEnabled is false
+    if (!debtEnabled) {
+      items = items.filter(item => item.path !== "/hutang-piutang");
+    }
+
+    // Add Super Admin for admin users
+    if (isAdmin) {
+      items.push({ icon: Shield, label: "Super Admin", path: "/admin", color: "from-red-500 to-rose-500" });
+    }
+
+    // Filter by permissions if user is a team member (employee)
+    if (isTeamMember && memberPermissions) {
+      items = items.filter(item => {
+        const permKey = PATH_PERMISSION_MAP[item.path];
+        if (!permKey) return true; // allow if no mapping
+        return memberPermissions[permKey] === true;
+      });
+    }
+
+    return items;
+  }, [appMode, posEnabled, isAdmin, isTeamMember, memberPermissions]);
+
+  const activeMenuItem = menuItems.find((item) => item.path === location);
+
+  // Tax estimate for sidebar (only for UMKM mode)
+  const now = new Date();
+  const { data: taxCalc } = trpc.tax.calculate.useQuery(
+    { month: now.getMonth() + 1, year: now.getFullYear() },
+    { retry: false, refetchOnWindowFocus: false, enabled: appMode === "umkm" }
+  );
+  const totalTax = taxCalc?.reduce((s: number, t: any) => s + t.amount, 0) ?? 0;
+
+  useEffect(() => {
+    if (isCollapsed) setIsResizing(false);
+  }, [isCollapsed]);
+
+  useEffect(() => {
+    const handleMouseMove = (e: MouseEvent) => {
+      if (!isResizing) return;
+      const sidebarLeft = sidebarRef.current?.getBoundingClientRect().left ?? 0;
+      const newWidth = e.clientX - sidebarLeft;
+      if (newWidth >= MIN_WIDTH && newWidth <= MAX_WIDTH) setSidebarWidth(newWidth);
+    };
+    const handleMouseUp = () => setIsResizing(false);
+    if (isResizing) {
+      document.addEventListener("mousemove", handleMouseMove);
+      document.addEventListener("mouseup", handleMouseUp);
+      document.body.style.cursor = "col-resize";
+      document.body.style.userSelect = "none";
+    }
+    return () => {
+      document.removeEventListener("mousemove", handleMouseMove);
+      document.removeEventListener("mouseup", handleMouseUp);
+      document.body.style.cursor = "";
+      document.body.style.userSelect = "";
+    };
+  }, [isResizing, setSidebarWidth]);
+
+  return (
+    <>
+      <div className="relative" ref={sidebarRef}>
+        <Sidebar collapsible="icon" className="border-r-0" disableTransition={isResizing}>
+          <SidebarHeader className="h-16 justify-center">
+            <div className="flex items-center gap-3 px-2 transition-all w-full">
+              <button
+                onClick={toggleSidebar}
+                className="h-8 w-8 flex items-center justify-center hover:bg-sidebar-accent rounded-lg transition-colors focus:outline-none shrink-0"
+                aria-label="Toggle navigation"
+              >
+                <PanelLeft className="h-4 w-4 text-sidebar-foreground/70" />
+              </button>
+              {!isCollapsed && (
+                <div className="flex items-center gap-2 min-w-0">
+                  <img
+                    src="https://d2xsxph8kpxj0f.cloudfront.net/310519663380060214/BWbi9ugLsQu4nq5jm7TSFB/county-logo-new_8e4282c5.png"
+                    alt="County"
+                    className="h-7 w-7 object-contain shrink-0"
+                  />
+                  <span className="font-bold tracking-tight truncate text-sidebar-foreground">
+                    County
+                  </span>
+                  {/* Mode badge */}
+                  <span className={`text-[10px] font-medium px-1.5 py-0.5 rounded-full shrink-0 ${
+                    appMode === "personal"
+                      ? "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400"
+                      : "bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400"
+                  }`}>
+                    {appMode === "personal" ? "Pribadi" : "UMKM"}
+                  </span>
+                  {isTeamMember && activeRole && (
+                    <span className="text-[10px] font-medium px-1.5 py-0.5 rounded-full shrink-0 bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400">
+                      {activeRole.charAt(0).toUpperCase() + activeRole.slice(1)}
+                    </span>
+                  )}
+                </div>
+              )}
+            </div>
+          </SidebarHeader>
+
+          {/* Business Switcher — always visible */}
+          {businesses.length > 0 && (
+            <div className={isCollapsed ? "px-1 pb-2 flex justify-center" : "px-3 pb-2"}>
+              {hasMultipleBusinesses ? (
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    {isCollapsed ? (
+                      <button
+                        className="h-9 w-9 flex items-center justify-center rounded-lg border border-sidebar-border/50 bg-gradient-to-br from-blue-500/10 to-indigo-500/10 hover:from-blue-500/20 hover:to-indigo-500/20 transition-all focus:outline-none relative"
+                        title="Switch Bisnis"
+                      >
+                        <Building2 className="h-4 w-4 text-blue-600 dark:text-blue-400" />
+                        <span className="absolute -top-1 -right-1 h-3.5 w-3.5 rounded-full bg-blue-500 text-[8px] text-white font-bold flex items-center justify-center">
+                          {businesses.length}
+                        </span>
+                      </button>
+                    ) : (
+                      <button className="flex items-center gap-2.5 w-full rounded-xl border border-blue-200/60 dark:border-blue-800/40 bg-gradient-to-r from-blue-50 to-indigo-50 dark:from-blue-950/30 dark:to-indigo-950/20 hover:from-blue-100 hover:to-indigo-100 dark:hover:from-blue-950/50 dark:hover:to-indigo-950/40 px-3 py-2.5 text-left transition-all focus:outline-none shadow-sm">
+                        <div className="h-8 w-8 rounded-lg bg-gradient-to-br from-blue-500 to-indigo-600 flex items-center justify-center shrink-0 shadow-sm">
+                          <Building2 className="h-4 w-4 text-white" />
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <p className="text-[10px] font-medium text-blue-600/70 dark:text-blue-400/70 leading-none uppercase tracking-wider">Bisnis Aktif</p>
+                          <p className="text-sm font-semibold text-foreground truncate mt-0.5">
+                            {businesses.find(b => b.id === activeBusinessId)?.name ?? "Pilih Bisnis"}
+                          </p>
+                          <p className="text-[10px] text-muted-foreground mt-0.5">
+                            {(() => {
+                              const active = businesses.find(b => b.id === activeBusinessId);
+                              if (!active) return "";
+                              return active.isOwn ? "👑 Owner" : `🏷️ ${active.role?.charAt(0).toUpperCase()}${active.role?.slice(1) ?? "Karyawan"}`;
+                            })()}
+                          </p>
+                        </div>
+                        <div className="flex flex-col items-center gap-0.5 shrink-0">
+                          <ChevronDown className="h-3.5 w-3.5 text-blue-500/60" />
+                          <span className="text-[9px] font-medium text-blue-500/60">{businesses.length}</span>
+                        </div>
+                      </button>
+                    )}
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="start" className="w-72 p-1.5">
+                    <div className="px-2 py-1.5 mb-1">
+                      <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Switch Bisnis</p>
+                    </div>
+                    {businesses.map(b => (
+                      <DropdownMenuItem
+                        key={b.id}
+                        onClick={() => { if (b.id !== activeBusinessId) switchBusiness(b.id); }}
+                        className={`cursor-pointer rounded-lg px-2 py-2.5 mb-0.5 ${b.id === activeBusinessId ? "bg-blue-50 dark:bg-blue-950/30" : ""}`}
+                      >
+                        <div className="flex items-center gap-3 w-full">
+                          <div className={`h-9 w-9 rounded-lg flex items-center justify-center shrink-0 ${
+                            b.isOwn
+                              ? "bg-gradient-to-br from-blue-500 to-indigo-600"
+                              : "bg-gradient-to-br from-amber-500 to-orange-600"
+                          }`}>
+                            <Building2 className="h-4 w-4 text-white" />
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            <p className="text-sm font-semibold truncate">{b.name}</p>
+                            <p className="text-xs text-muted-foreground">
+                              {b.isOwn ? "👑 Bisnis Saya (Owner)" : `🏷️ Sebagai ${b.role?.charAt(0).toUpperCase()}${b.role?.slice(1) ?? "Karyawan"}`}
+                            </p>
+                          </div>
+                          {b.id === activeBusinessId && (
+                            <div className="h-5 w-5 rounded-full bg-blue-500 flex items-center justify-center shrink-0">
+                              <Check className="h-3 w-3 text-white" />
+                            </div>
+                          )}
+                        </div>
+                      </DropdownMenuItem>
+                    ))}
+                  </DropdownMenuContent>
+                </DropdownMenu>
+              ) : (
+                /* Single business — show info card (no dropdown) */
+                !isCollapsed && (
+                  <div className="flex items-center gap-2.5 w-full rounded-xl border border-sidebar-border/30 bg-sidebar-accent/20 px-3 py-2 transition-all">
+                    <div className="h-7 w-7 rounded-lg bg-gradient-to-br from-blue-500 to-indigo-600 flex items-center justify-center shrink-0">
+                      <Building2 className="h-3.5 w-3.5 text-white" />
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-medium text-sidebar-foreground truncate">
+                        {businesses[0]?.name ?? "Bisnis"}
+                      </p>
+                      <p className="text-[10px] text-muted-foreground">
+                        {businesses[0]?.isOwn ? "👑 Owner" : `🏷️ ${businesses[0]?.role?.charAt(0).toUpperCase()}${businesses[0]?.role?.slice(1) ?? "Karyawan"}`}
+                      </p>
+                    </div>
+                  </div>
+                )
+              )}
+            </div>
+          )}
+
+          <SidebarContent className="gap-0">
+            <SidebarMenu data-onboarding="sidebar-menu" className="px-2 py-1">
+              {menuItems.map((item) => {
+                const isActive = location === item.path;
+                return (
+                  <SidebarMenuItem key={item.path} {...(item.path === "/panduan" ? { "data-onboarding": "panduan-link" } : {})}>
+                    <SidebarMenuButton
+                      isActive={isActive}
+                      onClick={() => setLocation(item.path)}
+                      tooltip={item.label}
+                      className={`h-10 transition-all font-normal ${isActive ? "shadow-sm" : ""}`}
+                    >
+                      <div className={`h-5 w-5 rounded-md flex items-center justify-center ${isActive ? `bg-gradient-to-br ${item.color}` : ""}`}>
+                        <item.icon className={`h-3.5 w-3.5 ${isActive ? "text-white" : ""}`} />
+                      </div>
+                      <span className={isActive ? "font-semibold" : ""}>{item.label}</span>
+                    </SidebarMenuButton>
+                  </SidebarMenuItem>
+                );
+              })}
+            </SidebarMenu>
+          </SidebarContent>
+
+          {/* Tax Alert Box — only for UMKM mode */}
+          {appMode === "umkm" && !isCollapsed && totalTax > 0 && (
+            <div className="px-3 pb-2">
+              <div className="rounded-xl bg-gradient-to-r from-amber-500/10 to-orange-500/10 border border-amber-500/20 p-3">
+                <div className="flex items-center gap-2 text-xs text-sidebar-foreground/70 mb-1">
+                  <AlertTriangle className="h-3.5 w-3.5 text-amber-400" />
+                  <span>Estimasi Pajak Bulan Ini</span>
+                </div>
+                <p className="text-sm font-semibold text-sidebar-foreground">
+                  {formatRupiah(totalTax)}
+                </p>
+              </div>
+            </div>
+          )}
+
+          <SidebarFooter className="p-3">
+            {/* Theme Toggle */}
+            <ThemeToggleButton isCollapsed={isCollapsed} />
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <button className="flex items-center gap-3 rounded-xl px-1 py-1 hover:bg-sidebar-accent/50 transition-colors w-full text-left group-data-[collapsible=icon]:justify-center focus:outline-none">
+                  <Avatar className="h-9 w-9 border border-sidebar-border shrink-0">
+                    <AvatarFallback className="text-xs font-medium bg-gradient-to-br from-[#1E4D9B] to-[#2563EB] text-white">
+                      {user?.name?.charAt(0).toUpperCase()}
+                    </AvatarFallback>
+                  </Avatar>
+                  <div className="flex-1 min-w-0 group-data-[collapsible=icon]:hidden">
+                    <p className="text-sm font-medium truncate leading-none text-sidebar-foreground">
+                      {user?.name || "-"}
+                    </p>
+                    <p className="text-xs text-sidebar-foreground/60 truncate mt-1.5">
+                      {user?.email || "-"}
+                    </p>
+                  </div>
+                </button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end" className="w-48">
+                <DropdownMenuItem
+                  onClick={logout}
+                  className="cursor-pointer text-destructive focus:text-destructive"
+                >
+                  <LogOut className="mr-2 h-4 w-4" />
+                  <span>Keluar</span>
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+          </SidebarFooter>
+        </Sidebar>
+        <div
+          className={`absolute top-0 right-0 w-1 h-full cursor-col-resize hover:bg-primary/20 transition-colors ${isCollapsed ? "hidden" : ""}`}
+          onMouseDown={() => { if (!isCollapsed) setIsResizing(true); }}
+          style={{ zIndex: 50 }}
+        />
+      </div>
+
+      <SidebarInset>
+        {isMobile ? (
+          <div className="flex border-b h-14 items-center justify-between bg-background/95 px-2 backdrop-blur sticky top-0 z-40">
+            <div className="flex items-center gap-2">
+              <SidebarTrigger className="h-9 w-9 rounded-lg bg-background" />
+              <span className="tracking-tight text-foreground font-medium">
+                {activeMenuItem?.label ?? "Menu"}
+              </span>
+            </div>
+            <NotificationCenter />
+          </div>
+        ) : (
+          <div className="flex h-12 items-center justify-end px-4 border-b border-border/30">
+            <NotificationCenter />
+          </div>
+        )}
+        <main className="flex-1 p-4 md:p-6">{children}</main>
+        {business?.calculatorEnabled !== false && <MiniCalculator />}
+      </SidebarInset>
+    </>
+  );
+}
+
+function ThemeToggleButton({ isCollapsed }: { isCollapsed: boolean }) {
+  const { theme, toggleTheme, switchable } = useTheme();
+  if (!switchable || !toggleTheme) return null;
+
+  return (
+    <button
+      onClick={toggleTheme}
+      className="flex items-center gap-3 rounded-xl px-2 py-2 hover:bg-sidebar-accent/50 transition-colors w-full text-left group-data-[collapsible=icon]:justify-center focus:outline-none mb-1"
+      title={theme === "dark" ? "Beralih ke mode terang" : "Beralih ke mode gelap"}
+    >
+      <div className={`h-8 w-8 flex items-center justify-center rounded-lg shrink-0 ${theme === "dark" ? "bg-gradient-to-br from-amber-400 to-orange-500" : "bg-gradient-to-br from-[#1E4D9B] to-[#2563EB]"}`}>
+        {theme === "dark" ? (
+          <Sun className="h-4 w-4 text-white" />
+        ) : (
+          <Moon className="h-4 w-4 text-white" />
+        )}
+      </div>
+      {!isCollapsed && (
+        <div className="flex items-center justify-between flex-1 min-w-0">
+          <span className="text-sm text-sidebar-foreground/80">
+            {theme === "dark" ? "Mode Gelap" : "Mode Terang"}
+          </span>
+          <div className={`relative w-9 h-5 rounded-full transition-colors ${theme === "dark" ? "bg-gradient-to-r from-[#1E4D9B] to-[#2563EB]" : "bg-sidebar-accent"}`}>
+            <div className={`absolute top-0.5 h-4 w-4 rounded-full bg-white shadow-sm transition-transform ${theme === "dark" ? "translate-x-4" : "translate-x-0.5"}`} />
+          </div>
+        </div>
+      )}
+    </button>
+  );
+}

@@ -1,0 +1,1 @@
+ALTER TABLE `businesses` MODIFY COLUMN `plan` enum('free','pro','pro_plus') NOT NULL DEFAULT 'free';

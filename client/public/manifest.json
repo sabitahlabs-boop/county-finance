@@ -1,0 +1,44 @@
+{
+  "name": "County - Akuntansi UMKM",
+  "short_name": "County",
+  "description": "Aplikasi akuntansi all-in-one untuk UMKM Indonesia. Pencatatan keuangan, laporan, pajak, POS, dan AI scanner.",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#ffffff",
+  "theme_color": "#1E4D9B",
+  "orientation": "any",
+  "categories": ["finance", "business", "productivity"],
+  "lang": "id",
+  "icons": [
+    {
+      "src": "https://d2xsxph8kpxj0f.cloudfront.net/310519663380060214/BWbi9ugLsQu4nq5jm7TSFB/county-logo-new_8e4282c5.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "https://d2xsxph8kpxj0f.cloudfront.net/310519663380060214/BWbi9ugLsQu4nq5jm7TSFB/county-logo-new_8e4282c5.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ],
+  "screenshots": [],
+  "shortcuts": [
+    {
+      "name": "Dashboard",
+      "url": "/",
+      "icons": []
+    },
+    {
+      "name": "Transaksi",
+      "url": "/transaksi",
+      "icons": []
+    },
+    {
+      "name": "Kasir POS",
+      "url": "/pos",
+      "icons": []
+    }
+  ]
+}
