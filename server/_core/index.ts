@@ -2,22 +2,21 @@
  * County Finance — Server Entry Point
  * Clean from all Manus dependencies
  *
- * Infrastructure: Express + tRPC + Clerk + R2 + OpenAI
+ * Infrastructure: Express + tRPC + Clerk + R2 + Anthropic
  */
 
 import express from "express";
 import cors from "cors";
-import { createExpressMiddleware } from "@trpc/server/adapters/express";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
 import { clerkMiddleware } from "@clerk/express";
 import { ENV } from "./env";
-import { createContext } from "./context";
 import { registerAuthRoutes } from "./auth";
 import { registerChatRoutes } from "./chat";
 import { registerStorageRoutes } from "../storage";
 import { registerReceiptRoutes } from "../receiptScanner";
 import { registerAIAdvisorRoutes } from "../aiAdvisor";
 import { registerScalevWebhookRoutes } from "../scalevWebhook";
-// import { appRouter } from "../routers"; // Main tRPC router (keep existing)
 
 const app = express();
 
@@ -88,7 +87,6 @@ registerScalevWebhookRoutes(app);
 // ── Static Files (Production) ──
 
 if (ENV.nodeEnv === "production") {
-  const path = require("path");
   const distPath = path.resolve(process.cwd(), "dist/public");
 
   app.use(express.static(distPath));
