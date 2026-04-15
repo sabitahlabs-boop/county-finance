@@ -36,10 +36,7 @@ app.use(
 app.use(express.json({ limit: "10mb" }));
 app.use(express.urlencoded({ extended: true }));
 
-// Clerk authentication middleware (replaces Manus SDK)
-app.use(clerkMiddleware());
-
-// ── Health Check ──
+// ── Health Check (BEFORE Clerk middleware, so it's always accessible) ──
 
 app.get("/api/health", (_req, res) => {
   res.json({
@@ -48,7 +45,19 @@ app.get("/api/health", (_req, res) => {
     version: "2.0.0",
     timestamp: new Date().toISOString(),
     environment: ENV.nodeEnv,
+    hasClerkKey: !!process.env.CLERK_PUBLISHABLE_KEY,
+    clerkKeyPrefix: process.env.CLERK_PUBLISHABLE_KEY?.slice(0, 8) ?? "MISSING",
   });
+});
+
+// Clerk authentication middleware (replaces Manus SDK)
+// Applied AFTER health check so healthcheck works even if Clerk keys are invalid
+app.use((req, res, next) => {
+  // Skip Clerk for public endpoints
+  if (req.path === "/api/health" || req.path.startsWith("/api/scalev/")) {
+    return next();
+  }
+  return clerkMiddleware()(req, res, next);
 });
 
 // ── Register Routes ──
