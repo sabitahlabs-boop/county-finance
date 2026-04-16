@@ -28,6 +28,7 @@ function formatTime(dateStr: string | Date) {
 
 const PAYMENT_ICONS: Record<string, typeof Banknote> = {
   "Tunai": Banknote,
+  "Transfer/QRIS": CreditCard,
   "Transfer Bank": CreditCard,
   "QRIS": QrCode,
 };

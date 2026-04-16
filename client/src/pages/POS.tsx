@@ -11,7 +11,7 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import {
   ShoppingCart, Search, Plus, Minus, Trash2, CreditCard, Banknote,
   QrCode, Receipt, CheckCircle2, Package, X, Loader2, Printer, Warehouse,
-  SplitSquareHorizontal, Tag, Percent
+  SplitSquareHorizontal, Tag, Percent, Wallet,
 } from "lucide-react";
 import { formatRupiah } from "../../../shared/finance";
 import { toast } from "sonner";
@@ -33,12 +33,13 @@ type CartItem = {
 type SplitPayment = {
   method: string;
   amount: number;
+  customLabel?: string; // for "Lainnya" — e.g. "Kredivo", "ShopeePay"
 };
 
 const PAYMENT_METHODS = [
   { value: "Tunai", icon: Banknote, label: "Tunai" },
-  { value: "Transfer Bank", icon: CreditCard, label: "Transfer" },
-  { value: "QRIS", icon: QrCode, label: "QRIS" },
+  { value: "Transfer/QRIS", icon: CreditCard, label: "Transfer/QRIS" },
+  { value: "Lainnya", icon: Wallet, label: "Lainnya" },
 ];
 
 export default function POS() {
@@ -230,10 +231,11 @@ export default function POS() {
     setPayments(prev => [...prev, { method: "Tunai", amount: 0 }]);
   };
 
-  const updatePayment = (index: number, field: "method" | "amount", value: string | number) => {
+  const updatePayment = (index: number, field: "method" | "amount" | "customLabel", value: string | number) => {
     setPayments(prev => prev.map((p, i) => {
       if (i !== index) return p;
-      if (field === "method") return { ...p, method: value as string };
+      if (field === "method") return { ...p, method: value as string, customLabel: value === "Lainnya" ? (p.customLabel || "") : undefined };
+      if (field === "customLabel") return { ...p, customLabel: value as string };
       return { ...p, amount: typeof value === "number" ? value : (parseInt(value as string) || 0) };
     }));
   };
@@ -274,9 +276,13 @@ export default function POS() {
   const handleCheckout = () => {
     if (cart.length === 0) { toast.error("Keranjang kosong"); return; }
 
-    const finalPayments = splitMode
+    const finalPayments = (splitMode
       ? payments.filter(p => p.amount > 0)
-      : [{ method: payments[0]?.method ?? "Tunai", amount: grandTotal }];
+      : [{ method: payments[0]?.method ?? "Tunai", amount: grandTotal, customLabel: payments[0]?.customLabel }]
+    ).map(p => ({
+      method: p.method === "Lainnya" && p.customLabel ? p.customLabel : p.method,
+      amount: p.amount,
+    }));
 
     // Validate split payments cover the total
     if (splitMode) {
@@ -576,7 +582,7 @@ export default function POS() {
                     // Enter split mode: start with current method + empty second
                     setPayments([
                       { method: payments[0]?.method ?? "Tunai", amount: 0 },
-                      { method: "Transfer Bank", amount: 0 },
+                      { method: "Transfer/QRIS", amount: 0 },
                     ]);
                   } else {
                     // Exit split mode: keep first method only
@@ -606,6 +612,18 @@ export default function POS() {
                   ))}
                 </div>
 
+                {payments[0]?.method === "Lainnya" && (
+                  <div className="space-y-1.5">
+                    <label className="text-xs font-medium text-muted-foreground">Nama Metode Pembayaran</label>
+                    <Input
+                      value={payments[0]?.customLabel || ""}
+                      onChange={(e) => updatePayment(0, "customLabel", e.target.value)}
+                      placeholder="Kredivo, ShopeePay, GoPay, OVO..."
+                      className="h-10"
+                    />
+                  </div>
+                )}
+
                 {payments[0]?.method === "Tunai" && (
                   <div className="space-y-1.5">
                     <label className="text-xs font-medium text-muted-foreground">Uang Diterima</label>
@@ -627,7 +645,7 @@ export default function POS() {
                   </div>
                 )}
 
-                {payments[0]?.method === "QRIS" && <QRISDisplay />}
+                {payments[0]?.method === "Transfer/QRIS" && <QRISDisplay />}
               </>
             ) : (
               /* ─── Split Payment Mode ─── */
@@ -656,6 +674,14 @@ export default function POS() {
                         </Button>
                       ))}
                     </div>
+                    {payment.method === "Lainnya" && (
+                      <Input
+                        value={payment.customLabel || ""}
+                        onChange={(e) => updatePayment(idx, "customLabel", e.target.value)}
+                        placeholder="Nama metode (Kredivo, ShopeePay, GoPay...)"
+                        className="h-9 text-xs"
+                      />
+                    )}
                     <Input
                       type="number"
                       value={payment.amount || ""}
