@@ -28,6 +28,7 @@ import HutangPiutang from "./pages/HutangPiutang";
 import Anggaran from "./pages/Anggaran";
 import SalesAnalytics from "./pages/SalesAnalytics";
 import Panduan from "./pages/Panduan";
+import LaporanPenjualan from "./pages/LaporanPenjualan";
 import GudangPage from "./pages/Gudang";
 import AcceptInvite from "./pages/AcceptInvite";
 import { BusinessProvider } from "./contexts/BusinessContext";
@@ -79,6 +80,7 @@ function Router() {
       <Route path="/admin">{() => <AuthenticatedRoute component={SuperAdminPage} />}</Route>
       <Route path="/upgrade">{() => <AuthenticatedRoute component={UpgradePage} />}</Route>
       <Route path="/pos">{() => <AuthenticatedRoute component={POSPage} />}</Route>
+      <Route path="/laporan-penjualan">{() => <AuthenticatedRoute component={LaporanPenjualan} />}</Route>
       <Route path="/jurnal">{() => <AuthenticatedRoute component={JurnalPribadi} />}</Route>
       <Route path="/riwayat-stok">{() => <AuthenticatedRoute component={RiwayatStok} />}</Route>
       <Route path="/client">{() => <AuthenticatedRoute component={ClientManagement} />}</Route>

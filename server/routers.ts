@@ -46,6 +46,7 @@ import {
   createPosShift, getOpenShift, closePosShift, getShiftsByBusiness, getPosShiftById,
   createDiscountCode, getDiscountCodesByBusiness, validateDiscountCode, incrementDiscountUsage, updateDiscountCode, deleteDiscountCode,
   generateReceiptCode, createPosReceipt, getPosReceiptsByBusiness, getPosReceiptById, refundPosReceipt,
+  getDailySalesReport,
 } from "./db";
 import { PLAN_LIMITS, BULAN_INDONESIA, formatRupiah } from "../shared/finance";
 import { notifyOwner } from "./_core/notification";
@@ -677,6 +678,11 @@ export const appRouter = router({
       const biz = (await resolveBusinessForUser(ctx.user.id, ctx.requestedBusinessId))?.business;
       if (!biz) throw new TRPCError({ code: "NOT_FOUND" });
       return getTransactionSummary(biz.id, input.month, input.year);
+    }),
+    dailySales: protectedProcedure.input(z.object({ date: z.string() })).query(async ({ ctx, input }) => {
+      const biz = (await resolveBusinessForUser(ctx.user.id, ctx.requestedBusinessId))?.business;
+      if (!biz) throw new TRPCError({ code: "NOT_FOUND" });
+      return getDailySalesReport(biz.id, input.date);
     }),
   }),
 

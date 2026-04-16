@@ -1883,6 +1883,101 @@ export async function getPosReceiptsByBusiness(businessId: number, limit = 50): 
   return db.select().from(posReceipts).where(eq(posReceipts.businessId, businessId)).orderBy(desc(posReceipts.createdAt)).limit(limit);
 }
 
+export async function getPosReceiptsByDate(businessId: number, date: string): Promise<PosReceipt[]> {
+  const db = await getDb();
+  if (!db) return [];
+  return db.select().from(posReceipts)
+    .where(and(eq(posReceipts.businessId, businessId), eq(posReceipts.date, date)))
+    .orderBy(desc(posReceipts.createdAt));
+}
+
+export async function getDailySalesReport(businessId: number, date: string) {
+  const db = await getDb();
+  if (!db) return { date, receipts: [], totalSales: 0, totalDiscount: 0, totalRefunds: 0, netSales: 0, totalTransactions: 0, byPaymentMethod: {} as Record<string, number>, byHour: {} as Record<string, number> };
+
+  const receipts = await db.select().from(posReceipts)
+    .where(and(eq(posReceipts.businessId, businessId), eq(posReceipts.date, date)))
+    .orderBy(desc(posReceipts.createdAt));
+
+  let totalSales = 0;
+  let totalDiscount = 0;
+  let totalRefunds = 0;
+  let totalTransactions = 0;
+  const byPaymentMethod: Record<string, number> = {};
+  const byHour: Record<string, number> = {};
+
+  for (const r of receipts) {
+    if (r.isRefunded) {
+      totalRefunds += r.grandTotal;
+    } else {
+      totalSales += r.grandTotal;
+      totalTransactions++;
+    }
+    totalDiscount += r.discountAmount;
+
+    // Parse payments JSON
+    const payments = (typeof r.payments === "string" ? JSON.parse(r.payments) : r.payments) as Array<{ method: string; amount: number }>;
+    for (const p of payments) {
+      byPaymentMethod[p.method] = (byPaymentMethod[p.method] || 0) + p.amount;
+    }
+
+    // Group by hour
+    if (r.createdAt) {
+      const hour = new Date(r.createdAt).getHours();
+      const hourKey = `${String(hour).padStart(2, "0")}:00`;
+      byHour[hourKey] = (byHour[hourKey] || 0) + (r.isRefunded ? 0 : r.grandTotal);
+    }
+  }
+
+  const netSales = totalSales - totalRefunds;
+
+  // Also get individual transactions for product-level breakdown
+  const txs = await db.select().from(transactions)
+    .where(and(
+      eq(transactions.businessId, businessId),
+      eq(transactions.date, date),
+      eq(transactions.isDeleted, false),
+      eq(transactions.category, "Penjualan POS"),
+    ))
+    .orderBy(desc(transactions.createdAt));
+
+  // Product-level aggregation
+  const byProduct: Record<number, { name: string; qty: number; revenue: number; hpp: number }> = {};
+  for (const tx of txs) {
+    if (tx.productId) {
+      if (!byProduct[tx.productId]) {
+        byProduct[tx.productId] = { name: tx.description?.replace(/^POS .+? /, "") || `Produk #${tx.productId}`, qty: 0, revenue: 0, hpp: 0 };
+      }
+      byProduct[tx.productId].qty += tx.productQty ?? 0;
+      byProduct[tx.productId].revenue += tx.amount;
+      byProduct[tx.productId].hpp += (tx.productHppSnapshot ?? 0) * (tx.productQty ?? 0);
+    }
+  }
+
+  // Get product names
+  const productIds = Object.keys(byProduct).map(Number);
+  if (productIds.length > 0) {
+    const prods = await db.select({ id: products.id, name: products.name }).from(products)
+      .where(sql`${products.id} IN (${sql.join(productIds.map(id => sql`${id}`), sql`, `)})`);
+    for (const p of prods) {
+      if (byProduct[p.id]) byProduct[p.id].name = p.name;
+    }
+  }
+
+  return {
+    date,
+    receipts,
+    totalSales,
+    totalDiscount,
+    totalRefunds,
+    netSales,
+    totalTransactions,
+    byPaymentMethod,
+    byHour,
+    byProduct: Object.values(byProduct).sort((a, b) => b.revenue - a.revenue),
+  };
+}
+
 export async function getPosReceiptById(id: number): Promise<PosReceipt | undefined> {
   const db = await getDb();
   if (!db) return undefined;

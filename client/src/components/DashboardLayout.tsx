@@ -48,6 +48,7 @@ import {
   HelpCircle,
   Crown,
   Briefcase,
+  Receipt,
 } from "lucide-react";
 import { useTheme } from "@/contexts/ThemeContext";
 import { CSSProperties, useEffect, useMemo, useRef, useState } from "react";
@@ -255,10 +256,19 @@ function DashboardLayoutContent({
     // UMKM — build from sections
     let secs = UMKM_SECTIONS.map((s) => ({ ...s, items: [...s.items] }));
 
-    // Insert POS after Transaksi in "Utama" section
+    // Insert POS after Transaksi in "Utama" section + Laporan Penjualan in Keuangan
     if (posEnabled) {
       const utama = secs.find((s) => s.title === "Utama");
       if (utama) utama.items.push(POS_MENU_ITEM);
+      const keuangan = secs.find((s) => s.title === "Keuangan");
+      if (keuangan) {
+        const laporanIdx = keuangan.items.findIndex((i) => i.path === "/laporan");
+        keuangan.items.splice(laporanIdx + 1, 0, {
+          icon: Receipt,
+          label: "Laporan Penjualan",
+          path: "/laporan-penjualan",
+        });
+      }
     }
 
     // Remove Hutang & Piutang if disabled

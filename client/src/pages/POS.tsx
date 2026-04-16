@@ -1,4 +1,4 @@
-import { useState, useMemo, useEffect } from "react";
+import { useState, useMemo, useEffect, useCallback } from "react";
 import { trpc } from "@/lib/trpc";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -10,7 +10,8 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import {
   ShoppingCart, Search, Plus, Minus, Trash2, CreditCard, Banknote,
-  QrCode, Receipt, CheckCircle2, Package, X, Loader2, Printer, Warehouse
+  QrCode, Receipt, CheckCircle2, Package, X, Loader2, Printer, Warehouse,
+  SplitSquareHorizontal, Tag, Percent
 } from "lucide-react";
 import { formatRupiah } from "../../../shared/finance";
 import { toast } from "sonner";
@@ -18,31 +19,54 @@ import { toast } from "sonner";
 type CartItem = {
   productId: number;
   name: string;
-  price: number;           // actual price after discount
-  basePrice: number;       // original sellingPrice
+  price: number;
+  basePrice: number;
   hpp: number;
   qty: number;
   unit: string;
   imageUrl?: string | null;
   maxStock: number;
   priceType: "fixed" | "dynamic";
-  discountPercent: number; // 0-100
+  discountPercent: number;
 };
+
+type SplitPayment = {
+  method: string;
+  amount: number;
+};
+
+const PAYMENT_METHODS = [
+  { value: "Tunai", icon: Banknote, label: "Tunai" },
+  { value: "Transfer Bank", icon: CreditCard, label: "Transfer" },
+  { value: "QRIS", icon: QrCode, label: "QRIS" },
+];
 
 export default function POS() {
   const [cart, setCart] = useState<CartItem[]>([]);
   const [searchQuery, setSearchQuery] = useState("");
-  const [paymentMethod, setPaymentMethod] = useState("Tunai");
-  const [customerPaid, setCustomerPaid] = useState("");
   const [checkoutOpen, setCheckoutOpen] = useState(false);
   const [successOpen, setSuccessOpen] = useState(false);
-  const [lastTxCode, setLastTxCode] = useState("");
   const [notes, setNotes] = useState("");
+  const [selectedWarehouseId, setSelectedWarehouseId] = useState<number | null>(null);
+
+  // Split payment state
+  const [splitMode, setSplitMode] = useState(false);
+  const [payments, setPayments] = useState<SplitPayment[]>([{ method: "Tunai", amount: 0 }]);
+  const [customerPaid, setCustomerPaid] = useState("");
+
+  // Discount code state
+  const [discountCode, setDiscountCode] = useState("");
+  const [appliedDiscount, setAppliedDiscount] = useState<{
+    id: number; code: string; name: string; type: string; value: number; amount: number;
+  } | null>(null);
+
+  // Success receipt state
+  const [lastReceiptCode, setLastReceiptCode] = useState("");
   const [lastCart, setLastCart] = useState<CartItem[]>([]);
   const [lastTotal, setLastTotal] = useState(0);
-  const [lastPaymentMethod, setLastPaymentMethod] = useState("");
+  const [lastPayments, setLastPayments] = useState<SplitPayment[]>([]);
   const [lastPaid, setLastPaid] = useState(0);
-  const [selectedWarehouseId, setSelectedWarehouseId] = useState<number | null>(null);
+  const [lastDiscount, setLastDiscount] = useState(0);
 
   const utils = trpc.useUtils();
   const { data: products, isLoading } = trpc.product.list.useQuery(undefined, { retry: false });
@@ -56,30 +80,60 @@ export default function POS() {
     }
   }, [warehouses]);
 
-  // Get warehouse stock for selected warehouse
   const { data: warehouseStock = [] } = trpc.warehouse.stock.useQuery(
     { warehouseId: selectedWarehouseId! },
     { enabled: !!selectedWarehouseId }
   );
+
+  // POS Receipt mutation (new — supports split payment + discount)
+  const createReceipt = trpc.posReceipt.create.useMutation({
+    onSuccess: (data) => {
+      utils.transaction.list.invalidate();
+      utils.report.dashboard.invalidate();
+      utils.product.list.invalidate();
+      setLastReceiptCode(data.receiptCode);
+      setLastCart([...cart]);
+      setLastTotal(grandTotal);
+      setLastPayments(splitMode ? [...payments] : [{ method: payments[0]?.method ?? "Tunai", amount: grandTotal }]);
+      setLastPaid(splitMode ? payments.reduce((s, p) => s + p.amount, 0) : (parseInt(customerPaid) || grandTotal));
+      setLastDiscount(appliedDiscount?.amount ?? 0);
+      setCheckoutOpen(false);
+      setSuccessOpen(true);
+      resetCheckout();
+    },
+    onError: (err) => toast.error(err.message),
+  });
+
+  // Legacy single-item mutation (fallback)
   const createTx = trpc.transaction.create.useMutation({
     onSuccess: (data) => {
       utils.transaction.list.invalidate();
       utils.report.dashboard.invalidate();
       utils.product.list.invalidate();
-      setLastTxCode(data.txCode);
+      setLastReceiptCode(data.txCode);
       setLastCart([...cart]);
       setLastTotal(subtotal);
-      setLastPaymentMethod(paymentMethod);
+      setLastPayments([{ method: payments[0]?.method ?? "Tunai", amount: subtotal }]);
       setLastPaid(parseInt(customerPaid) || 0);
+      setLastDiscount(0);
       setCheckoutOpen(false);
       setSuccessOpen(true);
-      setCart([]);
-      setCustomerPaid("");
-      setNotes("");
+      resetCheckout();
     },
     onError: (err) => toast.error(err.message),
   });
 
+  const resetCheckout = () => {
+    setCart([]);
+    setCustomerPaid("");
+    setNotes("");
+    setSplitMode(false);
+    setPayments([{ method: "Tunai", amount: 0 }]);
+    setAppliedDiscount(null);
+    setDiscountCode("");
+  };
+
+  // ─── Product filtering ───
   const filteredProducts = useMemo(() => {
     if (!products) return [];
     return products.filter((p: any) =>
@@ -93,16 +147,14 @@ export default function POS() {
     return products.filter((p: any) => p.isActive !== false && p.stockCurrent <= 0);
   }, [products]);
 
-  // Cart helpers
+  // ─── Cart helpers ───
   const [dynamicPriceDialog, setDynamicPriceDialog] = useState<{ product: any; tempPrice: string } | null>(null);
 
   const addToCart = (product: any) => {
     const priceType = product.priceType || "fixed";
-    // For dynamic price products, prompt for price input
     if (priceType === "dynamic") {
       const existing = cart.find(c => c.productId === product.id);
       if (existing) {
-        // Just increment qty
         if (existing.qty >= product.stockCurrent) { toast.error(`Stok ${product.name} hanya ${product.stockCurrent}`); return; }
         setCart(prev => prev.map(c => c.productId === product.id ? { ...c, qty: c.qty + 1 } : c));
         return;
@@ -110,7 +162,6 @@ export default function POS() {
       setDynamicPriceDialog({ product, tempPrice: "" });
       return;
     }
-    // Fixed price with optional discount
     const discPct = parseFloat(product.discountPercent || "0") || 0;
     const basePrice = product.sellingPrice;
     const finalPrice = discPct > 0 ? Math.round(basePrice * (1 - discPct / 100)) : basePrice;
@@ -148,67 +199,135 @@ export default function POS() {
   };
 
   const updateQty = (productId: number, delta: number) => {
-    setCart(prev => {
-      return prev.map(c => {
-        if (c.productId !== productId) return c;
-        const newQty = c.qty + delta;
-        if (newQty <= 0) return c;
-        if (newQty > c.maxStock) {
-          toast.error(`Stok maksimal: ${c.maxStock}`);
-          return c;
-        }
-        return { ...c, qty: newQty };
-      });
-    });
+    setCart(prev => prev.map(c => {
+      if (c.productId !== productId) return c;
+      const newQty = c.qty + delta;
+      if (newQty <= 0) return c;
+      if (newQty > c.maxStock) { toast.error(`Stok maksimal: ${c.maxStock}`); return c; }
+      return { ...c, qty: newQty };
+    }));
   };
 
   const removeFromCart = (productId: number) => {
     setCart(prev => prev.filter(c => c.productId !== productId));
   };
 
+  // ─── Calculations ───
   const subtotal = cart.reduce((sum, c) => sum + c.price * c.qty, 0);
+  const discountAmount = appliedDiscount?.amount ?? 0;
+  const grandTotal = Math.max(0, subtotal - discountAmount);
   const totalItems = cart.reduce((sum, c) => sum + c.qty, 0);
-  const paidAmount = parseInt(customerPaid) || 0;
-  const change = paidAmount - subtotal;
 
+  // Split payment calculations
+  const totalPaid = splitMode
+    ? payments.reduce((s, p) => s + p.amount, 0)
+    : (parseInt(customerPaid) || 0);
+  const remaining = grandTotal - totalPaid;
+  const change = totalPaid > grandTotal ? totalPaid - grandTotal : 0;
+
+  // ─── Split payment helpers ───
+  const addPaymentMethod = () => {
+    setPayments(prev => [...prev, { method: "Tunai", amount: 0 }]);
+  };
+
+  const updatePayment = (index: number, field: "method" | "amount", value: string | number) => {
+    setPayments(prev => prev.map((p, i) => {
+      if (i !== index) return p;
+      if (field === "method") return { ...p, method: value as string };
+      return { ...p, amount: typeof value === "number" ? value : (parseInt(value as string) || 0) };
+    }));
+  };
+
+  const removePayment = (index: number) => {
+    if (payments.length <= 1) return;
+    setPayments(prev => prev.filter((_, i) => i !== index));
+  };
+
+  // Auto-fill remaining amount for last payment
+  const autoFillLast = () => {
+    if (payments.length === 0) return;
+    const otherTotal = payments.slice(0, -1).reduce((s, p) => s + p.amount, 0);
+    const lastAmount = Math.max(0, grandTotal - otherTotal);
+    setPayments(prev => prev.map((p, i) => i === prev.length - 1 ? { ...p, amount: lastAmount } : p));
+  };
+
+  // ─── Discount validation ───
+  const handleApplyDiscount = useCallback(async () => {
+    if (!discountCode.trim()) return;
+    try {
+      const result = await utils.discount.validate.fetch({
+        code: discountCode.trim(),
+        subtotal,
+      });
+      if (result.valid) {
+        setAppliedDiscount(result.discount);
+        toast.success(`Diskon "${result.discount.name}" diterapkan!`);
+      } else {
+        toast.error(result.message);
+      }
+    } catch {
+      toast.error("Kode diskon tidak valid");
+    }
+  }, [discountCode, subtotal]);
+
+  // ─── Checkout ───
   const handleCheckout = () => {
     if (cart.length === 0) { toast.error("Keranjang kosong"); return; }
-    // Create one transaction per cart item (linked to product for stock)
-    const promises = cart.map(item =>
-      createTx.mutateAsync({
-        date: new Date().toISOString().substring(0, 10),
-        type: "pemasukan",
-        category: "Penjualan Produk",
-        description: `POS: ${item.name} x${item.qty}`,
-        amount: item.price * item.qty,
-        paymentMethod,
+
+    const finalPayments = splitMode
+      ? payments.filter(p => p.amount > 0)
+      : [{ method: payments[0]?.method ?? "Tunai", amount: grandTotal }];
+
+    // Validate split payments cover the total
+    if (splitMode) {
+      const paidTotal = finalPayments.reduce((s, p) => s + p.amount, 0);
+      if (paidTotal < grandTotal) {
+        toast.error(`Pembayaran kurang ${formatRupiah(grandTotal - paidTotal)}`);
+        return;
+      }
+    } else if (payments[0]?.method === "Tunai") {
+      const paid = parseInt(customerPaid) || 0;
+      if (paid < grandTotal) {
+        toast.error("Uang diterima kurang dari total");
+        return;
+      }
+    }
+
+    // Use posReceipt.create for proper receipt with split payment
+    createReceipt.mutate({
+      subtotal,
+      discountAmount,
+      discountCodeId: appliedDiscount?.id,
+      grandTotal,
+      payments: finalPayments,
+      customerPaid: splitMode ? finalPayments.reduce((s, p) => s + p.amount, 0) : (parseInt(customerPaid) || grandTotal),
+      changeAmount: change,
+      notes: notes || undefined,
+      items: cart.map(item => ({
         productId: item.productId,
         productQty: item.qty,
-        notes: notes || `Penjualan POS`,
+        amount: item.price * item.qty,
+        hppSnapshot: item.hpp,
         warehouseId: selectedWarehouseId ?? undefined,
-      })
-    );
-    Promise.all(promises).catch(() => {});
+      })),
+    });
   };
+
+  const isPending = createReceipt.isPending || createTx.isPending;
 
   return (
     <div className="flex flex-col lg:flex-row gap-4 h-[calc(100vh-6rem)]">
-      {/* Left: Product Grid */}
+      {/* ─── Left: Product Grid ─── */}
       <div className="flex-1 flex flex-col min-h-0">
         <div className="flex items-center gap-3 mb-4 flex-wrap">
           <div className="relative flex-1 min-w-[200px]">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-            <Input
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              placeholder="Cari produk..."
-              className="pl-9 h-11"
-            />
+            <Input value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} placeholder="Cari produk..." className="pl-9 h-11" />
           </div>
           {warehouses.length > 1 && (
             <Select value={selectedWarehouseId?.toString() ?? ""} onValueChange={(v) => setSelectedWarehouseId(Number(v))}>
               <SelectTrigger className="w-48 h-11">
-                <Warehouse className="h-4 w-4 mr-1.5 text-amber-600" />
+                <Warehouse className="h-4 w-4 mr-1.5 text-muted-foreground" />
                 <SelectValue placeholder="Gudang" />
               </SelectTrigger>
               <SelectContent>
@@ -221,8 +340,7 @@ export default function POS() {
             </Select>
           )}
           <Badge variant="secondary" className="h-11 px-4 text-sm shrink-0">
-            <Package className="h-4 w-4 mr-1.5" />
-            {filteredProducts.length} produk
+            <Package className="h-4 w-4 mr-1.5" /> {filteredProducts.length} produk
           </Badge>
         </div>
 
@@ -245,11 +363,10 @@ export default function POS() {
                 return (
                   <Card
                     key={p.id}
-                    className={`border-0 shadow-sm hover:shadow-md cursor-pointer transition-all overflow-hidden group ${inCart ? "ring-2 ring-primary shadow-primary/10" : ""}`}
+                    className={`border shadow-sm hover:shadow-md cursor-pointer transition-all overflow-hidden group ${inCart ? "ring-2 ring-primary shadow-primary/10" : ""}`}
                     onClick={() => addToCart(p)}
                   >
-                    {/* Product Image */}
-                    <div className="relative h-24 bg-gradient-to-br from-muted/30 to-muted/10 overflow-hidden">
+                    <div className="relative h-24 bg-muted/20 overflow-hidden">
                       {p.imageUrl ? (
                         <img src={p.imageUrl} alt={p.name} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300" />
                       ) : (
@@ -262,7 +379,7 @@ export default function POS() {
                           {inCart.qty}
                         </div>
                       )}
-                      <Badge variant="secondary" className="absolute bottom-1.5 right-1.5 text-[10px] px-1.5 py-0 shadow-sm">
+                      <Badge variant="secondary" className="absolute bottom-1.5 right-1.5 text-[10px] px-1.5 py-0">
                         Stok: {p.stockCurrent}
                       </Badge>
                     </div>
@@ -276,13 +393,12 @@ export default function POS() {
             </div>
           )}
 
-          {/* Out of stock section */}
           {outOfStockProducts.length > 0 && (
             <div className="mt-6">
               <p className="text-xs font-medium text-muted-foreground mb-2">Stok Habis</p>
               <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3 opacity-50">
                 {outOfStockProducts.slice(0, 4).map((p: any) => (
-                  <Card key={p.id} className="border-0 shadow-sm overflow-hidden">
+                  <Card key={p.id} className="border shadow-sm overflow-hidden">
                     <div className="relative h-20 bg-muted/20">
                       {p.imageUrl ? (
                         <img src={p.imageUrl} alt={p.name} className="w-full h-full object-cover grayscale" />
@@ -304,20 +420,18 @@ export default function POS() {
         </ScrollArea>
       </div>
 
-      {/* Right: Cart Panel */}
-      <div className="w-full lg:w-96 flex flex-col bg-card rounded-2xl shadow-lg border-0 overflow-hidden">
-        {/* Cart Header */}
-        <div className="p-4 border-b bg-gradient-to-r from-primary/5 to-transparent">
+      {/* ─── Right: Cart Panel ─── */}
+      <div className="w-full lg:w-96 flex flex-col bg-card rounded-xl shadow-sm border overflow-hidden">
+        <div className="p-4 border-b">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2">
               <ShoppingCart className="h-5 w-5 text-primary" />
-              <h2 className="font-bold">Keranjang</h2>
+              <h2 className="font-semibold">Keranjang</h2>
             </div>
             <Badge variant="secondary" className="text-xs">{totalItems} item</Badge>
           </div>
         </div>
 
-        {/* Cart Items */}
         <ScrollArea className="flex-1 min-h-0">
           {cart.length === 0 ? (
             <div className="flex flex-col items-center justify-center py-12 text-center px-4">
@@ -330,8 +444,7 @@ export default function POS() {
           ) : (
             <div className="p-3 space-y-2">
               {cart.map((item) => (
-                <div key={item.productId} className="flex items-center gap-3 p-2.5 rounded-xl bg-muted/30 hover:bg-muted/50 transition-colors">
-                  {/* Item Image */}
+                <div key={item.productId} className="flex items-center gap-3 p-2.5 rounded-lg bg-muted/30 hover:bg-muted/50 transition-colors">
                   <div className="h-12 w-12 rounded-lg overflow-hidden bg-muted/50 shrink-0">
                     {item.imageUrl ? (
                       <img src={item.imageUrl} alt={item.name} className="w-full h-full object-cover" />
@@ -341,35 +454,22 @@ export default function POS() {
                       </div>
                     )}
                   </div>
-
                   <div className="flex-1 min-w-0">
                     <p className="text-xs font-medium truncate">{item.name}</p>
                     <div className="flex items-center gap-1 flex-wrap">
                       <p className="text-xs text-primary font-semibold">{formatRupiah(item.price)}</p>
-                      {item.priceType === "dynamic" && (
-                        <Badge variant="outline" className="text-[9px] px-1 py-0 text-amber-600 border-amber-300">Dinamis</Badge>
-                      )}
-                      {item.priceType === "fixed" && item.discountPercent > 0 && (
-                        <Badge variant="outline" className="text-[9px] px-1 py-0 text-emerald-600 border-emerald-300">-{item.discountPercent}%</Badge>
-                      )}
+                      {item.priceType === "dynamic" && <Badge variant="outline" className="text-[9px] px-1 py-0">Dinamis</Badge>}
+                      {item.priceType === "fixed" && item.discountPercent > 0 && <Badge variant="outline" className="text-[9px] px-1 py-0 text-success">-{item.discountPercent}%</Badge>}
                     </div>
                   </div>
-
-                  {/* Qty Controls */}
                   <div className="flex items-center gap-1">
-                    <Button variant="outline" size="icon" className="h-7 w-7 rounded-full" onClick={() => updateQty(item.productId, -1)}>
-                      <Minus className="h-3 w-3" />
-                    </Button>
+                    <Button variant="outline" size="icon" className="h-7 w-7 rounded-full" onClick={() => updateQty(item.productId, -1)}><Minus className="h-3 w-3" /></Button>
                     <span className="text-sm font-bold w-6 text-center">{item.qty}</span>
-                    <Button variant="outline" size="icon" className="h-7 w-7 rounded-full" onClick={() => updateQty(item.productId, 1)}>
-                      <Plus className="h-3 w-3" />
-                    </Button>
+                    <Button variant="outline" size="icon" className="h-7 w-7 rounded-full" onClick={() => updateQty(item.productId, 1)}><Plus className="h-3 w-3" /></Button>
                   </div>
-
                   <div className="text-right min-w-[70px]">
                     <p className="text-xs font-bold">{formatRupiah(item.price * item.qty)}</p>
                   </div>
-
                   <Button variant="ghost" size="icon" className="h-7 w-7 text-destructive hover:text-destructive shrink-0" onClick={() => removeFromCart(item.productId)}>
                     <X className="h-3.5 w-3.5" />
                   </Button>
@@ -379,36 +479,25 @@ export default function POS() {
           )}
         </ScrollArea>
 
-        {/* Cart Footer */}
-        <div className="border-t p-4 space-y-3 bg-gradient-to-t from-muted/10 to-transparent">
+        <div className="border-t p-4 space-y-3">
           <div className="flex justify-between items-center">
             <span className="text-sm text-muted-foreground">Subtotal ({totalItems} item)</span>
             <span className="text-lg font-bold text-primary">{formatRupiah(subtotal)}</span>
           </div>
-
           <div className="flex gap-2">
-            <Button
-              variant="outline"
-              className="flex-1"
-              disabled={cart.length === 0}
-              onClick={() => { setCart([]); toast.info("Keranjang dikosongkan"); }}
-            >
+            <Button variant="outline" className="flex-1" disabled={cart.length === 0} onClick={() => { setCart([]); toast.info("Keranjang dikosongkan"); }}>
               <Trash2 className="h-4 w-4 mr-1.5" /> Hapus
             </Button>
-            <Button
-              className="flex-1 bg-primary hover:bg-primary/90"
-              disabled={cart.length === 0}
-              onClick={() => setCheckoutOpen(true)}
-            >
+            <Button className="flex-1" disabled={cart.length === 0} onClick={() => setCheckoutOpen(true)}>
               <CreditCard className="h-4 w-4 mr-1.5" /> Bayar
             </Button>
           </div>
         </div>
       </div>
 
-      {/* Checkout Dialog */}
+      {/* ─── Checkout Dialog (with Split Payment + Discount) ─── */}
       <Dialog open={checkoutOpen} onOpenChange={setCheckoutOpen}>
-        <DialogContent className="max-w-md">
+        <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               <Receipt className="h-5 w-5 text-primary" />
@@ -418,72 +507,198 @@ export default function POS() {
 
           <div className="space-y-4">
             {/* Order Summary */}
-            <div className="rounded-xl bg-muted/30 p-4 space-y-2">
+            <div className="rounded-lg bg-muted/30 p-4 space-y-2">
               {cart.map(item => (
                 <div key={item.productId} className="flex justify-between text-sm">
                   <span className="text-muted-foreground">{item.name} x{item.qty}</span>
                   <span className="font-medium">{formatRupiah(item.price * item.qty)}</span>
                 </div>
               ))}
-              <div className="pt-2 border-t flex justify-between">
-                <span className="font-bold">Total</span>
-                <span className="font-bold text-primary text-lg">{formatRupiah(subtotal)}</span>
-              </div>
-            </div>
-
-            {/* Payment Method */}
-            <div className="space-y-1.5">
-              <label className="text-xs font-medium text-muted-foreground">Metode Pembayaran</label>
-              <div className="grid grid-cols-3 gap-2">
-                {[
-                  { value: "Tunai", icon: Banknote, label: "Tunai" },
-                  { value: "Transfer Bank", icon: CreditCard, label: "Transfer" },
-                  { value: "QRIS", icon: QrCode, label: "QRIS" },
-                ].map(m => (
-                  <Button
-                    key={m.value}
-                    variant={paymentMethod === m.value ? "default" : "outline"}
-                    className="flex flex-col gap-1 h-auto py-3"
-                    onClick={() => setPaymentMethod(m.value)}
-                  >
-                    <m.icon className="h-5 w-5" />
-                    <span className="text-xs">{m.label}</span>
-                  </Button>
-                ))}
-              </div>
-            </div>
-
-            {/* Cash Amount */}
-            {paymentMethod === "Tunai" && (
-              <div className="space-y-1.5">
-                <label className="text-xs font-medium text-muted-foreground">Uang Diterima</label>
-                <Input
-                  type="number"
-                  value={customerPaid}
-                  onChange={(e) => setCustomerPaid(e.target.value)}
-                  placeholder="0"
-                  className="text-lg font-bold h-12"
-                />
-                {paidAmount > 0 && paidAmount >= subtotal && (
-                  <div className="flex justify-between items-center rounded-lg bg-emerald-50 p-2.5">
-                    <span className="text-sm text-emerald-700">Kembalian</span>
-                    <span className="text-lg font-bold text-emerald-700">{formatRupiah(change)}</span>
+              <div className="pt-2 border-t space-y-1">
+                <div className="flex justify-between text-sm">
+                  <span>Subtotal</span>
+                  <span className="font-medium">{formatRupiah(subtotal)}</span>
+                </div>
+                {discountAmount > 0 && (
+                  <div className="flex justify-between text-sm text-success">
+                    <span>Diskon ({appliedDiscount?.name})</span>
+                    <span>-{formatRupiah(discountAmount)}</span>
                   </div>
                 )}
-                {/* Quick amount buttons */}
-                <div className="flex gap-2 flex-wrap">
-                  {[subtotal, Math.ceil(subtotal / 10000) * 10000, Math.ceil(subtotal / 50000) * 50000, 100000, 200000].filter((v, i, a) => v >= subtotal && a.indexOf(v) === i).slice(0, 4).map(amount => (
-                    <Button key={amount} variant="outline" size="sm" className="text-xs" onClick={() => setCustomerPaid(String(amount))}>
-                      {formatRupiah(amount)}
+                <div className="flex justify-between font-bold text-base pt-1">
+                  <span>Total</span>
+                  <span className="text-primary">{formatRupiah(grandTotal)}</span>
+                </div>
+              </div>
+            </div>
+
+            {/* Discount Code */}
+            <div className="space-y-1.5">
+              <label className="text-xs font-medium text-muted-foreground flex items-center gap-1.5">
+                <Tag className="h-3 w-3" /> Kode Diskon (opsional)
+              </label>
+              <div className="flex gap-2">
+                <Input
+                  value={discountCode}
+                  onChange={(e) => setDiscountCode(e.target.value.toUpperCase())}
+                  placeholder="Masukkan kode..."
+                  className="flex-1"
+                  disabled={!!appliedDiscount}
+                />
+                {appliedDiscount ? (
+                  <Button variant="outline" size="sm" onClick={() => { setAppliedDiscount(null); setDiscountCode(""); }}>
+                    <X className="h-4 w-4" />
+                  </Button>
+                ) : (
+                  <Button variant="outline" size="sm" onClick={handleApplyDiscount} disabled={!discountCode.trim()}>
+                    Terapkan
+                  </Button>
+                )}
+              </div>
+              {appliedDiscount && (
+                <p className="text-xs text-success flex items-center gap-1">
+                  <Percent className="h-3 w-3" />
+                  {appliedDiscount.type === "percentage" ? `${appliedDiscount.value}%` : formatRupiah(appliedDiscount.value)} off — hemat {formatRupiah(appliedDiscount.amount)}
+                </p>
+              )}
+            </div>
+
+            {/* Payment Mode Toggle */}
+            <div className="flex items-center justify-between">
+              <label className="text-xs font-medium text-muted-foreground">Metode Pembayaran</label>
+              <Button
+                variant={splitMode ? "default" : "outline"}
+                size="sm"
+                className="text-xs gap-1.5 h-7"
+                onClick={() => {
+                  setSplitMode(!splitMode);
+                  if (!splitMode) {
+                    // Enter split mode: start with current method + empty second
+                    setPayments([
+                      { method: payments[0]?.method ?? "Tunai", amount: 0 },
+                      { method: "Transfer Bank", amount: 0 },
+                    ]);
+                  } else {
+                    // Exit split mode: keep first method only
+                    setPayments([{ method: payments[0]?.method ?? "Tunai", amount: 0 }]);
+                  }
+                }}
+              >
+                <SplitSquareHorizontal className="h-3 w-3" />
+                Split Bill
+              </Button>
+            </div>
+
+            {!splitMode ? (
+              /* ─── Single Payment Mode ─── */
+              <>
+                <div className="grid grid-cols-3 gap-2">
+                  {PAYMENT_METHODS.map(m => (
+                    <Button
+                      key={m.value}
+                      variant={payments[0]?.method === m.value ? "default" : "outline"}
+                      className="flex flex-col gap-1 h-auto py-3"
+                      onClick={() => setPayments([{ method: m.value, amount: 0 }])}
+                    >
+                      <m.icon className="h-5 w-5" />
+                      <span className="text-xs">{m.label}</span>
                     </Button>
                   ))}
                 </div>
-              </div>
-            )}
 
-            {/* QRIS QR Code Display */}
-            {paymentMethod === "QRIS" && (
-              <QRISDisplay />
+                {payments[0]?.method === "Tunai" && (
+                  <div className="space-y-1.5">
+                    <label className="text-xs font-medium text-muted-foreground">Uang Diterima</label>
+                    <Input type="number" value={customerPaid} onChange={(e) => setCustomerPaid(e.target.value)} placeholder="0" className="text-lg font-bold h-12" />
+                    {parseInt(customerPaid) >= grandTotal && parseInt(customerPaid) > 0 && (
+                      <div className="flex justify-between items-center rounded-lg bg-success/10 p-2.5">
+                        <span className="text-sm text-success">Kembalian</span>
+                        <span className="text-lg font-bold text-success">{formatRupiah(parseInt(customerPaid) - grandTotal)}</span>
+                      </div>
+                    )}
+                    <div className="flex gap-2 flex-wrap">
+                      {[grandTotal, Math.ceil(grandTotal / 10000) * 10000, Math.ceil(grandTotal / 50000) * 50000, 100000, 200000]
+                        .filter((v, i, a) => v >= grandTotal && a.indexOf(v) === i).slice(0, 4).map(amount => (
+                          <Button key={amount} variant="outline" size="sm" className="text-xs" onClick={() => setCustomerPaid(String(amount))}>
+                            {formatRupiah(amount)}
+                          </Button>
+                        ))}
+                    </div>
+                  </div>
+                )}
+
+                {payments[0]?.method === "QRIS" && <QRISDisplay />}
+              </>
+            ) : (
+              /* ─── Split Payment Mode ─── */
+              <div className="space-y-3">
+                {payments.map((payment, idx) => (
+                  <div key={idx} className="rounded-lg border p-3 space-y-2">
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs font-medium text-muted-foreground">Pembayaran {idx + 1}</span>
+                      {payments.length > 1 && (
+                        <Button variant="ghost" size="icon" className="h-6 w-6 text-muted-foreground" onClick={() => removePayment(idx)}>
+                          <X className="h-3 w-3" />
+                        </Button>
+                      )}
+                    </div>
+                    <div className="grid grid-cols-3 gap-1.5">
+                      {PAYMENT_METHODS.map(m => (
+                        <Button
+                          key={m.value}
+                          variant={payment.method === m.value ? "default" : "outline"}
+                          size="sm"
+                          className="text-xs h-8 gap-1"
+                          onClick={() => updatePayment(idx, "method", m.value)}
+                        >
+                          <m.icon className="h-3 w-3" />
+                          {m.label}
+                        </Button>
+                      ))}
+                    </div>
+                    <Input
+                      type="number"
+                      value={payment.amount || ""}
+                      onChange={(e) => updatePayment(idx, "amount", e.target.value)}
+                      placeholder="Jumlah..."
+                      className="h-10 font-semibold"
+                    />
+                  </div>
+                ))}
+
+                <div className="flex gap-2">
+                  <Button variant="outline" size="sm" className="text-xs flex-1 gap-1" onClick={addPaymentMethod}>
+                    <Plus className="h-3 w-3" /> Tambah Metode
+                  </Button>
+                  <Button variant="outline" size="sm" className="text-xs flex-1 gap-1" onClick={autoFillLast}>
+                    Isi Sisa Otomatis
+                  </Button>
+                </div>
+
+                {/* Split summary */}
+                <div className="rounded-lg bg-muted/30 p-3 space-y-1 text-sm">
+                  <div className="flex justify-between">
+                    <span className="text-muted-foreground">Total bayar</span>
+                    <span className="font-semibold">{formatRupiah(totalPaid)}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-muted-foreground">Harus dibayar</span>
+                    <span className="font-semibold">{formatRupiah(grandTotal)}</span>
+                  </div>
+                  {remaining > 0 && (
+                    <div className="flex justify-between text-danger">
+                      <span>Kurang</span>
+                      <span className="font-bold">{formatRupiah(remaining)}</span>
+                    </div>
+                  )}
+                  {change > 0 && (
+                    <div className="flex justify-between text-success">
+                      <span>Kembalian</span>
+                      <span className="font-bold">{formatRupiah(change)}</span>
+                    </div>
+                  )}
+                </div>
+              </div>
             )}
 
             {/* Notes */}
@@ -494,13 +709,13 @@ export default function POS() {
 
             <Button
               className="w-full h-12 text-base"
-              disabled={createTx.isPending || (paymentMethod === "Tunai" && paidAmount < subtotal)}
+              disabled={isPending || (splitMode ? totalPaid < grandTotal : (payments[0]?.method === "Tunai" && (parseInt(customerPaid) || 0) < grandTotal))}
               onClick={handleCheckout}
             >
-              {createTx.isPending ? (
+              {isPending ? (
                 <><Loader2 className="h-4 w-4 mr-2 animate-spin" /> Memproses...</>
               ) : (
-                <><CheckCircle2 className="h-4 w-4 mr-2" /> Bayar {formatRupiah(subtotal)}</>
+                <><CheckCircle2 className="h-4 w-4 mr-2" /> Bayar {formatRupiah(grandTotal)}</>
               )}
             </Button>
           </div>
@@ -516,18 +731,15 @@ export default function POS() {
           <div className="space-y-4 pt-2">
             <p className="text-sm text-muted-foreground">
               Produk <strong>{dynamicPriceDialog?.product?.name}</strong> menggunakan harga dinamis.
-              Masukkan harga jual untuk transaksi ini.
             </p>
             <div className="space-y-1.5">
               <label className="text-xs font-medium text-muted-foreground">Harga Jual (Rp)</label>
               <Input
-                type="number"
-                autoFocus
+                type="number" autoFocus
                 value={dynamicPriceDialog?.tempPrice || ""}
                 onChange={(e) => setDynamicPriceDialog(prev => prev ? { ...prev, tempPrice: e.target.value } : null)}
                 onKeyDown={(e) => { if (e.key === "Enter") confirmDynamicPrice(); }}
-                placeholder="Masukkan harga..."
-                className="text-lg font-bold h-12"
+                placeholder="Masukkan harga..." className="text-lg font-bold h-12"
               />
             </div>
             <div className="flex gap-2">
@@ -543,14 +755,13 @@ export default function POS() {
         <DialogContent className="max-w-sm">
           <div id="pos-receipt" className="py-4 space-y-4">
             <div className="text-center">
-              <div className="h-14 w-14 rounded-full bg-emerald-100 flex items-center justify-center mx-auto mb-3">
-                <CheckCircle2 className="h-7 w-7 text-emerald-600" />
+              <div className="h-14 w-14 rounded-full bg-success/10 flex items-center justify-center mx-auto mb-3">
+                <CheckCircle2 className="h-7 w-7 text-success" />
               </div>
               <h3 className="text-xl font-bold">Pembayaran Berhasil!</h3>
-              {lastTxCode && <p className="text-xs font-mono text-muted-foreground mt-1">{lastTxCode}</p>}
+              {lastReceiptCode && <p className="text-xs font-mono text-muted-foreground mt-1">{lastReceiptCode}</p>}
             </div>
 
-            {/* Receipt Items */}
             {lastCart.length > 0 && (
               <div className="border rounded-lg overflow-hidden">
                 <div className="bg-muted/50 px-3 py-2">
@@ -568,26 +779,48 @@ export default function POS() {
                   ))}
                 </div>
                 <div className="border-t bg-muted/30 px-3 py-2 space-y-1">
+                  {lastDiscount > 0 && (
+                    <div className="flex justify-between text-xs text-success">
+                      <span>Diskon</span>
+                      <span>-{formatRupiah(lastDiscount)}</span>
+                    </div>
+                  )}
                   <div className="flex justify-between text-sm font-bold">
                     <span>Total</span>
                     <span>{formatRupiah(lastTotal)}</span>
                   </div>
-                  {lastPaymentMethod === "Tunai" && lastPaid > 0 && (
+                  {/* Show split payment details */}
+                  {lastPayments.length > 1 && (
+                    <div className="pt-1 border-t space-y-0.5">
+                      <p className="text-[10px] text-muted-foreground uppercase tracking-wide font-medium">Split Payment</p>
+                      {lastPayments.map((p, i) => (
+                        <div key={i} className="flex justify-between text-xs text-muted-foreground">
+                          <span>{p.method}</span>
+                          <span>{formatRupiah(p.amount)}</span>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                  {lastPayments.length === 1 && (
                     <>
+                      {lastPayments[0].method === "Tunai" && lastPaid > lastTotal && (
+                        <>
+                          <div className="flex justify-between text-xs text-muted-foreground">
+                            <span>Bayar</span>
+                            <span>{formatRupiah(lastPaid)}</span>
+                          </div>
+                          <div className="flex justify-between text-xs text-success font-semibold">
+                            <span>Kembalian</span>
+                            <span>{formatRupiah(lastPaid - lastTotal)}</span>
+                          </div>
+                        </>
+                      )}
                       <div className="flex justify-between text-xs text-muted-foreground">
-                        <span>Bayar</span>
-                        <span>{formatRupiah(lastPaid)}</span>
-                      </div>
-                      <div className="flex justify-between text-xs text-emerald-600 font-semibold">
-                        <span>Kembalian</span>
-                        <span>{formatRupiah(Math.max(0, lastPaid - lastTotal))}</span>
+                        <span>Metode</span>
+                        <span>{lastPayments[0].method}</span>
                       </div>
                     </>
                   )}
-                  <div className="flex justify-between text-xs text-muted-foreground">
-                    <span>Metode</span>
-                    <span>{lastPaymentMethod}</span>
-                  </div>
                 </div>
               </div>
             )}
@@ -620,28 +853,20 @@ function QRISDisplay() {
 
   if (!qrisUrl) {
     return (
-      <div className="rounded-xl border-2 border-dashed border-muted-foreground/20 p-6 text-center">
+      <div className="rounded-lg border-2 border-dashed border-muted-foreground/20 p-6 text-center">
         <QrCode className="h-10 w-10 text-muted-foreground/40 mx-auto mb-2" />
         <p className="text-sm text-muted-foreground font-medium">QRIS belum diatur</p>
-        <p className="text-xs text-muted-foreground mt-1">
-          Upload QRIS di menu <strong>Pengaturan → QRIS</strong>
-        </p>
+        <p className="text-xs text-muted-foreground mt-1">Upload QRIS di menu Pengaturan</p>
       </div>
     );
   }
 
   return (
     <div className="space-y-2">
-      <div className="rounded-xl border bg-white p-3 mx-auto w-fit">
-        <img
-          src={qrisUrl}
-          alt="QRIS"
-          className="max-w-[200px] max-h-[200px] rounded-lg mx-auto"
-        />
+      <div className="rounded-lg border bg-white p-3 mx-auto w-fit">
+        <img src={qrisUrl} alt="QRIS" className="max-w-[200px] max-h-[200px] rounded-lg mx-auto" />
       </div>
-      <p className="text-xs text-center text-muted-foreground">
-        Tunjukkan QR code ini ke pelanggan untuk scan pembayaran
-      </p>
+      <p className="text-xs text-center text-muted-foreground">Tunjukkan QR code ke pelanggan untuk scan</p>
     </div>
   );
 }
