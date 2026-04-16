@@ -5,6 +5,7 @@ import { Route, Switch } from "wouter";
 import ErrorBoundary from "./components/ErrorBoundary";
 import { ThemeProvider } from "./contexts/ThemeContext";
 import Home from "./pages/Home";
+import { CountySignIn, CountySignUp } from "./clerk-provider";
 import TransaksiPage from "./pages/Transaksi";
 import StokProdukPage from "./pages/StokProduk";
 import LaporanPage from "./pages/Laporan";
@@ -65,6 +66,8 @@ function Router() {
   return (
     <Switch>
       <Route path="/" component={Home} />
+      <Route path="/sign-in" component={CountySignIn} />
+      <Route path="/sign-up" component={CountySignUp} />
       <Route path="/dashboard">{() => { window.location.replace("/"); return null; }}</Route>
       <Route path="/transaksi">{() => <AuthenticatedRoute component={TransaksiPage} />}</Route>
       <Route path="/stok">{() => <AuthenticatedRoute component={StokProdukPage} />}</Route>

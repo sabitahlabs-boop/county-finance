@@ -68,8 +68,12 @@ const isAdmin = middleware(async ({ ctx, next }) => {
   if (!ctx.user) {
     throw new TRPCError({ code: "UNAUTHORIZED" });
   }
-  // TODO: Check admin role from database
-  // For now, check against env or DB role
+  if (ctx.user.role !== "admin") {
+    throw new TRPCError({
+      code: "FORBIDDEN",
+      message: "Admin access required",
+    });
+  }
   return next({
     ctx: {
       ...ctx,
