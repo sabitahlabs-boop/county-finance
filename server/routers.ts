@@ -47,6 +47,7 @@ import {
   createDiscountCode, getDiscountCodesByBusiness, validateDiscountCode, incrementDiscountUsage, updateDiscountCode, deleteDiscountCode,
   generateReceiptCode, createPosReceipt, getPosReceiptsByBusiness, getPosReceiptById, refundPosReceipt,
   getDailySalesReport,
+  seedDummyData, clearBusinessData,
 } from "./db";
 import { PLAN_LIMITS, BULAN_INDONESIA, formatRupiah } from "../shared/finance";
 import { notifyOwner } from "./_core/notification";
@@ -970,6 +971,19 @@ Penting: Kembalikan HANYA JSON valid, tidak ada teks penjelasan.`,
     })).mutation(async ({ input }) => {
       await deleteProLink(input.id);
       return { success: true };
+    }),
+    // Dummy data management
+    seedDummyData: adminProcedure.input(z.object({
+      businessId: z.number(),
+    })).mutation(async ({ input }) => {
+      const result = await seedDummyData(input.businessId);
+      return result;
+    }),
+    clearBusinessData: adminProcedure.input(z.object({
+      businessId: z.number(),
+    })).mutation(async ({ input }) => {
+      const result = await clearBusinessData(input.businessId);
+      return result;
     }),
   }),
 

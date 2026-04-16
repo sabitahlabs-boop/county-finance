@@ -9,7 +9,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Skeleton } from "@/components/ui/skeleton";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
-import { Shield, Building2, Users, Crown, Trash2, AlertTriangle, Link2, Plus, Copy, CheckCircle, Clock, ExternalLink, Loader2, Megaphone, ToggleLeft, ToggleRight, BarChart3 } from "lucide-react";
+import { Shield, Building2, Users, Crown, Trash2, AlertTriangle, Link2, Plus, Copy, CheckCircle, Clock, ExternalLink, Loader2, Megaphone, ToggleLeft, ToggleRight, BarChart3, Database, RefreshCw, Sparkles } from "lucide-react";
 import { toast } from "sonner";
 
 export default function SuperAdmin() {
@@ -95,6 +95,27 @@ export default function SuperAdmin() {
     onError: (err) => toast.error(err.message),
   });
 
+  // Dummy data management
+  const [selectedBizForDummy, setSelectedBizForDummy] = useState<number | null>(null);
+  const [showClearConfirm, setShowClearConfirm] = useState(false);
+
+  const seedDummy = trpc.admin.seedDummyData.useMutation({
+    onSuccess: (result) => {
+      toast.success("Dummy data Sabitah berhasil dibuat! 🎉");
+      utils.admin.businesses.invalidate();
+    },
+    onError: (err) => toast.error("Gagal seed: " + err.message),
+  });
+
+  const clearData = trpc.admin.clearBusinessData.useMutation({
+    onSuccess: () => {
+      toast.success("Semua data bisnis berhasil dihapus");
+      setShowClearConfirm(false);
+      utils.admin.businesses.invalidate();
+    },
+    onError: (err) => toast.error("Gagal hapus: " + err.message),
+  });
+
   if (user?.role !== "admin") {
     return (
       <div className="flex items-center justify-center py-20">
@@ -177,6 +198,7 @@ export default function SuperAdmin() {
           <TabsTrigger value="businesses"><Building2 className="h-4 w-4 mr-1.5" /> Bisnis</TabsTrigger>
           <TabsTrigger value="users"><Users className="h-4 w-4 mr-1.5" /> Pengguna</TabsTrigger>
           <TabsTrigger value="affiliates"><Megaphone className="h-4 w-4 mr-1.5" /> Affiliate</TabsTrigger>
+          <TabsTrigger value="dummy"><Database className="h-4 w-4 mr-1.5" /> Dummy Data</TabsTrigger>
         </TabsList>
 
         {/* Pro Links Tab */}
@@ -512,50 +534,181 @@ export default function SuperAdmin() {
             </div>
           )}
 
-          {/* Add Affiliate Dialog */}
-          <Dialog open={showAddAffiliate} onOpenChange={setShowAddAffiliate}>
-            <DialogContent className="max-w-md">
-              <DialogHeader>
-                <DialogTitle>Tambah Affiliate Baru</DialogTitle>
-                <DialogDescription>Affiliate akan mendapat link landing page khusus yang mengarahkan tombol beli ke Scalev mereka.</DialogDescription>
-              </DialogHeader>
-              <div className="space-y-3">
+          {/* Dummy Data Tab */}
+        </TabsContent>
+
+        <TabsContent value="dummy" className="mt-4 space-y-4">
+          <div>
+            <h3 className="font-semibold text-lg">Dummy Data Management</h3>
+            <p className="text-sm text-muted-foreground">Seed data Sabitah untuk konten/demo, atau reset data bisnis</p>
+          </div>
+
+          <Card className="border-0 shadow-md shadow-black/5 bg-green-50 dark:bg-green-950/30">
+            <CardContent className="p-4">
+              <div className="flex items-start gap-3">
+                <Sparkles className="h-5 w-5 text-green-600 mt-0.5" />
                 <div>
-                  <label className="text-sm font-medium">Nama Affiliate *</label>
-                  <Input placeholder="Jessica" value={newAffiliate.name} onChange={(e) => setNewAffiliate(p => ({ ...p, name: e.target.value }))} />
-                </div>
-                <div>
-                  <label className="text-sm font-medium">Kode Referral * <span className="text-muted-foreground font-normal">(huruf kecil, tanpa spasi)</span></label>
-                  <Input placeholder="jessica123" value={newAffiliate.refCode} onChange={(e) => setNewAffiliate(p => ({ ...p, refCode: e.target.value.toLowerCase().replace(/[^a-z0-9_-]/g, '') }))} />
-                </div>
-                <div>
-                  <label className="text-sm font-medium">Link Scalev Affiliate *</label>
-                  <Input placeholder="https://county.myscalev.com/p/county?aff=xxx" value={newAffiliate.scalevUrl} onChange={(e) => setNewAffiliate(p => ({ ...p, scalevUrl: e.target.value }))} />
-                </div>
-                <div>
-                  <label className="text-sm font-medium">No. WhatsApp <span className="text-muted-foreground font-normal">(opsional)</span></label>
-                  <Input placeholder="08123456789" value={newAffiliate.whatsapp} onChange={(e) => setNewAffiliate(p => ({ ...p, whatsapp: e.target.value }))} />
+                  <p className="text-sm font-semibold text-green-700 dark:text-green-400">Seed Dummy Data Sabitah</p>
+                  <p className="text-xs text-muted-foreground mt-1">
+                    Mengisi bisnis dengan data lengkap brand Sabitah (skincare): 15 produk, 8 customer, 3 bulan transaksi, hutang/piutang, tagihan bulanan, anggaran, dan kode diskon.
+                  </p>
+                  <div className="mt-3 flex items-center gap-3">
+                    <Select
+                      value={selectedBizForDummy?.toString() ?? ""}
+                      onValueChange={(v) => setSelectedBizForDummy(Number(v))}
+                    >
+                      <SelectTrigger className="w-64 h-9">
+                        <SelectValue placeholder="Pilih bisnis..." />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {businesses?.map((biz: any) => (
+                          <SelectItem key={biz.id} value={biz.id.toString()}>
+                            {biz.businessName} (#{biz.id})
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    <Button
+                      size="sm"
+                      className="bg-green-600 hover:bg-green-700"
+                      disabled={!selectedBizForDummy || seedDummy.isPending}
+                      onClick={() => selectedBizForDummy && seedDummy.mutate({ businessId: selectedBizForDummy })}
+                    >
+                      {seedDummy.isPending ? (
+                        <><Loader2 className="h-4 w-4 mr-1 animate-spin" /> Seeding...</>
+                      ) : (
+                        <><Sparkles className="h-4 w-4 mr-1" /> Seed Data Sabitah</>
+                      )}
+                    </Button>
+                  </div>
                 </div>
               </div>
-              <DialogFooter>
-                <Button variant="outline" onClick={() => setShowAddAffiliate(false)}>Batal</Button>
-                <Button
-                  disabled={!newAffiliate.name || !newAffiliate.refCode || !newAffiliate.scalevUrl || createAff.isPending}
-                  onClick={() => createAff.mutate({
-                    refCode: newAffiliate.refCode,
-                    name: newAffiliate.name,
-                    scalevUrl: newAffiliate.scalevUrl,
-                    whatsapp: newAffiliate.whatsapp || undefined,
-                  })}
-                >
-                  {createAff.isPending ? <Loader2 className="h-4 w-4 mr-1 animate-spin" /> : <Plus className="h-4 w-4 mr-1" />}
-                  Tambah
-                </Button>
-              </DialogFooter>
-            </DialogContent>
-          </Dialog>
+            </CardContent>
+          </Card>
+
+          <Card className="border-0 shadow-md shadow-black/5 bg-red-50 dark:bg-red-950/30">
+            <CardContent className="p-4">
+              <div className="flex items-start gap-3">
+                <RefreshCw className="h-5 w-5 text-red-600 mt-0.5" />
+                <div>
+                  <p className="text-sm font-semibold text-red-700 dark:text-red-400">Reset Data Bisnis</p>
+                  <p className="text-xs text-muted-foreground mt-1">
+                    Hapus SEMUA data bisnis (transaksi, produk, stok, klien, hutang, tagihan, anggaran, dll). Bisnis itu sendiri tidak dihapus.
+                  </p>
+                  <div className="mt-3 flex items-center gap-3">
+                    <Select
+                      value={selectedBizForDummy?.toString() ?? ""}
+                      onValueChange={(v) => setSelectedBizForDummy(Number(v))}
+                    >
+                      <SelectTrigger className="w-64 h-9">
+                        <SelectValue placeholder="Pilih bisnis..." />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {businesses?.map((biz: any) => (
+                          <SelectItem key={biz.id} value={biz.id.toString()}>
+                            {biz.businessName} (#{biz.id})
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    <Button
+                      size="sm"
+                      variant="destructive"
+                      disabled={!selectedBizForDummy || clearData.isPending}
+                      onClick={() => selectedBizForDummy && setShowClearConfirm(true)}
+                    >
+                      {clearData.isPending ? (
+                        <><Loader2 className="h-4 w-4 mr-1 animate-spin" /> Menghapus...</>
+                      ) : (
+                        <><Trash2 className="h-4 w-4 mr-1" /> Reset Data</>
+                      )}
+                    </Button>
+                  </div>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
         </TabsContent>
       </Tabs>
+
+      {/* Clear Data Confirmation Dialog */}
+      <Dialog open={showClearConfirm} onOpenChange={setShowClearConfirm}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 text-destructive">
+              <AlertTriangle className="h-5 w-5" />
+              Reset Semua Data
+            </DialogTitle>
+            <DialogDescription className="pt-2">
+              Anda akan menghapus <strong>semua data</strong> dari bisnis #{selectedBizForDummy}:
+              <br /><br />
+              <span className="text-destructive font-medium">Yang akan dihapus:</span>
+              <ul className="mt-1 text-sm list-disc list-inside space-y-0.5 text-muted-foreground">
+                <li>Semua transaksi & POS receipts</li>
+                <li>Semua produk, stok & gudang</li>
+                <li>Semua klien & hutang/piutang</li>
+                <li>Semua tagihan, anggaran & tabungan</li>
+                <li>Semua kode diskon & shift POS</li>
+              </ul>
+              <br />
+              <strong className="text-destructive">Bisnis itu sendiri TIDAK dihapus.</strong>
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter className="gap-2">
+            <Button variant="outline" onClick={() => setShowClearConfirm(false)}>Batal</Button>
+            <Button
+              variant="destructive"
+              disabled={clearData.isPending}
+              onClick={() => selectedBizForDummy && clearData.mutate({ businessId: selectedBizForDummy })}
+            >
+              {clearData.isPending ? "Menghapus..." : "Ya, Reset Semua Data"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Add Affiliate Dialog */}
+      <Dialog open={showAddAffiliate} onOpenChange={setShowAddAffiliate}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Tambah Affiliate Baru</DialogTitle>
+            <DialogDescription>Affiliate akan mendapat link landing page khusus yang mengarahkan tombol beli ke Scalev mereka.</DialogDescription>
+          </DialogHeader>
+          <div className="space-y-3">
+            <div>
+              <label className="text-sm font-medium">Nama Affiliate *</label>
+              <Input placeholder="Jessica" value={newAffiliate.name} onChange={(e) => setNewAffiliate(p => ({ ...p, name: e.target.value }))} />
+            </div>
+            <div>
+              <label className="text-sm font-medium">Kode Referral * <span className="text-muted-foreground font-normal">(huruf kecil, tanpa spasi)</span></label>
+              <Input placeholder="jessica123" value={newAffiliate.refCode} onChange={(e) => setNewAffiliate(p => ({ ...p, refCode: e.target.value.toLowerCase().replace(/[^a-z0-9_-]/g, '') }))} />
+            </div>
+            <div>
+              <label className="text-sm font-medium">Link Scalev Affiliate *</label>
+              <Input placeholder="https://county.myscalev.com/p/county?aff=xxx" value={newAffiliate.scalevUrl} onChange={(e) => setNewAffiliate(p => ({ ...p, scalevUrl: e.target.value }))} />
+            </div>
+            <div>
+              <label className="text-sm font-medium">No. WhatsApp <span className="text-muted-foreground font-normal">(opsional)</span></label>
+              <Input placeholder="08123456789" value={newAffiliate.whatsapp} onChange={(e) => setNewAffiliate(p => ({ ...p, whatsapp: e.target.value }))} />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setShowAddAffiliate(false)}>Batal</Button>
+            <Button
+              disabled={!newAffiliate.name || !newAffiliate.refCode || !newAffiliate.scalevUrl || createAff.isPending}
+              onClick={() => createAff.mutate({
+                refCode: newAffiliate.refCode,
+                name: newAffiliate.name,
+                scalevUrl: newAffiliate.scalevUrl,
+                whatsapp: newAffiliate.whatsapp || undefined,
+              })}
+            >
+              {createAff.isPending ? <Loader2 className="h-4 w-4 mr-1 animate-spin" /> : <Plus className="h-4 w-4 mr-1" />}
+              Tambah
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {/* Delete Confirmation Dialog */}
       <Dialog open={!!deleteConfirm} onOpenChange={(open) => !open && setDeleteConfirm(null)}>

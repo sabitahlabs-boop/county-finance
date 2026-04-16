@@ -2000,3 +2000,229 @@ export async function refundPosReceipt(receiptId: number, reason: string) {
 
   return receipt;
 }
+
+// ═══════════════════════════════════════════════════════════
+// ─── Seed Dummy Data for Demo/Content ───
+// ═══════════════════════════════════════════════════════════
+
+export async function seedDummyData(businessId: number): Promise<{ success: boolean; counts: Record<string, number> }> {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+
+  const today = new Date();
+  const todayStr = today.toISOString().slice(0, 10);
+  const counts: Record<string, number> = {};
+
+  // ─── 1. Warehouse ───
+  const wh = await ensureDefaultWarehouse(businessId);
+  const wh2Id = await createWarehouse({ businessId, name: "Gudang Toko", isDefault: false, isActive: true, address: "Jl. Raya Utama No. 15, Jakarta" });
+
+  // ─── 2. Products (Sabitah Skincare & Beauty) ───
+  const productData: InsertProduct[] = [
+    { businessId, name: "Sabitah Glow Serum 30ml", sku: "SAB-SRM-001", category: "Skincare", hpp: 45000, sellingPrice: 129000, stockCurrent: 85, stockMinimum: 20, unit: "pcs", priceType: "fixed", discountPercent: "0", isActive: true },
+    { businessId, name: "Sabitah Moisturizer SPF30", sku: "SAB-MOI-001", category: "Skincare", hpp: 38000, sellingPrice: 99000, stockCurrent: 120, stockMinimum: 25, unit: "pcs", priceType: "fixed", discountPercent: "0", isActive: true },
+    { businessId, name: "Sabitah Facial Wash 100ml", sku: "SAB-FW-001", category: "Skincare", hpp: 22000, sellingPrice: 69000, stockCurrent: 200, stockMinimum: 40, unit: "pcs", priceType: "fixed", discountPercent: "0", isActive: true },
+    { businessId, name: "Sabitah Lip Tint Rose", sku: "SAB-LT-001", category: "Makeup", hpp: 18000, sellingPrice: 59000, stockCurrent: 150, stockMinimum: 30, unit: "pcs", priceType: "fixed", discountPercent: "0", isActive: true },
+    { businessId, name: "Sabitah Lip Tint Peach", sku: "SAB-LT-002", category: "Makeup", hpp: 18000, sellingPrice: 59000, stockCurrent: 140, stockMinimum: 30, unit: "pcs", priceType: "fixed", discountPercent: "0", isActive: true },
+    { businessId, name: "Sabitah Body Lotion 200ml", sku: "SAB-BL-001", category: "Body Care", hpp: 28000, sellingPrice: 79000, stockCurrent: 95, stockMinimum: 20, unit: "pcs", priceType: "fixed", discountPercent: "0", isActive: true },
+    { businessId, name: "Sabitah Hair Serum 50ml", sku: "SAB-HS-001", category: "Hair Care", hpp: 35000, sellingPrice: 89000, stockCurrent: 60, stockMinimum: 15, unit: "pcs", priceType: "fixed", discountPercent: "0", isActive: true },
+    { businessId, name: "Sabitah Toner Brightening", sku: "SAB-TON-001", category: "Skincare", hpp: 30000, sellingPrice: 85000, stockCurrent: 75, stockMinimum: 18, unit: "pcs", priceType: "fixed", discountPercent: "0", isActive: true },
+    { businessId, name: "Sabitah Eye Cream 15ml", sku: "SAB-EC-001", category: "Skincare", hpp: 52000, sellingPrice: 149000, stockCurrent: 45, stockMinimum: 10, unit: "pcs", priceType: "fixed", discountPercent: "0", isActive: true },
+    { businessId, name: "Sabitah Sunscreen SPF50", sku: "SAB-SS-001", category: "Skincare", hpp: 40000, sellingPrice: 119000, stockCurrent: 110, stockMinimum: 25, unit: "pcs", priceType: "fixed", discountPercent: "0", isActive: true },
+    { businessId, name: "Sabitah Micellar Water 200ml", sku: "SAB-MW-001", category: "Skincare", hpp: 25000, sellingPrice: 75000, stockCurrent: 88, stockMinimum: 20, unit: "pcs", priceType: "fixed", discountPercent: "0", isActive: true },
+    { businessId, name: "Sabitah Sheet Mask (5pcs)", sku: "SAB-SM-001", category: "Skincare", hpp: 15000, sellingPrice: 49000, stockCurrent: 200, stockMinimum: 50, unit: "pack", priceType: "fixed", discountPercent: "0", isActive: true },
+    { businessId, name: "Sabitah Blush On Coral", sku: "SAB-BO-001", category: "Makeup", hpp: 22000, sellingPrice: 69000, stockCurrent: 70, stockMinimum: 15, unit: "pcs", priceType: "fixed", discountPercent: "0", isActive: true },
+    { businessId, name: "Sabitah Setting Spray 60ml", sku: "SAB-SP-001", category: "Makeup", hpp: 20000, sellingPrice: 65000, stockCurrent: 55, stockMinimum: 12, unit: "pcs", priceType: "fixed", discountPercent: "0", isActive: true },
+    { businessId, name: "Sabitah Gift Set Premium", sku: "SAB-GS-001", category: "Bundle", hpp: 120000, sellingPrice: 349000, stockCurrent: 25, stockMinimum: 5, unit: "set", priceType: "fixed", discountPercent: "0", isActive: true },
+  ];
+
+  const productIds: number[] = [];
+  for (const p of productData) {
+    const id = await createProduct(p);
+    productIds.push(id);
+    // Add stock to default warehouse
+    await updateWarehouseStockQty(wh.id, id, Math.floor((p.stockCurrent ?? 0) * 0.7));
+    await updateWarehouseStockQty(wh2Id, id, Math.floor((p.stockCurrent ?? 0) * 0.3));
+  }
+  counts.products = productIds.length;
+
+  // ─── 3. Clients ───
+  const clientData: InsertClient[] = [
+    { businessId, name: "Toko Cantik Jaya", email: "cantikjaya@gmail.com", phone: "081234567890", company: "CV Cantik Jaya", address: "Jl. Pasar Baru No. 23, Jakarta Pusat", notes: "Reseller tetap, order rutin 2x/bulan" },
+    { businessId, name: "Beauty Corner Bandung", email: "beautycorner.bdg@gmail.com", phone: "082198765432", company: "Beauty Corner", address: "Jl. Braga No. 45, Bandung", notes: "Distributor area Bandung Raya" },
+    { businessId, name: "Sari Kosmetik", email: "sarikosmetik@yahoo.com", phone: "087654321098", company: "UD Sari Kosmetik", address: "Jl. Somba Opu No. 12, Makassar", notes: "Customer baru, potensi besar" },
+    { businessId, name: "Rina Maharani", email: "rina.mhr@gmail.com", phone: "081345678901", notes: "End customer loyal, member VIP" },
+    { businessId, name: "Shopee Official Store", email: "sabitah.shopee@gmail.com", company: "Shopee Indonesia", notes: "Channel marketplace Shopee" },
+    { businessId, name: "Tokopedia Store", email: "sabitah.tokped@gmail.com", company: "Tokopedia", notes: "Channel marketplace Tokopedia" },
+    { businessId, name: "Salon Dewi Ayu", email: "salondewiayu@gmail.com", phone: "085678901234", company: "Salon Dewi Ayu", address: "Jl. Gatot Subroto No. 88, Surabaya", notes: "Salon partner, beli bundle" },
+    { businessId, name: "Apotek Sehat Farma", email: "sehatfarma@gmail.com", phone: "081567890123", company: "PT Sehat Farma", address: "Jl. Veteran No. 5, Yogyakarta", notes: "Apotek partner skincare" },
+  ];
+
+  const clientIds: number[] = [];
+  for (const c of clientData) {
+    const id = await createClient(c);
+    clientIds.push(id);
+  }
+  counts.clients = clientIds.length;
+
+  // ─── 4. Transactions (3 months of data) ───
+  const categories = {
+    income: ["Penjualan Langsung", "Penjualan Online", "Penjualan Grosir", "Penjualan POS"],
+    expense: ["Bahan Baku", "Operasional", "Gaji Karyawan", "Sewa", "Utilitas", "Marketing", "Packaging", "Pengiriman"],
+  };
+  const payMethods = ["Tunai", "Transfer/QRIS", "Transfer/QRIS", "Transfer/QRIS"]; // weighted towards transfer
+
+  let txCount = 0;
+  for (let monthOffset = 2; monthOffset >= 0; monthOffset--) {
+    const month = new Date(today);
+    month.setMonth(month.getMonth() - monthOffset);
+    const daysInMonth = new Date(month.getFullYear(), month.getMonth() + 1, 0).getDate();
+    const yearMonth = `${month.getFullYear()}-${String(month.getMonth() + 1).padStart(2, "0")}`;
+
+    // Generate 40-60 income transactions per month
+    const incomeCount = 40 + Math.floor(Math.random() * 20);
+    for (let i = 0; i < incomeCount; i++) {
+      const day = 1 + Math.floor(Math.random() * Math.min(daysInMonth, monthOffset === 0 ? today.getDate() : daysInMonth));
+      const dateStr = `${yearMonth}-${String(day).padStart(2, "0")}`;
+      const cat = categories.income[Math.floor(Math.random() * categories.income.length)];
+      const productIdx = Math.floor(Math.random() * productIds.length);
+      const qty = 1 + Math.floor(Math.random() * 5);
+      const price = productData[productIdx].sellingPrice ?? 0;
+
+      const txCode = await generateTxCode(businessId);
+      await createTransaction({
+        businessId, txCode, date: dateStr, type: "pemasukan",
+        category: cat, description: `${cat} - ${productData[productIdx].name}`,
+        amount: price * qty,
+        paymentMethod: payMethods[Math.floor(Math.random() * payMethods.length)],
+        productId: productIds[productIdx], productQty: qty,
+        productHppSnapshot: productData[productIdx].hpp ?? 0,
+        clientId: Math.random() > 0.5 ? clientIds[Math.floor(Math.random() * clientIds.length)] : undefined,
+        taxRelated: true,
+      });
+      txCount++;
+    }
+
+    // Generate 15-25 expense transactions per month
+    const expenseCount = 15 + Math.floor(Math.random() * 10);
+    for (let i = 0; i < expenseCount; i++) {
+      const day = 1 + Math.floor(Math.random() * Math.min(daysInMonth, monthOffset === 0 ? today.getDate() : daysInMonth));
+      const dateStr = `${yearMonth}-${String(day).padStart(2, "0")}`;
+      const cat = categories.expense[Math.floor(Math.random() * categories.expense.length)];
+      const amounts: Record<string, [number, number]> = {
+        "Bahan Baku": [2000000, 8000000], "Operasional": [200000, 1500000],
+        "Gaji Karyawan": [3000000, 5000000], "Sewa": [3000000, 5000000],
+        "Utilitas": [300000, 800000], "Marketing": [500000, 3000000],
+        "Packaging": [500000, 2000000], "Pengiriman": [100000, 500000],
+      };
+      const [min, max] = amounts[cat] || [200000, 1000000];
+      const amount = min + Math.floor(Math.random() * (max - min));
+
+      const txCode = await generateTxCode(businessId);
+      await createTransaction({
+        businessId, txCode, date: dateStr, type: "pengeluaran",
+        category: cat, description: `${cat} - ${dateStr}`,
+        amount, paymentMethod: payMethods[Math.floor(Math.random() * payMethods.length)],
+        taxRelated: cat !== "Marketing",
+      });
+      txCount++;
+    }
+  }
+  counts.transactions = txCount;
+
+  // ─── 5. Debts (Hutang & Piutang) ───
+  const debtData: InsertDebt[] = [
+    { businessId, type: "piutang", counterpartyName: "Toko Cantik Jaya", clientId: clientIds[0], description: "Invoice penjualan grosir Maret", totalAmount: 5800000, paidAmount: 2000000, dueDate: `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, "0")}-25`, status: "belum_lunas" },
+    { businessId, type: "piutang", counterpartyName: "Beauty Corner Bandung", clientId: clientIds[1], description: "Invoice penjualan Februari", totalAmount: 3200000, paidAmount: 3200000, status: "lunas" },
+    { businessId, type: "piutang", counterpartyName: "Salon Dewi Ayu", clientId: clientIds[6], description: "Invoice bundle April", totalAmount: 4500000, paidAmount: 0, dueDate: `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, "0")}-30`, status: "belum_lunas" },
+    { businessId, type: "hutang", counterpartyName: "PT Kimia Farma Supply", description: "Pembelian bahan baku Q1", totalAmount: 12000000, paidAmount: 8000000, dueDate: `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, "0")}-20`, status: "belum_lunas" },
+    { businessId, type: "hutang", counterpartyName: "CV Packaging Indo", description: "Packaging & label custom", totalAmount: 3500000, paidAmount: 3500000, status: "lunas" },
+    { businessId, type: "hutang", counterpartyName: "Toko Bahan Kimia Jaya", description: "Pembelian essential oil", totalAmount: 2800000, paidAmount: 0, dueDate: `${today.getFullYear()}-${String(today.getMonth() + 2).padStart(2, "0")}-15`, status: "belum_lunas" },
+  ];
+
+  for (const d of debtData) {
+    await createDebt(d);
+  }
+  counts.debts = debtData.length;
+
+  // ─── 6. Monthly Bills (Tagihan) ───
+  const billData: InsertMonthlyBill[] = [
+    { businessId, name: "Sewa Ruko", amount: 5000000, dueDay: 1, category: "Sewa", icon: "🏢" },
+    { businessId, name: "Listrik", amount: 850000, dueDay: 20, category: "Utilitas", icon: "⚡" },
+    { businessId, name: "Internet & WiFi", amount: 450000, dueDay: 25, category: "Utilitas", icon: "🌐" },
+    { businessId, name: "Gaji — Rina (Admin)", amount: 3500000, dueDay: 28, category: "Gaji", icon: "👩" },
+    { businessId, name: "Gaji — Deni (Gudang)", amount: 3200000, dueDay: 28, category: "Gaji", icon: "👨" },
+    { businessId, name: "Gaji — Sari (Kasir)", amount: 3000000, dueDay: 28, category: "Gaji", icon: "👩‍💼" },
+    { businessId, name: "Shopee Ads", amount: 1500000, dueDay: 5, category: "Marketing", icon: "📢" },
+    { businessId, name: "Instagram Ads", amount: 2000000, dueDay: 5, category: "Marketing", icon: "📸" },
+    { businessId, name: "BPJS Karyawan", amount: 450000, dueDay: 10, category: "Asuransi", icon: "🏥" },
+    { businessId, name: "Cicilan Mobil Operasional", amount: 4200000, dueDay: 15, category: "Kredit", icon: "🚗" },
+  ];
+
+  for (const b of billData) {
+    await createMonthlyBill(b);
+  }
+  counts.bills = billData.length;
+
+  // ─── 7. Budgets ───
+  const budgetPeriod = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, "0")}`;
+  const budgetData: InsertBudget[] = [
+    { businessId, period: budgetPeriod, category: "Bahan Baku", budgetAmount: 15000000 },
+    { businessId, period: budgetPeriod, category: "Gaji Karyawan", budgetAmount: 10000000 },
+    { businessId, period: budgetPeriod, category: "Marketing", budgetAmount: 5000000 },
+    { businessId, period: budgetPeriod, category: "Operasional", budgetAmount: 3000000 },
+    { businessId, period: budgetPeriod, category: "Sewa", budgetAmount: 5000000 },
+    { businessId, period: budgetPeriod, category: "Utilitas", budgetAmount: 1500000 },
+    { businessId, period: budgetPeriod, category: "Packaging", budgetAmount: 4000000 },
+    { businessId, period: budgetPeriod, category: "Pengiriman", budgetAmount: 2000000 },
+  ];
+
+  for (const b of budgetData) {
+    await createBudget(b);
+  }
+  counts.budgets = budgetData.length;
+
+  // ─── 8. Discount Codes ───
+  await createDiscountCode({
+    businessId, code: "SABITAH10", name: "Diskon Member 10%",
+    type: "percentage", value: 10, isActive: true,
+    validFrom: todayStr, maxUses: 100, currentUses: 12,
+  });
+  await createDiscountCode({
+    businessId, code: "NEWCUST", name: "Customer Baru Diskon 15rb",
+    type: "fixed", value: 15000, isActive: true,
+    validFrom: todayStr, maxUses: 50, currentUses: 5,
+  });
+  counts.discountCodes = 2;
+
+  return { success: true, counts };
+}
+
+// ─── Clear Dummy Data (Reset) ───
+export async function clearBusinessData(businessId: number): Promise<{ success: boolean }> {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+
+  // Delete in order of dependencies
+  await db.delete(debtPayments).where(
+    sql`${debtPayments.debtId} IN (SELECT id FROM debts WHERE business_id = ${businessId})`
+  );
+  await db.delete(debts).where(eq(debts.businessId, businessId));
+  await db.delete(posReceipts).where(eq(posReceipts.businessId, businessId));
+  await db.delete(posShifts).where(eq(posShifts.businessId, businessId));
+  await db.delete(discountCodes).where(eq(discountCodes.businessId, businessId));
+  await db.delete(stockTransfers).where(eq(stockTransfers.businessId, businessId));
+  await db.delete(warehouseStock).where(
+    sql`${warehouseStock.warehouseId} IN (SELECT id FROM warehouses WHERE business_id = ${businessId})`
+  );
+  await db.delete(stockLogs).where(eq(stockLogs.businessId, businessId));
+  await db.delete(transactions).where(eq(transactions.businessId, businessId));
+  await db.delete(products).where(eq(products.businessId, businessId));
+  await db.delete(clients).where(eq(clients.businessId, businessId));
+  await db.delete(budgets).where(eq(budgets.businessId, businessId));
+  await db.delete(monthlyBills).where(eq(monthlyBills.businessId, businessId));
+  // Keep warehouses but delete non-default ones
+  await db.delete(warehouses).where(and(eq(warehouses.businessId, businessId), eq(warehouses.isDefault, false)));
+
+  return { success: true };
+}
