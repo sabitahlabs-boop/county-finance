@@ -66,7 +66,9 @@ function Router() {
   return (
     <Switch>
       <Route path="/" component={Home} />
+      <Route path="/sign-in/:rest*" component={CountySignIn} />
       <Route path="/sign-in" component={CountySignIn} />
+      <Route path="/sign-up/:rest*" component={CountySignUp} />
       <Route path="/sign-up" component={CountySignUp} />
       <Route path="/dashboard">{() => { window.location.replace("/"); return null; }}</Route>
       <Route path="/transaksi">{() => <AuthenticatedRoute component={TransaksiPage} />}</Route>
