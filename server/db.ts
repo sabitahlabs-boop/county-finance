@@ -2185,12 +2185,12 @@ export async function seedDummyData(businessId: number): Promise<{ success: bool
   // ─── 8. Discount Codes ───
   await createDiscountCode({
     businessId, code: "SABITAH10", name: "Diskon Member 10%",
-    type: "percentage", value: 10, isActive: true,
+    discountType: "percentage", discountValue: 10, isActive: true,
     validFrom: todayStr, maxUses: 100, currentUses: 12,
   });
   await createDiscountCode({
     businessId, code: "NEWCUST", name: "Customer Baru Diskon 15rb",
-    type: "fixed", value: 15000, isActive: true,
+    discountType: "fixed", discountValue: 15000, isActive: true,
     validFrom: todayStr, maxUses: 50, currentUses: 5,
   });
   counts.discountCodes = 2;
