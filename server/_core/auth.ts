@@ -5,18 +5,19 @@
  * Handles:
  * - Session verification via Clerk SDK
  * - User sync from Clerk to local database
- * - Webhook handler for user events
+ * - Webhook handler for user events (with svix signature verification)
  */
 
 import { type Request, type Response, type Express } from "express";
 import { clerkClient, requireAuth, getAuth } from "@clerk/express";
+import { Webhook } from "svix";
 import { ENV } from "./env";
 import { upsertUser } from "../db";
 
 // ── Types ──
 
 export interface AuthUser {
-  id: string; // Clerk userId (replaces Manus openId)
+  id: string; // Clerk userId
   email: string;
   name: string;
   imageUrl?: string;
@@ -26,7 +27,6 @@ export interface AuthUser {
 
 /**
  * Extract authenticated user from Clerk session
- * Use this in tRPC context creation
  */
 export async function getAuthenticatedUser(
   req: Request
@@ -56,10 +56,10 @@ export async function getAuthenticatedUser(
 /**
  * Handle Clerk webhook events to sync users with local database
  * Events: user.created, user.updated, user.deleted
+ * Verifies webhook signature using svix when CLERK_WEBHOOK_SECRET is configured
  */
 export function registerClerkWebhook(app: Express) {
   app.post("/api/webhooks/clerk", async (req: Request, res: Response) => {
-    // Verify svix headers exist (Clerk sends these with every webhook)
     const svix_id = req.headers["svix-id"] as string;
     const svix_timestamp = req.headers["svix-timestamp"] as string;
     const svix_signature = req.headers["svix-signature"] as string;
@@ -69,9 +69,27 @@ export function registerClerkWebhook(app: Express) {
       return;
     }
 
-    // TODO: Add full svix signature verification when CLERK_WEBHOOK_SECRET is set
-    // For now, we validate headers exist (basic protection)
-    const event = req.body;
+    let event: any;
+
+    // Verify signature if webhook secret is configured
+    if (ENV.clerkWebhookSecret) {
+      try {
+        const wh = new Webhook(ENV.clerkWebhookSecret);
+        event = wh.verify(JSON.stringify(req.body), {
+          "svix-id": svix_id,
+          "svix-timestamp": svix_timestamp,
+          "svix-signature": svix_signature,
+        });
+      } catch (err) {
+        console.error("[Clerk Webhook] Signature verification failed:", err);
+        res.status(400).json({ error: "Webhook signature verification failed" });
+        return;
+      }
+    } else {
+      // No secret configured — accept but warn
+      console.warn("[Clerk Webhook] No CLERK_WEBHOOK_SECRET configured — skipping signature verification");
+      event = req.body;
+    }
 
     try {
       switch (event.type) {
@@ -117,9 +135,7 @@ export function registerClerkWebhook(app: Express) {
 
 export function registerAuthRoutes(app: Express) {
   // Logout endpoint
-  app.post("/api/auth/logout", (req: Request, res: Response) => {
-    // Clerk handles session invalidation client-side
-    // Clear any local cookies if needed
+  app.post("/api/auth/logout", (_req: Request, res: Response) => {
     res.clearCookie("county_session");
     res.json({ success: true });
   });

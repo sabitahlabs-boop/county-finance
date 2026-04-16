@@ -132,8 +132,8 @@ type AuthenticatedUser = NonNullable<TrpcContext["user"]>;
 function createAuthContext(): { ctx: TrpcContext; clearedCookies: { name: string; options: Record<string, unknown> }[] } {
   const clearedCookies: { name: string; options: Record<string, unknown> }[] = [];
   const user: AuthenticatedUser = {
-    id: 1, openId: "sample-user", email: "sample@example.com",
-    name: "Sample User", loginMethod: "manus", role: "user",
+    id: 1, clerkUserId: "clerk_test_sample", email: "sample@example.com",
+    name: "Sample User", loginMethod: "clerk", role: "user",
     createdAt: new Date(), updatedAt: new Date(), lastSignedIn: new Date(),
   };
   const ctx: TrpcContext = {
