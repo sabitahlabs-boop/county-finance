@@ -28,7 +28,11 @@ const app = express();
 app.use(
   cors({
     origin: ENV.nodeEnv === "production"
-      ? ["https://county.finance", "https://www.county.finance"]
+      ? [
+          "https://county.finance",
+          "https://www.county.finance",
+          "https://county-finance-production.up.railway.app",
+        ]
       : ["http://localhost:3000", "http://localhost:5173"],
     credentials: true,
   })
@@ -44,11 +48,8 @@ app.get("/api/health", (_req, res) => {
   res.json({
     status: "ok",
     service: "county-finance",
-    version: "2.0.0",
+    version: "2.1.0",
     timestamp: new Date().toISOString(),
-    environment: ENV.nodeEnv,
-    hasClerkKey: !!process.env.CLERK_PUBLISHABLE_KEY,
-    clerkKeyPrefix: process.env.CLERK_PUBLISHABLE_KEY?.slice(0, 8) ?? "MISSING",
   });
 });
 
@@ -56,7 +57,7 @@ app.get("/api/health", (_req, res) => {
 // Applied AFTER health check so healthcheck works even if Clerk keys are invalid
 app.use((req, res, next) => {
   // Skip Clerk for public endpoints
-  if (req.path === "/api/health" || req.path.startsWith("/api/scalev/")) {
+  if (req.path === "/api/health" || req.path.startsWith("/api/scalev/") || req.path === "/api/webhooks/clerk") {
     return next();
   }
   return clerkMiddleware()(req, res, next);
@@ -67,11 +68,11 @@ app.use((req, res, next) => {
 // Auth routes (Clerk-based)
 registerAuthRoutes(app);
 
-// AI routes (Direct OpenAI)
+// AI routes (Anthropic Claude)
 registerChatRoutes(app);
 registerAIAdvisorRoutes(app);
 
-// Receipt scanner (Direct OpenAI Vision)
+// Receipt scanner (Anthropic Claude Vision)
 registerReceiptRoutes(app);
 
 // File storage (Cloudflare R2)
@@ -119,7 +120,7 @@ app.listen(ENV.port, "0.0.0.0", () => {
   ║                                          ║
   ║     Auth:    Clerk ✓                     ║
   ║     Storage: Cloudflare R2 ✓             ║
-  ║     AI:      OpenAI Direct ✓             ║
+  ║     AI:      Anthropic Claude ✓           ║
   ║     DB:      MySQL (Railway) ✓           ║
   ╚══════════════════════════════════════════╝
   `);

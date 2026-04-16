@@ -11,6 +11,7 @@
 import { type Request, type Response, type Express } from "express";
 import { clerkClient, requireAuth, getAuth } from "@clerk/express";
 import { ENV } from "./env";
+import { upsertUser } from "../db";
 
 // ── Types ──
 
@@ -58,7 +59,7 @@ export async function getAuthenticatedUser(
  */
 export function registerClerkWebhook(app: Express) {
   app.post("/api/webhooks/clerk", async (req: Request, res: Response) => {
-    // Verify webhook signature
+    // Verify svix headers exist (Clerk sends these with every webhook)
     const svix_id = req.headers["svix-id"] as string;
     const svix_timestamp = req.headers["svix-timestamp"] as string;
     const svix_signature = req.headers["svix-signature"] as string;
@@ -68,33 +69,35 @@ export function registerClerkWebhook(app: Express) {
       return;
     }
 
-    // TODO: Verify signature with Clerk webhook secret
-    // For now, process the event
+    // TODO: Add full svix signature verification when CLERK_WEBHOOK_SECRET is set
+    // For now, we validate headers exist (basic protection)
     const event = req.body;
 
     try {
       switch (event.type) {
         case "user.created":
         case "user.updated": {
-          const { id, email_addresses, first_name, last_name, image_url } =
-            event.data;
+          const { id, email_addresses, first_name, last_name } = event.data;
           const email = email_addresses?.[0]?.email_address ?? "";
-          const name = `${first_name ?? ""} ${last_name ?? ""}`.trim();
+          const name = `${first_name ?? ""} ${last_name ?? ""}`.trim() || email;
 
-          // Upsert user in local database
-          // This replaces the old Manus OAuth callback user creation
-          console.log(
-            `[Clerk Webhook] Syncing user: ${id} (${email})`
-          );
+          console.log(`[Clerk Webhook] Syncing user: ${id} (${email})`);
 
-          // TODO: Call db.upsertUser({ clerkUserId: id, email, name, imageUrl: image_url })
+          await upsertUser({
+            clerkUserId: id,
+            email,
+            name,
+            loginMethod: "clerk",
+            lastSignedIn: new Date(),
+          });
+
+          console.log(`[Clerk Webhook] User synced successfully: ${id}`);
           break;
         }
 
         case "user.deleted": {
           const { id } = event.data;
-          console.log(`[Clerk Webhook] User deleted: ${id}`);
-          // TODO: Handle user deletion (soft delete in DB)
+          console.log(`[Clerk Webhook] User deleted event: ${id} — soft delete not implemented yet`);
           break;
         }
 
