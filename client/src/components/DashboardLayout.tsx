@@ -42,6 +42,12 @@ import {
   PiggyBank,
   BarChart3,
   Warehouse,
+  Building2,
+  ChevronDown,
+  Check,
+  HelpCircle,
+  Crown,
+  Briefcase,
 } from "lucide-react";
 import { useTheme } from "@/contexts/ThemeContext";
 import { CSSProperties, useEffect, useMemo, useRef, useState } from "react";
@@ -54,36 +60,72 @@ import { PATH_PERMISSION_MAP } from "../../../shared/permissions";
 import NotificationCenter from "./NotificationCenter";
 import MiniCalculator from "./MiniCalculator";
 import { useBusinessContext } from "@/contexts/BusinessContext";
-import { Building2, ChevronDown, Check, HelpCircle } from "lucide-react";
 
-// ─── Menu items per mode ───
-const PERSONAL_MENU = [
-  { icon: LayoutDashboard, label: "Dashboard", path: "/", color: "from-blue-600 to-blue-800" },
-  { icon: BookOpen, label: "Jurnal Keuangan", path: "/jurnal", color: "from-emerald-500 to-teal-600" },
-  { icon: ArrowLeftRight, label: "Transaksi", path: "/transaksi", color: "from-sky-500 to-blue-600" },
-  { icon: HandCoins, label: "Hutang & Piutang", path: "/hutang-piutang", color: "from-rose-500 to-pink-600" },
-  { icon: PiggyBank, label: "Tagihan & Anggaran", path: "/anggaran", color: "from-emerald-500 to-green-600" },
-  { icon: FileText, label: "Laporan", path: "/laporan", color: "from-amber-500 to-orange-500" },
-  { icon: Settings, label: "Pengaturan", path: "/pengaturan", color: "from-slate-500 to-slate-700" },
+// ─── Menu definitions ───
+
+type MenuItem = {
+  icon: React.ComponentType<{ className?: string }>;
+  label: string;
+  path: string;
+};
+
+type MenuSection = {
+  title: string;
+  items: MenuItem[];
+};
+
+const PERSONAL_MENU: MenuItem[] = [
+  { icon: LayoutDashboard, label: "Dashboard", path: "/" },
+  { icon: BookOpen, label: "Jurnal Keuangan", path: "/jurnal" },
+  { icon: ArrowLeftRight, label: "Transaksi", path: "/transaksi" },
+  { icon: HandCoins, label: "Hutang & Piutang", path: "/hutang-piutang" },
+  { icon: PiggyBank, label: "Tagihan & Anggaran", path: "/anggaran" },
+  { icon: FileText, label: "Laporan", path: "/laporan" },
+  { icon: Settings, label: "Pengaturan", path: "/pengaturan" },
 ];
 
-const UMKM_MENU_BASE = [
-  { icon: LayoutDashboard, label: "Dashboard", path: "/", color: "from-blue-600 to-blue-800" },
-  { icon: ArrowLeftRight, label: "Transaksi", path: "/transaksi", color: "from-sky-500 to-blue-600" },
-  { icon: Package, label: "Stok Produk", path: "/stok", color: "from-green-500 to-green-600" },
-  { icon: History, label: "Riwayat Stok", path: "/riwayat-stok", color: "from-teal-500 to-teal-600" },
-  { icon: Warehouse, label: "Gudang", path: "/gudang", color: "from-amber-600 to-yellow-600" },
-  { icon: Users, label: "Client", path: "/client", color: "from-violet-500 to-purple-600" },
-  { icon: HandCoins, label: "Hutang & Piutang", path: "/hutang-piutang", color: "from-rose-500 to-pink-600" },
-  { icon: PiggyBank, label: "Tagihan & Anggaran", path: "/anggaran", color: "from-emerald-500 to-green-600" },
-  { icon: BarChart3, label: "Analitik", path: "/analitik", color: "from-cyan-500 to-blue-600" },
-  { icon: FileText, label: "Laporan", path: "/laporan", color: "from-amber-500 to-orange-500" },
-  { icon: Calculator, label: "Pajak", path: "/pajak", color: "from-blue-500 to-indigo-600" },
-  { icon: Settings, label: "Pengaturan", path: "/pengaturan", color: "from-slate-500 to-slate-700" },
-  { icon: HelpCircle, label: "Panduan", path: "/panduan", color: "from-indigo-400 to-purple-500" },
+// UMKM menu — grouped into sections
+const UMKM_SECTIONS: MenuSection[] = [
+  {
+    title: "Utama",
+    items: [
+      { icon: LayoutDashboard, label: "Dashboard", path: "/" },
+      { icon: ArrowLeftRight, label: "Transaksi", path: "/transaksi" },
+    ],
+  },
+  {
+    title: "Bisnis",
+    items: [
+      { icon: Package, label: "Stok Produk", path: "/stok" },
+      { icon: History, label: "Riwayat Stok", path: "/riwayat-stok" },
+      { icon: Warehouse, label: "Gudang", path: "/gudang" },
+      { icon: Users, label: "Client", path: "/client" },
+    ],
+  },
+  {
+    title: "Keuangan",
+    items: [
+      { icon: HandCoins, label: "Hutang & Piutang", path: "/hutang-piutang" },
+      { icon: PiggyBank, label: "Tagihan & Anggaran", path: "/anggaran" },
+      { icon: BarChart3, label: "Analitik", path: "/analitik" },
+      { icon: FileText, label: "Laporan", path: "/laporan" },
+      { icon: Calculator, label: "Pajak", path: "/pajak" },
+    ],
+  },
+  {
+    title: "Lainnya",
+    items: [
+      { icon: Settings, label: "Pengaturan", path: "/pengaturan" },
+      { icon: HelpCircle, label: "Panduan", path: "/panduan" },
+    ],
+  },
 ];
 
-const POS_MENU_ITEM = { icon: ShoppingBag, label: "Kasir (POS)", path: "/pos", color: "from-orange-500 to-orange-600" };
+const POS_MENU_ITEM: MenuItem = {
+  icon: ShoppingBag,
+  label: "Kasir (POS)",
+  path: "/pos",
+};
 
 const SIDEBAR_WIDTH_KEY = "sidebar-width";
 const DEFAULT_WIDTH = 260;
@@ -111,7 +153,7 @@ export default function DashboardLayout({
 
   if (!user) {
     return (
-      <div className="flex items-center justify-center min-h-screen bg-gradient-to-br from-blue-50 via-sky-50 to-indigo-50 dark:from-blue-950/30 dark:via-sky-950/20 dark:to-background">
+      <div className="flex items-center justify-center min-h-screen bg-background">
         <div className="flex flex-col items-center gap-8 p-8 max-w-md w-full">
           <div className="flex flex-col items-center gap-3">
             <img
@@ -119,20 +161,21 @@ export default function DashboardLayout({
               alt="County"
               className="h-20 w-20 object-contain mb-2"
             />
-            <span className="text-3xl font-bold text-[#1E4D9B]">
-              County
-            </span>
+            <span className="text-3xl font-bold text-primary">County</span>
             <h1 className="text-lg font-semibold tracking-tight text-center text-foreground">
               Masuk untuk melanjutkan
             </h1>
             <p className="text-sm text-muted-foreground text-center max-w-sm">
-              Kelola keuangan Anda dengan mudah — pencatatan, laporan, dan analisis dalam satu platform.
+              Kelola keuangan Anda dengan mudah — pencatatan, laporan, dan
+              analisis dalam satu platform.
             </p>
           </div>
           <Button
-            onClick={() => { window.location.href = getLoginUrl(); }}
+            onClick={() => {
+              window.location.href = getLoginUrl();
+            }}
             size="lg"
-            className="w-full shadow-lg shadow-primary/25 hover:shadow-xl hover:shadow-primary/30 transition-all bg-gradient-to-r from-[#1E4D9B] to-[#2563EB] hover:from-[#1a4389] hover:to-[#1d4ed8]"
+            className="w-full shadow-lg shadow-primary/25 hover:shadow-xl hover:shadow-primary/30 transition-all"
           >
             Masuk
           </Button>
@@ -175,54 +218,103 @@ function DashboardLayoutContent({
   const isAdmin = user?.role === "admin";
 
   // Business context for multi-business switching
-  const { businesses, activeBusinessId, switchBusiness, hasMultipleBusinesses, isOwnBusiness, activeRole, activePermissions } = useBusinessContext();
+  const {
+    businesses,
+    activeBusinessId,
+    switchBusiness,
+    hasMultipleBusinesses,
+    isOwnBusiness,
+    activeRole,
+    activePermissions,
+  } = useBusinessContext();
 
-  // Get team context — check if user is a team member (employee)
-  const { data: teamCtx } = trpc.team.myContext.useQuery(undefined, { enabled: !!user });
-  // Use business context to determine if viewing as team member
+  // Get team context
+  const { data: teamCtx } = trpc.team.myContext.useQuery(undefined, {
+    enabled: !!user,
+  });
   const isTeamMember = !isOwnBusiness;
   const memberPermissions = isTeamMember ? activePermissions : null;
 
-  // Build menu items dynamically based on mode + permissions
-  const menuItems = useMemo(() => {
-    let items = appMode === "personal" ? [...PERSONAL_MENU] : [...UMKM_MENU_BASE];
-
-    // Insert POS after Dashboard if UMKM mode and POS enabled
-    if (appMode === "umkm" && posEnabled) {
-      items.splice(1, 0, POS_MENU_ITEM);
+  // Build grouped menu sections for UMKM, or flat list for Personal
+  const { sections, flatItems } = useMemo(() => {
+    if (appMode === "personal") {
+      let items = [...PERSONAL_MENU];
+      if (!debtEnabled)
+        items = items.filter((i) => i.path !== "/hutang-piutang");
+      if (isAdmin)
+        items.push({ icon: Shield, label: "Super Admin", path: "/admin" });
+      if (isTeamMember && memberPermissions) {
+        items = items.filter((i) => {
+          const p = PATH_PERMISSION_MAP[i.path];
+          return !p || memberPermissions[p] === true;
+        });
+      }
+      return { sections: null, flatItems: items };
     }
 
-    // Hide Hutang & Piutang if debtEnabled is false
+    // UMKM — build from sections
+    let secs = UMKM_SECTIONS.map((s) => ({ ...s, items: [...s.items] }));
+
+    // Insert POS after Transaksi in "Utama" section
+    if (posEnabled) {
+      const utama = secs.find((s) => s.title === "Utama");
+      if (utama) utama.items.push(POS_MENU_ITEM);
+    }
+
+    // Remove Hutang & Piutang if disabled
     if (!debtEnabled) {
-      items = items.filter(item => item.path !== "/hutang-piutang");
+      secs = secs.map((s) => ({
+        ...s,
+        items: s.items.filter((i) => i.path !== "/hutang-piutang"),
+      }));
     }
 
-    // Add Super Admin for admin users
+    // Add admin to Lainnya
     if (isAdmin) {
-      items.push({ icon: Shield, label: "Super Admin", path: "/admin", color: "from-red-500 to-rose-500" });
+      const lainnya = secs.find((s) => s.title === "Lainnya");
+      if (lainnya)
+        lainnya.items.push({
+          icon: Shield,
+          label: "Super Admin",
+          path: "/admin",
+        });
     }
 
-    // Filter by permissions if user is a team member (employee)
+    // Filter by permissions for team members
     if (isTeamMember && memberPermissions) {
-      items = items.filter(item => {
-        const permKey = PATH_PERMISSION_MAP[item.path];
-        if (!permKey) return true; // allow if no mapping
-        return memberPermissions[permKey] === true;
-      });
+      secs = secs.map((s) => ({
+        ...s,
+        items: s.items.filter((i) => {
+          const p = PATH_PERMISSION_MAP[i.path];
+          return !p || memberPermissions[p] === true;
+        }),
+      }));
     }
 
-    return items;
-  }, [appMode, posEnabled, isAdmin, isTeamMember, memberPermissions]);
+    // Remove empty sections
+    secs = secs.filter((s) => s.items.length > 0);
 
-  const activeMenuItem = menuItems.find((item) => item.path === location);
+    const flat = secs.flatMap((s) => s.items);
+    return { sections: secs, flatItems: flat };
+  }, [appMode, posEnabled, debtEnabled, isAdmin, isTeamMember, memberPermissions]);
+
+  const activeMenuItem = flatItems.find((item) => item.path === location);
 
   // Tax estimate for sidebar (only for UMKM mode)
   const now = new Date();
   const { data: taxCalc } = trpc.tax.calculate.useQuery(
     { month: now.getMonth() + 1, year: now.getFullYear() },
-    { retry: false, refetchOnWindowFocus: false, enabled: appMode === "umkm" }
+    {
+      retry: false,
+      refetchOnWindowFocus: false,
+      enabled: appMode === "umkm",
+    }
   );
-  const totalTax = taxCalc?.reduce((s: number, t: any) => s + t.amount, 0) ?? 0;
+  const totalTax =
+    taxCalc?.reduce((s: number, t: any) => s + t.amount, 0) ?? 0;
+
+  // Mode-aware style tokens
+  const isPersonal = appMode === "personal";
 
   useEffect(() => {
     if (isCollapsed) setIsResizing(false);
@@ -231,9 +323,11 @@ function DashboardLayoutContent({
   useEffect(() => {
     const handleMouseMove = (e: MouseEvent) => {
       if (!isResizing) return;
-      const sidebarLeft = sidebarRef.current?.getBoundingClientRect().left ?? 0;
+      const sidebarLeft =
+        sidebarRef.current?.getBoundingClientRect().left ?? 0;
       const newWidth = e.clientX - sidebarLeft;
-      if (newWidth >= MIN_WIDTH && newWidth <= MAX_WIDTH) setSidebarWidth(newWidth);
+      if (newWidth >= MIN_WIDTH && newWidth <= MAX_WIDTH)
+        setSidebarWidth(newWidth);
     };
     const handleMouseUp = () => setIsResizing(false);
     if (isResizing) {
@@ -250,10 +344,52 @@ function DashboardLayoutContent({
     };
   }, [isResizing, setSidebarWidth]);
 
+  // ─── Render a single menu item ───
+  const renderMenuItem = (item: MenuItem) => {
+    const isActive = location === item.path;
+    return (
+      <SidebarMenuItem
+        key={item.path}
+        {...(item.path === "/panduan"
+          ? { "data-onboarding": "panduan-link" }
+          : {})}
+      >
+        <SidebarMenuButton
+          isActive={isActive}
+          onClick={() => setLocation(item.path)}
+          tooltip={item.label}
+          className={`h-9 transition-all font-normal rounded-lg ${
+            isActive
+              ? isPersonal
+                ? "bg-county-violet/10 text-county-violet font-semibold"
+                : "bg-sidebar-primary/10 text-sidebar-primary font-semibold"
+              : "text-sidebar-foreground/70 hover:text-sidebar-foreground hover:bg-sidebar-accent/50"
+          }`}
+        >
+          <item.icon
+            className={`h-4 w-4 shrink-0 ${
+              isActive
+                ? isPersonal
+                  ? "text-county-violet"
+                  : "text-sidebar-primary"
+                : ""
+            }`}
+          />
+          <span>{item.label}</span>
+        </SidebarMenuButton>
+      </SidebarMenuItem>
+    );
+  };
+
   return (
     <>
       <div className="relative" ref={sidebarRef}>
-        <Sidebar collapsible="icon" className="border-r-0" disableTransition={isResizing}>
+        <Sidebar
+          collapsible="icon"
+          className="border-r-0"
+          disableTransition={isResizing}
+        >
+          {/* ─── Header: Logo + Toggle ─── */}
           <SidebarHeader className="h-16 justify-center">
             <div className="flex items-center gap-3 px-2 transition-all w-full">
               <button
@@ -273,17 +409,19 @@ function DashboardLayoutContent({
                   <span className="font-bold tracking-tight truncate text-sidebar-foreground">
                     County
                   </span>
-                  {/* Mode badge */}
-                  <span className={`text-[10px] font-medium px-1.5 py-0.5 rounded-full shrink-0 ${
-                    appMode === "personal"
-                      ? "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400"
-                      : "bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400"
-                  }`}>
-                    {appMode === "personal" ? "Pribadi" : "UMKM"}
+                  <span
+                    className={`text-[10px] font-medium px-1.5 py-0.5 rounded-full shrink-0 ${
+                      isPersonal
+                        ? "bg-county-violet/15 text-county-violet"
+                        : "bg-sidebar-primary/15 text-sidebar-primary"
+                    }`}
+                  >
+                    {isPersonal ? "Pribadi" : "UMKM"}
                   </span>
                   {isTeamMember && activeRole && (
-                    <span className="text-[10px] font-medium px-1.5 py-0.5 rounded-full shrink-0 bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400">
-                      {activeRole.charAt(0).toUpperCase() + activeRole.slice(1)}
+                    <span className="text-[10px] font-medium px-1.5 py-0.5 rounded-full shrink-0 bg-county-orange/15 text-county-orange">
+                      {activeRole.charAt(0).toUpperCase() +
+                        activeRole.slice(1)}
                     </span>
                   )}
                 </div>
@@ -291,74 +429,124 @@ function DashboardLayoutContent({
             </div>
           </SidebarHeader>
 
-          {/* Business Switcher — always visible */}
+          {/* ─── Business Switcher ─── */}
           {businesses.length > 0 && (
-            <div className={isCollapsed ? "px-1 pb-2 flex justify-center" : "px-3 pb-2"}>
+            <div
+              className={
+                isCollapsed
+                  ? "px-1 pb-2 flex justify-center"
+                  : "px-3 pb-2"
+              }
+            >
               {hasMultipleBusinesses ? (
                 <DropdownMenu>
                   <DropdownMenuTrigger asChild>
                     {isCollapsed ? (
                       <button
-                        className="h-9 w-9 flex items-center justify-center rounded-lg border border-sidebar-border/50 bg-gradient-to-br from-blue-500/10 to-indigo-500/10 hover:from-blue-500/20 hover:to-indigo-500/20 transition-all focus:outline-none relative"
+                        className="h-9 w-9 flex items-center justify-center rounded-lg border border-sidebar-border/50 bg-sidebar-accent/30 hover:bg-sidebar-accent/60 transition-all focus:outline-none relative"
                         title="Switch Bisnis"
                       >
-                        <Building2 className="h-4 w-4 text-blue-600 dark:text-blue-400" />
-                        <span className="absolute -top-1 -right-1 h-3.5 w-3.5 rounded-full bg-blue-500 text-[8px] text-white font-bold flex items-center justify-center">
+                        <Building2 className="h-4 w-4 text-sidebar-foreground/70" />
+                        <span className="absolute -top-1 -right-1 h-3.5 w-3.5 rounded-full bg-sidebar-primary text-[8px] text-sidebar-primary-foreground font-bold flex items-center justify-center">
                           {businesses.length}
                         </span>
                       </button>
                     ) : (
-                      <button className="flex items-center gap-2.5 w-full rounded-xl border border-blue-200/60 dark:border-blue-800/40 bg-gradient-to-r from-blue-50 to-indigo-50 dark:from-blue-950/30 dark:to-indigo-950/20 hover:from-blue-100 hover:to-indigo-100 dark:hover:from-blue-950/50 dark:hover:to-indigo-950/40 px-3 py-2.5 text-left transition-all focus:outline-none shadow-sm">
-                        <div className="h-8 w-8 rounded-lg bg-gradient-to-br from-blue-500 to-indigo-600 flex items-center justify-center shrink-0 shadow-sm">
-                          <Building2 className="h-4 w-4 text-white" />
+                      <button className="flex items-center gap-2.5 w-full rounded-xl border border-sidebar-border/40 bg-sidebar-accent/30 hover:bg-sidebar-accent/60 px-3 py-2.5 text-left transition-all focus:outline-none">
+                        <div className="h-8 w-8 rounded-lg bg-sidebar-primary flex items-center justify-center shrink-0">
+                          <Building2 className="h-4 w-4 text-sidebar-primary-foreground" />
                         </div>
                         <div className="flex-1 min-w-0">
-                          <p className="text-[10px] font-medium text-blue-600/70 dark:text-blue-400/70 leading-none uppercase tracking-wider">Bisnis Aktif</p>
-                          <p className="text-sm font-semibold text-foreground truncate mt-0.5">
-                            {businesses.find(b => b.id === activeBusinessId)?.name ?? "Pilih Bisnis"}
+                          <p className="text-[10px] font-medium text-sidebar-foreground/50 leading-none uppercase tracking-wider">
+                            Bisnis Aktif
                           </p>
-                          <p className="text-[10px] text-muted-foreground mt-0.5">
+                          <p className="text-sm font-semibold text-sidebar-foreground truncate mt-0.5">
+                            {businesses.find(
+                              (b) => b.id === activeBusinessId
+                            )?.name ?? "Pilih Bisnis"}
+                          </p>
+                          <p className="text-[10px] text-sidebar-foreground/50 mt-0.5 flex items-center gap-1">
                             {(() => {
-                              const active = businesses.find(b => b.id === activeBusinessId);
+                              const active = businesses.find(
+                                (b) => b.id === activeBusinessId
+                              );
                               if (!active) return "";
-                              return active.isOwn ? "👑 Owner" : `🏷️ ${active.role?.charAt(0).toUpperCase()}${active.role?.slice(1) ?? "Karyawan"}`;
+                              if (active.isOwn) {
+                                return (
+                                  <>
+                                    <Crown className="h-2.5 w-2.5" /> Owner
+                                  </>
+                                );
+                              }
+                              return (
+                                <>
+                                  <Briefcase className="h-2.5 w-2.5" />{" "}
+                                  {active.role?.charAt(0).toUpperCase()}
+                                  {active.role?.slice(1) ?? "Karyawan"}
+                                </>
+                              );
                             })()}
                           </p>
                         </div>
                         <div className="flex flex-col items-center gap-0.5 shrink-0">
-                          <ChevronDown className="h-3.5 w-3.5 text-blue-500/60" />
-                          <span className="text-[9px] font-medium text-blue-500/60">{businesses.length}</span>
+                          <ChevronDown className="h-3.5 w-3.5 text-sidebar-foreground/40" />
+                          <span className="text-[9px] font-medium text-sidebar-foreground/40">
+                            {businesses.length}
+                          </span>
                         </div>
                       </button>
                     )}
                   </DropdownMenuTrigger>
                   <DropdownMenuContent align="start" className="w-72 p-1.5">
                     <div className="px-2 py-1.5 mb-1">
-                      <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Switch Bisnis</p>
+                      <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
+                        Switch Bisnis
+                      </p>
                     </div>
-                    {businesses.map(b => (
+                    {businesses.map((b) => (
                       <DropdownMenuItem
                         key={b.id}
-                        onClick={() => { if (b.id !== activeBusinessId) switchBusiness(b.id); }}
-                        className={`cursor-pointer rounded-lg px-2 py-2.5 mb-0.5 ${b.id === activeBusinessId ? "bg-blue-50 dark:bg-blue-950/30" : ""}`}
+                        onClick={() => {
+                          if (b.id !== activeBusinessId) switchBusiness(b.id);
+                        }}
+                        className={`cursor-pointer rounded-lg px-2 py-2.5 mb-0.5 ${
+                          b.id === activeBusinessId
+                            ? "bg-primary/5"
+                            : ""
+                        }`}
                       >
                         <div className="flex items-center gap-3 w-full">
-                          <div className={`h-9 w-9 rounded-lg flex items-center justify-center shrink-0 ${
-                            b.isOwn
-                              ? "bg-gradient-to-br from-blue-500 to-indigo-600"
-                              : "bg-gradient-to-br from-amber-500 to-orange-600"
-                          }`}>
-                            <Building2 className="h-4 w-4 text-white" />
+                          <div
+                            className={`h-9 w-9 rounded-lg flex items-center justify-center shrink-0 ${
+                              b.isOwn
+                                ? "bg-primary text-primary-foreground"
+                                : "bg-county-orange text-white"
+                            }`}
+                          >
+                            <Building2 className="h-4 w-4" />
                           </div>
                           <div className="flex-1 min-w-0">
-                            <p className="text-sm font-semibold truncate">{b.name}</p>
-                            <p className="text-xs text-muted-foreground">
-                              {b.isOwn ? "👑 Bisnis Saya (Owner)" : `🏷️ Sebagai ${b.role?.charAt(0).toUpperCase()}${b.role?.slice(1) ?? "Karyawan"}`}
+                            <p className="text-sm font-semibold truncate">
+                              {b.name}
+                            </p>
+                            <p className="text-xs text-muted-foreground flex items-center gap-1">
+                              {b.isOwn ? (
+                                <>
+                                  <Crown className="h-3 w-3" /> Bisnis Saya
+                                  (Owner)
+                                </>
+                              ) : (
+                                <>
+                                  <Briefcase className="h-3 w-3" /> Sebagai{" "}
+                                  {b.role?.charAt(0).toUpperCase()}
+                                  {b.role?.slice(1) ?? "Karyawan"}
+                                </>
+                              )}
                             </p>
                           </div>
                           {b.id === activeBusinessId && (
-                            <div className="h-5 w-5 rounded-full bg-blue-500 flex items-center justify-center shrink-0">
-                              <Check className="h-3 w-3 text-white" />
+                            <div className="h-5 w-5 rounded-full bg-primary flex items-center justify-center shrink-0">
+                              <Check className="h-3 w-3 text-primary-foreground" />
                             </div>
                           )}
                         </div>
@@ -367,18 +555,28 @@ function DashboardLayoutContent({
                   </DropdownMenuContent>
                 </DropdownMenu>
               ) : (
-                /* Single business — show info card (no dropdown) */
+                /* Single business — compact info */
                 !isCollapsed && (
                   <div className="flex items-center gap-2.5 w-full rounded-xl border border-sidebar-border/30 bg-sidebar-accent/20 px-3 py-2 transition-all">
-                    <div className="h-7 w-7 rounded-lg bg-gradient-to-br from-blue-500 to-indigo-600 flex items-center justify-center shrink-0">
-                      <Building2 className="h-3.5 w-3.5 text-white" />
+                    <div className="h-7 w-7 rounded-lg bg-sidebar-primary flex items-center justify-center shrink-0">
+                      <Building2 className="h-3.5 w-3.5 text-sidebar-primary-foreground" />
                     </div>
                     <div className="flex-1 min-w-0">
                       <p className="text-sm font-medium text-sidebar-foreground truncate">
                         {businesses[0]?.name ?? "Bisnis"}
                       </p>
-                      <p className="text-[10px] text-muted-foreground">
-                        {businesses[0]?.isOwn ? "👑 Owner" : `🏷️ ${businesses[0]?.role?.charAt(0).toUpperCase()}${businesses[0]?.role?.slice(1) ?? "Karyawan"}`}
+                      <p className="text-[10px] text-sidebar-foreground/50 flex items-center gap-1">
+                        {businesses[0]?.isOwn ? (
+                          <>
+                            <Crown className="h-2.5 w-2.5" /> Owner
+                          </>
+                        ) : (
+                          <>
+                            <Briefcase className="h-2.5 w-2.5" />{" "}
+                            {businesses[0]?.role?.charAt(0).toUpperCase()}
+                            {businesses[0]?.role?.slice(1) ?? "Karyawan"}
+                          </>
+                        )}
                       </p>
                     </div>
                   </div>
@@ -387,35 +585,42 @@ function DashboardLayoutContent({
             </div>
           )}
 
+          {/* ─── Navigation ─── */}
           <SidebarContent className="gap-0">
-            <SidebarMenu data-onboarding="sidebar-menu" className="px-2 py-1">
-              {menuItems.map((item) => {
-                const isActive = location === item.path;
-                return (
-                  <SidebarMenuItem key={item.path} {...(item.path === "/panduan" ? { "data-onboarding": "panduan-link" } : {})}>
-                    <SidebarMenuButton
-                      isActive={isActive}
-                      onClick={() => setLocation(item.path)}
-                      tooltip={item.label}
-                      className={`h-10 transition-all font-normal ${isActive ? "shadow-sm" : ""}`}
-                    >
-                      <div className={`h-5 w-5 rounded-md flex items-center justify-center ${isActive ? `bg-gradient-to-br ${item.color}` : ""}`}>
-                        <item.icon className={`h-3.5 w-3.5 ${isActive ? "text-white" : ""}`} />
+            <SidebarMenu
+              data-onboarding="sidebar-menu"
+              className="px-2 py-1"
+            >
+              {appMode === "personal" || !sections ? (
+                /* Personal mode — flat list */
+                flatItems.map(renderMenuItem)
+              ) : (
+                /* UMKM mode — grouped sections */
+                sections.map((section) => (
+                  <div key={section.title} className="mb-1">
+                    {!isCollapsed && (
+                      <div className="px-3 pt-3 pb-1">
+                        <span className="text-[10px] font-semibold uppercase tracking-widest text-sidebar-foreground/40">
+                          {section.title}
+                        </span>
                       </div>
-                      <span className={isActive ? "font-semibold" : ""}>{item.label}</span>
-                    </SidebarMenuButton>
-                  </SidebarMenuItem>
-                );
-              })}
+                    )}
+                    {isCollapsed && section.title !== "Utama" && (
+                      <div className="mx-auto my-1.5 w-4 border-t border-sidebar-border/30" />
+                    )}
+                    {section.items.map(renderMenuItem)}
+                  </div>
+                ))
+              )}
             </SidebarMenu>
           </SidebarContent>
 
-          {/* Tax Alert Box — only for UMKM mode */}
+          {/* ─── Tax Alert (UMKM only) ─── */}
           {appMode === "umkm" && !isCollapsed && totalTax > 0 && (
             <div className="px-3 pb-2">
-              <div className="rounded-xl bg-gradient-to-r from-amber-500/10 to-orange-500/10 border border-amber-500/20 p-3">
+              <div className="rounded-xl bg-warning/8 border border-warning/20 p-3">
                 <div className="flex items-center gap-2 text-xs text-sidebar-foreground/70 mb-1">
-                  <AlertTriangle className="h-3.5 w-3.5 text-amber-400" />
+                  <AlertTriangle className="h-3.5 w-3.5 text-warning" />
                   <span>Estimasi Pajak Bulan Ini</span>
                 </div>
                 <p className="text-sm font-semibold text-sidebar-foreground">
@@ -425,14 +630,18 @@ function DashboardLayoutContent({
             </div>
           )}
 
+          {/* ─── Footer: Theme + User ─── */}
           <SidebarFooter className="p-3">
-            {/* Theme Toggle */}
-            <ThemeToggleButton isCollapsed={isCollapsed} />
+            <ThemeToggleButton isCollapsed={isCollapsed} isPersonal={isPersonal} />
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
                 <button className="flex items-center gap-3 rounded-xl px-1 py-1 hover:bg-sidebar-accent/50 transition-colors w-full text-left group-data-[collapsible=icon]:justify-center focus:outline-none">
                   <Avatar className="h-9 w-9 border border-sidebar-border shrink-0">
-                    <AvatarFallback className="text-xs font-medium bg-gradient-to-br from-[#1E4D9B] to-[#2563EB] text-white">
+                    <AvatarFallback
+                      className={`text-xs font-medium text-white ${
+                        isPersonal ? "bg-county-violet" : "bg-primary"
+                      }`}
+                    >
                       {user?.name?.charAt(0).toUpperCase()}
                     </AvatarFallback>
                   </Avatar>
@@ -459,8 +668,12 @@ function DashboardLayoutContent({
           </SidebarFooter>
         </Sidebar>
         <div
-          className={`absolute top-0 right-0 w-1 h-full cursor-col-resize hover:bg-primary/20 transition-colors ${isCollapsed ? "hidden" : ""}`}
-          onMouseDown={() => { if (!isCollapsed) setIsResizing(true); }}
+          className={`absolute top-0 right-0 w-1 h-full cursor-col-resize hover:bg-primary/20 transition-colors ${
+            isCollapsed ? "hidden" : ""
+          }`}
+          onMouseDown={() => {
+            if (!isCollapsed) setIsResizing(true);
+          }}
           style={{ zIndex: 50 }}
         />
       </div>
@@ -488,7 +701,13 @@ function DashboardLayoutContent({
   );
 }
 
-function ThemeToggleButton({ isCollapsed }: { isCollapsed: boolean }) {
+function ThemeToggleButton({
+  isCollapsed,
+  isPersonal,
+}: {
+  isCollapsed: boolean;
+  isPersonal: boolean;
+}) {
   const { theme, toggleTheme, switchable } = useTheme();
   if (!switchable || !toggleTheme) return null;
 
@@ -496,9 +715,21 @@ function ThemeToggleButton({ isCollapsed }: { isCollapsed: boolean }) {
     <button
       onClick={toggleTheme}
       className="flex items-center gap-3 rounded-xl px-2 py-2 hover:bg-sidebar-accent/50 transition-colors w-full text-left group-data-[collapsible=icon]:justify-center focus:outline-none mb-1"
-      title={theme === "dark" ? "Beralih ke mode terang" : "Beralih ke mode gelap"}
+      title={
+        theme === "dark"
+          ? "Beralih ke mode terang"
+          : "Beralih ke mode gelap"
+      }
     >
-      <div className={`h-8 w-8 flex items-center justify-center rounded-lg shrink-0 ${theme === "dark" ? "bg-gradient-to-br from-amber-400 to-orange-500" : "bg-gradient-to-br from-[#1E4D9B] to-[#2563EB]"}`}>
+      <div
+        className={`h-8 w-8 flex items-center justify-center rounded-lg shrink-0 ${
+          theme === "dark"
+            ? "bg-county-orange"
+            : isPersonal
+              ? "bg-county-violet"
+              : "bg-primary"
+        }`}
+      >
         {theme === "dark" ? (
           <Sun className="h-4 w-4 text-white" />
         ) : (
@@ -510,8 +741,16 @@ function ThemeToggleButton({ isCollapsed }: { isCollapsed: boolean }) {
           <span className="text-sm text-sidebar-foreground/80">
             {theme === "dark" ? "Mode Gelap" : "Mode Terang"}
           </span>
-          <div className={`relative w-9 h-5 rounded-full transition-colors ${theme === "dark" ? "bg-gradient-to-r from-[#1E4D9B] to-[#2563EB]" : "bg-sidebar-accent"}`}>
-            <div className={`absolute top-0.5 h-4 w-4 rounded-full bg-white shadow-sm transition-transform ${theme === "dark" ? "translate-x-4" : "translate-x-0.5"}`} />
+          <div
+            className={`relative w-9 h-5 rounded-full transition-colors ${
+              theme === "dark" ? "bg-primary" : "bg-sidebar-accent"
+            }`}
+          >
+            <div
+              className={`absolute top-0.5 h-4 w-4 rounded-full bg-white shadow-sm transition-transform ${
+                theme === "dark" ? "translate-x-4" : "translate-x-0.5"
+              }`}
+            />
           </div>
         </div>
       )}

@@ -24,6 +24,9 @@ import {
   teamInvites, InsertTeamInvite, TeamInvite,
   savingsGoals, InsertSavingsGoal, SavingsGoal,
   monthlyBills, InsertMonthlyBill, MonthlyBill,
+  posShifts, InsertPosShift, PosShift,
+  discountCodes, InsertDiscountCode, DiscountCode,
+  posReceipts, InsertPosReceipt, PosReceipt,
 } from "../drizzle/schema";
 import { ENV } from './_core/env';
 import type { TaxCalcResult, DashboardKPIs, LabaRugiReport, ArusKasReport } from "../shared/finance";
@@ -1741,4 +1744,164 @@ export async function updateBusinessPersonalSetupDone(businessId: number) {
   const db = await getDb();
   if (!db) return;
   await db.update(businesses).set({ personalSetupDone: true }).where(eq(businesses.id, businessId));
+}
+
+// ─── POS Shifts ───
+
+export async function createPosShift(data: InsertPosShift): Promise<number> {
+  const db = await getDb();
+  if (!db) return 0;
+  const [result] = await db.insert(posShifts).values(data).$returningId();
+  return result.id;
+}
+
+export async function getOpenShift(businessId: number, userId: number): Promise<PosShift | undefined> {
+  const db = await getDb();
+  if (!db) return undefined;
+  const rows = await db.select().from(posShifts).where(
+    and(eq(posShifts.businessId, businessId), eq(posShifts.userId, userId), eq(posShifts.status, "open"))
+  ).limit(1);
+  return rows[0];
+}
+
+export async function closePosShift(shiftId: number, data: {
+  closingCash: number;
+  expectedCash: number;
+  cashDifference: number;
+  totalSales: number;
+  totalTransactions: number;
+  totalRefunds: number;
+  notes?: string;
+}) {
+  const db = await getDb();
+  if (!db) return;
+  await db.update(posShifts).set({
+    status: "closed",
+    closedAt: new Date(),
+    ...data,
+  }).where(eq(posShifts.id, shiftId));
+}
+
+export async function getShiftsByBusiness(businessId: number, limit = 50): Promise<PosShift[]> {
+  const db = await getDb();
+  if (!db) return [];
+  return db.select().from(posShifts).where(eq(posShifts.businessId, businessId)).orderBy(desc(posShifts.openedAt)).limit(limit);
+}
+
+export async function getPosShiftById(id: number): Promise<PosShift | undefined> {
+  const db = await getDb();
+  if (!db) return undefined;
+  const rows = await db.select().from(posShifts).where(eq(posShifts.id, id)).limit(1);
+  return rows[0];
+}
+
+// ─── Discount Codes ───
+
+export async function createDiscountCode(data: InsertDiscountCode): Promise<number> {
+  const db = await getDb();
+  if (!db) return 0;
+  const [result] = await db.insert(discountCodes).values(data).$returningId();
+  return result.id;
+}
+
+export async function getDiscountCodesByBusiness(businessId: number): Promise<DiscountCode[]> {
+  const db = await getDb();
+  if (!db) return [];
+  return db.select().from(discountCodes).where(eq(discountCodes.businessId, businessId)).orderBy(desc(discountCodes.createdAt));
+}
+
+export async function validateDiscountCode(businessId: number, code: string): Promise<DiscountCode | null> {
+  const db = await getDb();
+  if (!db) return null;
+  const rows = await db.select().from(discountCodes).where(
+    and(
+      eq(discountCodes.businessId, businessId),
+      eq(discountCodes.code, code.toUpperCase()),
+      eq(discountCodes.isActive, true),
+    )
+  ).limit(1);
+  const discount = rows[0];
+  if (!discount) return null;
+
+  const today = new Date().toISOString().slice(0, 10);
+  if (discount.validFrom && today < discount.validFrom) return null;
+  if (discount.validUntil && today > discount.validUntil) return null;
+  if (discount.maxUses && discount.currentUses >= discount.maxUses) return null;
+
+  return discount;
+}
+
+export async function incrementDiscountUsage(discountId: number) {
+  const db = await getDb();
+  if (!db) return;
+  await db.update(discountCodes).set({
+    currentUses: sql`${discountCodes.currentUses} + 1`,
+  }).where(eq(discountCodes.id, discountId));
+}
+
+export async function updateDiscountCode(id: number, data: Partial<InsertDiscountCode>) {
+  const db = await getDb();
+  if (!db) return;
+  await db.update(discountCodes).set(data).where(eq(discountCodes.id, id));
+}
+
+export async function deleteDiscountCode(id: number) {
+  const db = await getDb();
+  if (!db) return;
+  await db.delete(discountCodes).where(eq(discountCodes.id, id));
+}
+
+// ─── POS Receipts ───
+
+export async function generateReceiptCode(businessId: number): Promise<string> {
+  const db = await getDb();
+  if (!db) return "RCP-000000-001";
+  const today = new Date();
+  const dateStr = `${today.getFullYear()}${String(today.getMonth() + 1).padStart(2, "0")}${String(today.getDate()).padStart(2, "0")}`;
+  const prefix = `RCP-${dateStr}-`;
+
+  const rows = await db.select({ code: posReceipts.receiptCode }).from(posReceipts)
+    .where(and(eq(posReceipts.businessId, businessId), sql`${posReceipts.receiptCode} LIKE ${prefix + "%"}`))
+    .orderBy(desc(posReceipts.receiptCode))
+    .limit(1);
+
+  if (rows.length === 0) return `${prefix}001`;
+  const lastNum = parseInt(rows[0].code.replace(prefix, ""), 10) || 0;
+  return `${prefix}${String(lastNum + 1).padStart(3, "0")}`;
+}
+
+export async function createPosReceipt(data: InsertPosReceipt): Promise<number> {
+  const db = await getDb();
+  if (!db) return 0;
+  const [result] = await db.insert(posReceipts).values(data).$returningId();
+  return result.id;
+}
+
+export async function getPosReceiptsByBusiness(businessId: number, limit = 50): Promise<PosReceipt[]> {
+  const db = await getDb();
+  if (!db) return [];
+  return db.select().from(posReceipts).where(eq(posReceipts.businessId, businessId)).orderBy(desc(posReceipts.createdAt)).limit(limit);
+}
+
+export async function getPosReceiptById(id: number): Promise<PosReceipt | undefined> {
+  const db = await getDb();
+  if (!db) return undefined;
+  const rows = await db.select().from(posReceipts).where(eq(posReceipts.id, id)).limit(1);
+  return rows[0];
+}
+
+export async function refundPosReceipt(receiptId: number, reason: string) {
+  const db = await getDb();
+  if (!db) return;
+  const receipt = await getPosReceiptById(receiptId);
+  if (!receipt || receipt.isRefunded) return null;
+
+  await db.update(posReceipts).set({
+    isRefunded: true,
+    refundedAt: new Date(),
+    refundReason: reason,
+    refundAmount: receipt.grandTotal,
+  }).where(eq(posReceipts.id, receiptId));
+
+  return receipt;
 }

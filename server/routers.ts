@@ -43,6 +43,9 @@ import {
   getSavingsGoalsByBusiness, createSavingsGoal, updateSavingsGoal, deleteSavingsGoal, addToSavingsGoal,
   getMonthlyBillsByBusiness, createMonthlyBill, updateMonthlyBill, deleteMonthlyBill,
   updateBusinessDebtEnabled, updateBusinessPersonalSetupDone,
+  createPosShift, getOpenShift, closePosShift, getShiftsByBusiness, getPosShiftById,
+  createDiscountCode, getDiscountCodesByBusiness, validateDiscountCode, incrementDiscountUsage, updateDiscountCode, deleteDiscountCode,
+  generateReceiptCode, createPosReceipt, getPosReceiptsByBusiness, getPosReceiptById, refundPosReceipt,
 } from "./db";
 import { PLAN_LIMITS, BULAN_INDONESIA, formatRupiah } from "../shared/finance";
 import { notifyOwner } from "./_core/notification";
@@ -1709,6 +1712,269 @@ Penting: Kembalikan HANYA JSON valid, tidak ada teks penjelasan.`,
       if (!member || member.userId !== ctx.user.id) throw new TRPCError({ code: "NOT_FOUND" });
       await deleteTeamMember(input.membershipId);
       return { success: true };
+    }),
+  }),
+
+  // ─── POS Shifts ───
+  posShift: router({
+    // Get open shift for current user
+    current: protectedProcedure.query(async ({ ctx }) => {
+      const resolved = await resolveBusinessForUser(ctx.user.id, ctx.requestedBusinessId);
+      if (!resolved) return null;
+      return getOpenShift(resolved.business.id, ctx.user.id);
+    }),
+
+    // Open a new shift
+    open: protectedProcedure.input(z.object({
+      openingCash: z.number().min(0),
+      warehouseId: z.number().optional(),
+    })).mutation(async ({ ctx, input }) => {
+      const resolved = await resolveBusinessForUser(ctx.user.id, ctx.requestedBusinessId);
+      if (!resolved) throw new TRPCError({ code: "NOT_FOUND" });
+      const bizId = resolved.business.id;
+
+      // Check if already has an open shift
+      const existing = await getOpenShift(bizId, ctx.user.id);
+      if (existing) throw new TRPCError({ code: "CONFLICT", message: "Shift sudah terbuka. Tutup shift terlebih dahulu." });
+
+      const id = await createPosShift({
+        businessId: bizId,
+        userId: ctx.user.id,
+        openingCash: input.openingCash,
+        warehouseId: input.warehouseId ?? null,
+      });
+      return { id };
+    }),
+
+    // Close current shift
+    close: protectedProcedure.input(z.object({
+      shiftId: z.number(),
+      closingCash: z.number().min(0),
+      notes: z.string().optional(),
+    })).mutation(async ({ ctx, input }) => {
+      const shift = await getPosShiftById(input.shiftId);
+      if (!shift || shift.userId !== ctx.user.id || shift.status !== "open")
+        throw new TRPCError({ code: "NOT_FOUND", message: "Shift tidak ditemukan atau sudah ditutup." });
+
+      const expectedCash = shift.openingCash + shift.totalSales - shift.totalRefunds;
+      await closePosShift(input.shiftId, {
+        closingCash: input.closingCash,
+        expectedCash,
+        cashDifference: input.closingCash - expectedCash,
+        totalSales: shift.totalSales,
+        totalTransactions: shift.totalTransactions,
+        totalRefunds: shift.totalRefunds,
+        notes: input.notes,
+      });
+      return { success: true, expectedCash, difference: input.closingCash - expectedCash };
+    }),
+
+    // List shifts
+    list: protectedProcedure.input(z.object({ limit: z.number().optional() }).optional()).query(async ({ ctx, input }) => {
+      const resolved = await resolveBusinessForUser(ctx.user.id, ctx.requestedBusinessId);
+      if (!resolved) return [];
+      return getShiftsByBusiness(resolved.business.id, input?.limit ?? 50);
+    }),
+  }),
+
+  // ─── Discount Codes ───
+  discount: router({
+    list: protectedProcedure.query(async ({ ctx }) => {
+      const resolved = await resolveBusinessForUser(ctx.user.id, ctx.requestedBusinessId);
+      if (!resolved) return [];
+      return getDiscountCodesByBusiness(resolved.business.id);
+    }),
+
+    create: protectedProcedure.input(z.object({
+      code: z.string().min(1).max(50),
+      name: z.string().min(1).max(255),
+      discountType: z.enum(["percentage", "fixed"]),
+      discountValue: z.number().min(0),
+      minPurchase: z.number().min(0).default(0),
+      maxDiscount: z.number().optional(),
+      maxUses: z.number().optional(),
+      validFrom: z.string().optional(),
+      validUntil: z.string().optional(),
+    })).mutation(async ({ ctx, input }) => {
+      const resolved = await resolveBusinessForUser(ctx.user.id, ctx.requestedBusinessId);
+      if (!resolved) throw new TRPCError({ code: "NOT_FOUND" });
+      const id = await createDiscountCode({
+        ...input,
+        code: input.code.toUpperCase(),
+        businessId: resolved.business.id,
+        maxDiscount: input.maxDiscount ?? null,
+        maxUses: input.maxUses ?? null,
+        validFrom: input.validFrom ?? null,
+        validUntil: input.validUntil ?? null,
+      });
+      return { id };
+    }),
+
+    validate: protectedProcedure.input(z.object({
+      code: z.string(),
+      subtotal: z.number().min(0),
+    })).query(async ({ ctx, input }) => {
+      const resolved = await resolveBusinessForUser(ctx.user.id, ctx.requestedBusinessId);
+      if (!resolved) return { valid: false as const, message: "Bisnis tidak ditemukan" };
+
+      const discount = await validateDiscountCode(resolved.business.id, input.code);
+      if (!discount) return { valid: false as const, message: "Kode diskon tidak valid atau sudah kedaluwarsa" };
+      if (input.subtotal < discount.minPurchase)
+        return { valid: false as const, message: `Minimal pembelian ${formatRupiah(discount.minPurchase)}` };
+
+      let amount = 0;
+      if (discount.discountType === "percentage") {
+        amount = Math.round(input.subtotal * discount.discountValue / 100);
+        if (discount.maxDiscount && amount > discount.maxDiscount) amount = discount.maxDiscount;
+      } else {
+        amount = discount.discountValue;
+      }
+
+      return {
+        valid: true as const,
+        discount: {
+          id: discount.id,
+          code: discount.code,
+          name: discount.name,
+          type: discount.discountType,
+          value: discount.discountValue,
+          amount,
+        },
+      };
+    }),
+
+    update: protectedProcedure.input(z.object({
+      id: z.number(),
+      name: z.string().optional(),
+      isActive: z.boolean().optional(),
+      maxUses: z.number().optional(),
+      validUntil: z.string().optional(),
+    })).mutation(async ({ ctx, input }) => {
+      const { id, ...data } = input;
+      await updateDiscountCode(id, data);
+      return { success: true };
+    }),
+
+    delete: protectedProcedure.input(z.object({ id: z.number() })).mutation(async ({ input }) => {
+      await deleteDiscountCode(input.id);
+      return { success: true };
+    }),
+  }),
+
+  // ─── POS Receipts (checkout with split payment, discount, refund) ───
+  posReceipt: router({
+    list: protectedProcedure.input(z.object({ limit: z.number().optional() }).optional()).query(async ({ ctx, input }) => {
+      const resolved = await resolveBusinessForUser(ctx.user.id, ctx.requestedBusinessId);
+      if (!resolved) return [];
+      return getPosReceiptsByBusiness(resolved.business.id, input?.limit ?? 50);
+    }),
+
+    get: protectedProcedure.input(z.object({ id: z.number() })).query(async ({ input }) => {
+      return getPosReceiptById(input.id);
+    }),
+
+    // Create receipt (checkout with split payment support)
+    create: protectedProcedure.input(z.object({
+      subtotal: z.number(),
+      discountAmount: z.number().default(0),
+      discountCodeId: z.number().optional(),
+      grandTotal: z.number(),
+      payments: z.array(z.object({ method: z.string(), amount: z.number() })),
+      customerPaid: z.number(),
+      changeAmount: z.number().default(0),
+      shiftId: z.number().optional(),
+      clientId: z.number().optional(),
+      notes: z.string().optional(),
+      // Cart items to create individual transactions for
+      items: z.array(z.object({
+        productId: z.number(),
+        productQty: z.number(),
+        amount: z.number(),
+        hppSnapshot: z.number().optional(),
+        warehouseId: z.number().optional(),
+      })),
+    })).mutation(async ({ ctx, input }) => {
+      const resolved = await resolveBusinessForUser(ctx.user.id, ctx.requestedBusinessId);
+      if (!resolved) throw new TRPCError({ code: "NOT_FOUND" });
+      const bizId = resolved.business.id;
+      const today = new Date().toISOString().slice(0, 10);
+
+      // Generate receipt code
+      const receiptCode = await generateReceiptCode(bizId);
+
+      // Create the receipt
+      const receiptId = await createPosReceipt({
+        businessId: bizId,
+        receiptCode,
+        shiftId: input.shiftId ?? null,
+        subtotal: input.subtotal,
+        discountAmount: input.discountAmount,
+        discountCodeId: input.discountCodeId ?? null,
+        grandTotal: input.grandTotal,
+        payments: input.payments,
+        customerPaid: input.customerPaid,
+        changeAmount: input.changeAmount,
+        clientId: input.clientId ?? null,
+        notes: input.notes ?? null,
+        date: today,
+      });
+
+      // Increment discount usage if applicable
+      if (input.discountCodeId) {
+        await incrementDiscountUsage(input.discountCodeId);
+      }
+
+      // Create individual transactions for each cart item
+      const primaryMethod = input.payments[0]?.method ?? "Tunai";
+      for (const item of input.items) {
+        const txCode = await generateTxCode(bizId);
+        await createTransaction({
+          businessId: bizId,
+          txCode,
+          date: today,
+          type: "pemasukan",
+          category: "Penjualan POS",
+          description: `POS ${receiptCode}`,
+          amount: item.amount,
+          paymentMethod: primaryMethod,
+          productId: item.productId,
+          productQty: item.productQty,
+          productHppSnapshot: item.hppSnapshot ?? null,
+          receiptId,
+          shiftId: input.shiftId ?? null,
+        });
+      }
+
+      return { receiptId, receiptCode };
+    }),
+
+    // Refund a receipt
+    refund: protectedProcedure.input(z.object({
+      receiptId: z.number(),
+      reason: z.string().min(1),
+    })).mutation(async ({ ctx, input }) => {
+      const resolved = await resolveBusinessForUser(ctx.user.id, ctx.requestedBusinessId);
+      if (!resolved) throw new TRPCError({ code: "NOT_FOUND" });
+
+      const receipt = await refundPosReceipt(input.receiptId, input.reason);
+      if (!receipt) throw new TRPCError({ code: "NOT_FOUND", message: "Struk tidak ditemukan atau sudah di-refund" });
+
+      // Create a refund transaction
+      const txCode = await generateTxCode(resolved.business.id);
+      await createTransaction({
+        businessId: resolved.business.id,
+        txCode,
+        date: new Date().toISOString().slice(0, 10),
+        type: "pengeluaran",
+        category: "Refund POS",
+        description: `Refund ${receipt.receiptCode}: ${input.reason}`,
+        amount: receipt.grandTotal,
+        paymentMethod: receipt.payments[0]?.method ?? "Tunai",
+        receiptId: receipt.id,
+        shiftId: receipt.shiftId ?? null,
+      });
+
+      return { success: true, refundAmount: receipt.grandTotal };
     }),
   }),
 });

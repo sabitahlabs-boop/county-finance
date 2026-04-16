@@ -130,6 +130,8 @@ export const transactions = mysqlTable("transactions", {
   taxRelated: boolean("taxRelated").notNull().default(true),
   isDeleted: boolean("isDeleted").notNull().default(false),
   notes: text("notes"),
+  shiftId: int("shiftId"), // link to pos_shifts (for POS transactions)
+  receiptId: int("receiptId"), // link to pos_receipts (for grouped POS checkout)
   createdAt: timestamp("createdAt").defaultNow().notNull(),
 });
 
@@ -455,3 +457,76 @@ export const monthlyBills = mysqlTable("monthly_bills", {
 
 export type MonthlyBill = typeof monthlyBills.$inferSelect;
 export type InsertMonthlyBill = typeof monthlyBills.$inferInsert;
+
+// ─── POS Shifts (Shift Kasir) ───
+export const posShifts = mysqlTable("pos_shifts", {
+  id: int("id").autoincrement().primaryKey(),
+  businessId: int("businessId").notNull(),
+  userId: int("userId").notNull(), // kasir operating the shift
+  warehouseId: int("warehouseId"), // optional — which outlet/gudang
+  status: mysqlEnum("status", ["open", "closed"]).notNull().default("open"),
+  openedAt: timestamp("openedAt").defaultNow().notNull(),
+  closedAt: timestamp("closedAt"),
+  openingCash: bigint("openingCash", { mode: "number" }).notNull().default(0),
+  closingCash: bigint("closingCash", { mode: "number" }),
+  expectedCash: bigint("expectedCash", { mode: "number" }), // calculated when closing
+  cashDifference: bigint("cashDifference", { mode: "number" }), // closingCash - expectedCash
+  totalSales: bigint("totalSales", { mode: "number" }).notNull().default(0),
+  totalTransactions: int("totalTransactions").notNull().default(0),
+  totalRefunds: bigint("totalRefunds", { mode: "number" }).notNull().default(0),
+  notes: text("notes"),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+});
+
+export type PosShift = typeof posShifts.$inferSelect;
+export type InsertPosShift = typeof posShifts.$inferInsert;
+
+// ─── Discount Codes (Diskon / Voucher) ───
+export const discountCodes = mysqlTable("discount_codes", {
+  id: int("id").autoincrement().primaryKey(),
+  businessId: int("businessId").notNull(),
+  code: varchar("code", { length: 50 }).notNull(), // e.g. "PROMO10"
+  name: varchar("name", { length: 255 }).notNull(), // display name
+  discountType: mysqlEnum("discountType", ["percentage", "fixed"]).notNull(),
+  discountValue: bigint("discountValue", { mode: "number" }).notNull(), // percentage: 0-100, fixed: amount in rupiah
+  minPurchase: bigint("minPurchase", { mode: "number" }).notNull().default(0),
+  maxDiscount: bigint("maxDiscount", { mode: "number" }), // cap for percentage discounts
+  maxUses: int("maxUses"), // null = unlimited
+  currentUses: int("currentUses").notNull().default(0),
+  validFrom: varchar("validFrom", { length: 10 }), // yyyy-mm-dd
+  validUntil: varchar("validUntil", { length: 10 }), // yyyy-mm-dd
+  isActive: boolean("isActive").notNull().default(true),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+});
+
+export type DiscountCode = typeof discountCodes.$inferSelect;
+export type InsertDiscountCode = typeof discountCodes.$inferInsert;
+
+// ─── POS Sale Receipts (Groups items in a single POS checkout) ───
+export const posReceipts = mysqlTable("pos_receipts", {
+  id: int("id").autoincrement().primaryKey(),
+  businessId: int("businessId").notNull(),
+  receiptCode: varchar("receiptCode", { length: 30 }).notNull(), // RCP-YYYYMMDD-###
+  shiftId: int("shiftId"), // link to pos_shifts
+  subtotal: bigint("subtotal", { mode: "number" }).notNull(),
+  discountAmount: bigint("discountAmount", { mode: "number" }).notNull().default(0),
+  discountCodeId: int("discountCodeId"), // link to discount_codes (if applied)
+  grandTotal: bigint("grandTotal", { mode: "number" }).notNull(),
+  // Split payment: JSON array of { method, amount }
+  payments: json("payments").$type<Array<{ method: string; amount: number }>>().notNull(),
+  customerPaid: bigint("customerPaid", { mode: "number" }).notNull().default(0),
+  changeAmount: bigint("changeAmount", { mode: "number" }).notNull().default(0),
+  // Refund info
+  isRefunded: boolean("isRefunded").notNull().default(false),
+  refundedAt: timestamp("refundedAt"),
+  refundReason: text("refundReason"),
+  refundAmount: bigint("refundAmount", { mode: "number" }),
+  clientId: int("clientId"),
+  notes: text("notes"),
+  date: varchar("date", { length: 10 }).notNull(), // yyyy-mm-dd
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+});
+
+export type PosReceipt = typeof posReceipts.$inferSelect;
+export type InsertPosReceipt = typeof posReceipts.$inferInsert;
