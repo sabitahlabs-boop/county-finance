@@ -131,6 +131,34 @@ const upload = multer({
 });
 
 export function registerStorageRoutes(app: Express) {
+  // Legacy upload-image endpoint (used by Pengaturan branding, StokProduk, etc.)
+  app.post(
+    "/api/upload-image",
+    upload.single("image"),
+    async (req: Request, res: Response) => {
+      try {
+        const file = req.file;
+        if (!file) {
+          res.status(400).json({ error: "No image provided" });
+          return;
+        }
+
+        const result = await storagePut({
+          data: file.buffer,
+          filename: file.originalname,
+          contentType: file.mimetype,
+          folder: "images",
+          businessId: req.headers["x-business-id"] as string,
+        });
+
+        res.json(result);
+      } catch (error) {
+        console.error("[Storage] Image upload error:", error);
+        res.status(500).json({ error: "Upload failed" });
+      }
+    }
+  );
+
   // Upload file
   app.post(
     "/api/storage/upload",

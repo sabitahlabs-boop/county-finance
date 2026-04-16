@@ -276,11 +276,15 @@ function DashboardLayoutContent({
       return { ...item };
     });
 
-    // Insert POS items into "Transaksi & Penjualan" group
+    // Insert POS items when enabled
     if (posEnabled) {
       items = items.map((item) => {
         if (isGroup(item) && item.label === "Transaksi & Penjualan") {
           return { ...item, children: [...item.children, ...POS_CHILDREN] };
+        }
+        // Also add Laporan Penjualan under Laporan group
+        if (isGroup(item) && item.label === "Laporan") {
+          return { ...item, children: [...item.children, { icon: Receipt, label: "Laporan Penjualan", path: "/laporan-penjualan" }] };
         }
         return item;
       });
@@ -339,7 +343,11 @@ function DashboardLayoutContent({
     return { sidebarItems: items, flatItems: flat };
   }, [appMode, posEnabled, debtEnabled, isAdmin, isTeamMember, memberPermissions]);
 
-  const activeMenuItem = flatItems.find((item) => item.path === location);
+  const locationPath = location.split("?")[0];
+  const activeMenuItem = flatItems.find((item) => {
+    const itemPath = item.path.split("?")[0];
+    return itemPath === locationPath;
+  });
 
   // Tax estimate for sidebar (only for UMKM mode)
   const now = new Date();
@@ -403,8 +411,8 @@ function DashboardLayoutContent({
 
   // ─── Render a single flat menu item ───
   const renderMenuItem = (item: MenuItem) => {
-    const itemPath = item.path.split("?")[0]; // strip query params for matching
-    const isActive = location === itemPath || (item.path.includes("?") && location === itemPath);
+    const itemPath = item.path.split("?")[0];
+    const isActive = locationPath === itemPath;
     return (
       <SidebarMenuItem
         key={item.path}
@@ -442,7 +450,7 @@ function DashboardLayoutContent({
   // ─── Render a collapsible group ───
   const renderGroup = (group: CollapsibleMenuGroup) => {
     const isOpen = openGroups[group.label] ?? false;
-    const hasActiveChild = group.children.some((c) => location === c.path.split("?")[0]);
+    const hasActiveChild = group.children.some((c) => locationPath === c.path.split("?")[0]);
 
     return (
       <Collapsible
@@ -472,7 +480,7 @@ function DashboardLayoutContent({
           <CollapsibleContent>
             <SidebarMenuSub>
               {group.children.map((child) => {
-                const isActive = location === child.path.split("?")[0];
+                const isActive = locationPath === child.path.split("?")[0];
                 return (
                   <SidebarMenuSubItem key={child.path}>
                     <SidebarMenuSubButton

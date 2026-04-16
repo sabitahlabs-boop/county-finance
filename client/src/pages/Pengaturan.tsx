@@ -163,7 +163,10 @@ export default function Pengaturan() {
         <p className="text-sm text-muted-foreground">Kelola profil bisnis, branding, dan konfigurasi pajak</p>
       </div>
 
-      <Tabs defaultValue="mode" className="w-full">
+      <Tabs defaultValue={(() => {
+        const params = new URLSearchParams(window.location.search);
+        return params.get("tab") || "mode";
+      })()} className="w-full">
         <TabsList className="w-full sm:w-auto flex-wrap">
           <TabsTrigger value="mode" className="gap-1.5"><Settings2 className="h-3.5 w-3.5" /> Mode</TabsTrigger>
           <TabsTrigger value="profil" className="gap-1.5"><Building2 className="h-3.5 w-3.5" /> Profil</TabsTrigger>
@@ -174,7 +177,7 @@ export default function Pengaturan() {
           <TabsTrigger value="paket" className="gap-1.5"><Crown className="h-3.5 w-3.5" /> Paket</TabsTrigger>
           <TabsTrigger value="kategori" className="gap-1.5"><Tag className="h-3.5 w-3.5" /> Kategori</TabsTrigger>
           <TabsTrigger value="invoice" className="gap-1.5"><FileSignature className="h-3.5 w-3.5" /> Invoice</TabsTrigger>
-          {business?.plan === "pro_plus" && <TabsTrigger value="tim" className="gap-1.5"><Users2 className="h-3.5 w-3.5" /> Tim</TabsTrigger>}
+          <TabsTrigger value="team" className="gap-1.5"><Users2 className="h-3.5 w-3.5" /> Pegawai</TabsTrigger>
         </TabsList>
 
         {/* ─── Mode ─── */}
@@ -775,12 +778,10 @@ export default function Pengaturan() {
           <InvoiceSettingsTab business={business} updateBiz={updateBiz} />
         </TabsContent>
 
-        {/* ─── Tim (Multi-Account + Role) — Pro+ Only ─── */}
-        {business?.plan === "pro_plus" && (
-          <TabsContent value="tim" className="mt-4">
-            <TeamManagementTab />
-          </TabsContent>
-        )}
+        {/* ─── Pegawai (Team Management) ─── */}
+        <TabsContent value="team" className="mt-4">
+          <TeamManagementTab />
+        </TabsContent>
       </Tabs>
     </div>
   );
