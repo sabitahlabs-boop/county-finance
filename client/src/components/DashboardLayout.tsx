@@ -15,10 +15,14 @@ import {
   SidebarMenu,
   SidebarMenuButton,
   SidebarMenuItem,
+  SidebarMenuSub,
+  SidebarMenuSubItem,
+  SidebarMenuSubButton,
   SidebarProvider,
   SidebarTrigger,
   useSidebar,
 } from "@/components/ui/sidebar";
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { getLoginUrl } from "@/const";
 import { useIsMobile } from "@/hooks/useMobile";
 import {
@@ -38,12 +42,14 @@ import {
   BookOpen,
   History,
   Users,
+  UsersRound,
   HandCoins,
   PiggyBank,
   BarChart3,
   Warehouse,
   Building2,
   ChevronDown,
+  ChevronRight,
   Check,
   HelpCircle,
   Crown,
@@ -70,10 +76,17 @@ type MenuItem = {
   path: string;
 };
 
-type MenuSection = {
-  title: string;
-  items: MenuItem[];
+type CollapsibleMenuGroup = {
+  icon: React.ComponentType<{ className?: string }>;
+  label: string;
+  children: MenuItem[];
 };
+
+type SidebarItem = MenuItem | CollapsibleMenuGroup;
+
+function isGroup(item: SidebarItem): item is CollapsibleMenuGroup {
+  return "children" in item;
+}
 
 const PERSONAL_MENU: MenuItem[] = [
   { icon: LayoutDashboard, label: "Dashboard", path: "/" },
@@ -85,48 +98,52 @@ const PERSONAL_MENU: MenuItem[] = [
   { icon: Settings, label: "Pengaturan", path: "/pengaturan" },
 ];
 
-// UMKM menu — grouped into sections
-const UMKM_SECTIONS: MenuSection[] = [
+// UMKM menu — collapsible groups (Olsera-style)
+const UMKM_SIDEBAR: SidebarItem[] = [
+  { icon: LayoutDashboard, label: "Dashboard", path: "/" },
   {
-    title: "Utama",
-    items: [
-      { icon: LayoutDashboard, label: "Dashboard", path: "/" },
-      { icon: ArrowLeftRight, label: "Transaksi", path: "/transaksi" },
+    icon: ArrowLeftRight,
+    label: "Transaksi & Penjualan",
+    children: [
+      { icon: ArrowLeftRight, label: "Semua Transaksi", path: "/transaksi" },
     ],
   },
   {
-    title: "Bisnis",
-    items: [
+    icon: Package,
+    label: "Produk & Inventori",
+    children: [
       { icon: Package, label: "Stok Produk", path: "/stok" },
       { icon: History, label: "Riwayat Stok", path: "/riwayat-stok" },
       { icon: Warehouse, label: "Gudang", path: "/gudang" },
-      { icon: Users, label: "Client", path: "/client" },
     ],
   },
   {
-    title: "Keuangan",
-    items: [
+    icon: HandCoins,
+    label: "Keuangan",
+    children: [
       { icon: HandCoins, label: "Hutang & Piutang", path: "/hutang-piutang" },
       { icon: PiggyBank, label: "Tagihan & Anggaran", path: "/anggaran" },
       { icon: BarChart3, label: "Analitik", path: "/analitik" },
-      { icon: FileText, label: "Laporan", path: "/laporan" },
       { icon: Calculator, label: "Pajak", path: "/pajak" },
     ],
   },
   {
-    title: "Lainnya",
-    items: [
-      { icon: Settings, label: "Pengaturan", path: "/pengaturan" },
-      { icon: HelpCircle, label: "Panduan", path: "/panduan" },
+    icon: FileText,
+    label: "Laporan",
+    children: [
+      { icon: FileText, label: "Laporan Keuangan", path: "/laporan" },
     ],
   },
+  { icon: Users, label: "Pelanggan", path: "/client" },
+  { icon: UsersRound, label: "Pegawai", path: "/pengaturan?tab=team" },
+  { icon: Settings, label: "Pengaturan", path: "/pengaturan" },
+  { icon: HelpCircle, label: "Panduan", path: "/panduan" },
 ];
 
-const POS_MENU_ITEM: MenuItem = {
-  icon: ShoppingBag,
-  label: "Kasir (POS)",
-  path: "/pos",
-};
+const POS_CHILDREN: MenuItem[] = [
+  { icon: ShoppingBag, label: "Kasir (POS)", path: "/pos" },
+  { icon: Receipt, label: "Laporan Penjualan", path: "/laporan-penjualan" },
+];
 
 const SIDEBAR_WIDTH_KEY = "sidebar-width";
 const DEFAULT_WIDTH = 260;
@@ -236,8 +253,8 @@ function DashboardLayoutContent({
   const isTeamMember = !isOwnBusiness;
   const memberPermissions = isTeamMember ? activePermissions : null;
 
-  // Build grouped menu sections for UMKM, or flat list for Personal
-  const { sections, flatItems } = useMemo(() => {
+  // Build sidebar items — flat for Personal, collapsible groups for UMKM
+  const { sidebarItems, flatItems } = useMemo(() => {
     if (appMode === "personal") {
       let items = [...PERSONAL_MENU];
       if (!debtEnabled)
@@ -250,62 +267,76 @@ function DashboardLayoutContent({
           return !p || memberPermissions[p] === true;
         });
       }
-      return { sections: null, flatItems: items };
+      return { sidebarItems: items as SidebarItem[], flatItems: items };
     }
 
-    // UMKM — build from sections
-    let secs = UMKM_SECTIONS.map((s) => ({ ...s, items: [...s.items] }));
+    // UMKM — build collapsible groups
+    let items: SidebarItem[] = UMKM_SIDEBAR.map((item) => {
+      if (isGroup(item)) return { ...item, children: [...item.children] };
+      return { ...item };
+    });
 
-    // Insert POS after Transaksi in "Utama" section + Laporan Penjualan in Keuangan
+    // Insert POS items into "Transaksi & Penjualan" group
     if (posEnabled) {
-      const utama = secs.find((s) => s.title === "Utama");
-      if (utama) utama.items.push(POS_MENU_ITEM);
-      const keuangan = secs.find((s) => s.title === "Keuangan");
-      if (keuangan) {
-        const laporanIdx = keuangan.items.findIndex((i) => i.path === "/laporan");
-        keuangan.items.splice(laporanIdx + 1, 0, {
-          icon: Receipt,
-          label: "Laporan Penjualan",
-          path: "/laporan-penjualan",
-        });
-      }
+      items = items.map((item) => {
+        if (isGroup(item) && item.label === "Transaksi & Penjualan") {
+          return { ...item, children: [...item.children, ...POS_CHILDREN] };
+        }
+        return item;
+      });
     }
 
     // Remove Hutang & Piutang if disabled
     if (!debtEnabled) {
-      secs = secs.map((s) => ({
-        ...s,
-        items: s.items.filter((i) => i.path !== "/hutang-piutang"),
-      }));
+      items = items.map((item) => {
+        if (isGroup(item)) {
+          return { ...item, children: item.children.filter((c) => c.path !== "/hutang-piutang") };
+        }
+        return item;
+      });
     }
 
-    // Add admin to Lainnya
+    // Add admin item
     if (isAdmin) {
-      const lainnya = secs.find((s) => s.title === "Lainnya");
-      if (lainnya)
-        lainnya.items.push({
-          icon: Shield,
-          label: "Super Admin",
-          path: "/admin",
-        });
+      // Insert before Pengaturan
+      const settingsIdx = items.findIndex((i) => !isGroup(i) && (i as MenuItem).path === "/pengaturan");
+      if (settingsIdx >= 0) {
+        items.splice(settingsIdx, 0, { icon: Shield, label: "Super Admin", path: "/admin" });
+      } else {
+        items.push({ icon: Shield, label: "Super Admin", path: "/admin" });
+      }
     }
 
     // Filter by permissions for team members
     if (isTeamMember && memberPermissions) {
-      secs = secs.map((s) => ({
-        ...s,
-        items: s.items.filter((i) => {
-          const p = PATH_PERMISSION_MAP[i.path];
-          return !p || memberPermissions[p] === true;
-        }),
-      }));
+      items = items.map((item) => {
+        if (isGroup(item)) {
+          return {
+            ...item,
+            children: item.children.filter((c) => {
+              const p = PATH_PERMISSION_MAP[c.path];
+              return !p || memberPermissions[p] === true;
+            }),
+          };
+        }
+        const mi = item as MenuItem;
+        const p = PATH_PERMISSION_MAP[mi.path];
+        if (p && memberPermissions[p] !== true) return null;
+        return item;
+      }).filter(Boolean) as SidebarItem[];
+
+      // Remove empty groups
+      items = items.filter((item) => !isGroup(item) || item.children.length > 0);
     }
 
-    // Remove empty sections
-    secs = secs.filter((s) => s.items.length > 0);
+    // Build flat items for active menu detection
+    const flat: MenuItem[] = [];
+    items.forEach((item) => {
+      if (isGroup(item)) flat.push(...item.children);
+      else flat.push(item as MenuItem);
+    });
 
-    const flat = secs.flatMap((s) => s.items);
-    return { sections: secs, flatItems: flat };
+    return { sidebarItems: items, flatItems: flat };
   }, [appMode, posEnabled, debtEnabled, isAdmin, isTeamMember, memberPermissions]);
 
   const activeMenuItem = flatItems.find((item) => item.path === location);
@@ -354,9 +385,26 @@ function DashboardLayoutContent({
     };
   }, [isResizing, setSidebarWidth]);
 
-  // ─── Render a single menu item ───
+  // Track which collapsible groups are open
+  const [openGroups, setOpenGroups] = useState<Record<string, boolean>>(() => {
+    // Auto-open the group that contains the current path
+    const initial: Record<string, boolean> = {};
+    UMKM_SIDEBAR.forEach((item) => {
+      if (isGroup(item) && item.children.some((c) => c.path === location)) {
+        initial[item.label] = true;
+      }
+    });
+    return initial;
+  });
+
+  const toggleGroup = (label: string) => {
+    setOpenGroups((prev) => ({ ...prev, [label]: !prev[label] }));
+  };
+
+  // ─── Render a single flat menu item ───
   const renderMenuItem = (item: MenuItem) => {
-    const isActive = location === item.path;
+    const itemPath = item.path.split("?")[0]; // strip query params for matching
+    const isActive = location === itemPath || (item.path.includes("?") && location === itemPath);
     return (
       <SidebarMenuItem
         key={item.path}
@@ -388,6 +436,63 @@ function DashboardLayoutContent({
           <span>{item.label}</span>
         </SidebarMenuButton>
       </SidebarMenuItem>
+    );
+  };
+
+  // ─── Render a collapsible group ───
+  const renderGroup = (group: CollapsibleMenuGroup) => {
+    const isOpen = openGroups[group.label] ?? false;
+    const hasActiveChild = group.children.some((c) => location === c.path.split("?")[0]);
+
+    return (
+      <Collapsible
+        key={group.label}
+        open={isOpen || hasActiveChild}
+        onOpenChange={() => toggleGroup(group.label)}
+      >
+        <SidebarMenuItem>
+          <CollapsibleTrigger asChild>
+            <SidebarMenuButton
+              tooltip={group.label}
+              className={`h-9 transition-all font-normal rounded-lg ${
+                hasActiveChild
+                  ? "text-sidebar-foreground font-semibold"
+                  : "text-sidebar-foreground/70 hover:text-sidebar-foreground hover:bg-sidebar-accent/50"
+              }`}
+            >
+              <group.icon className={`h-4 w-4 shrink-0 ${hasActiveChild ? "text-sidebar-primary" : ""}`} />
+              <span className="flex-1">{group.label}</span>
+              <ChevronRight
+                className={`h-3.5 w-3.5 shrink-0 transition-transform duration-200 text-sidebar-foreground/40 ${
+                  (isOpen || hasActiveChild) ? "rotate-90" : ""
+                }`}
+              />
+            </SidebarMenuButton>
+          </CollapsibleTrigger>
+          <CollapsibleContent>
+            <SidebarMenuSub>
+              {group.children.map((child) => {
+                const isActive = location === child.path.split("?")[0];
+                return (
+                  <SidebarMenuSubItem key={child.path}>
+                    <SidebarMenuSubButton
+                      isActive={isActive}
+                      onClick={() => setLocation(child.path)}
+                      className={`transition-all ${
+                        isActive
+                          ? "text-sidebar-primary font-semibold"
+                          : "text-sidebar-foreground/60 hover:text-sidebar-foreground"
+                      }`}
+                    >
+                      <span>{child.label}</span>
+                    </SidebarMenuSubButton>
+                  </SidebarMenuSubItem>
+                );
+              })}
+            </SidebarMenuSub>
+          </CollapsibleContent>
+        </SidebarMenuItem>
+      </Collapsible>
     );
   };
 
@@ -601,26 +706,8 @@ function DashboardLayoutContent({
               data-onboarding="sidebar-menu"
               className="px-2 py-1"
             >
-              {appMode === "personal" || !sections ? (
-                /* Personal mode — flat list */
-                flatItems.map(renderMenuItem)
-              ) : (
-                /* UMKM mode — grouped sections */
-                sections.map((section) => (
-                  <div key={section.title} className="mb-1">
-                    {!isCollapsed && (
-                      <div className="px-3 pt-3 pb-1">
-                        <span className="text-[10px] font-semibold uppercase tracking-widest text-sidebar-foreground/40">
-                          {section.title}
-                        </span>
-                      </div>
-                    )}
-                    {isCollapsed && section.title !== "Utama" && (
-                      <div className="mx-auto my-1.5 w-4 border-t border-sidebar-border/30" />
-                    )}
-                    {section.items.map(renderMenuItem)}
-                  </div>
-                ))
+              {sidebarItems.map((item) =>
+                isGroup(item) ? renderGroup(item) : renderMenuItem(item as MenuItem)
               )}
             </SidebarMenu>
           </SidebarContent>
