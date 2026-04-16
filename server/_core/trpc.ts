@@ -5,9 +5,12 @@
  */
 
 import { initTRPC, TRPCError } from "@trpc/server";
+import superjson from "superjson";
 import type { TrpcContext } from "./context";
 
-const t = initTRPC.context<TrpcContext>().create();
+const t = initTRPC.context<TrpcContext>().create({
+  transformer: superjson,
+});
 
 export const router = t.router;
 export const middleware = t.middleware;
@@ -41,7 +44,7 @@ const hasBusiness = middleware(async ({ ctx, next }) => {
   if (!ctx.user) {
     throw new TRPCError({ code: "UNAUTHORIZED" });
   }
-  if (!ctx.businessId) {
+  if (!ctx.requestedBusinessId) {
     throw new TRPCError({
       code: "BAD_REQUEST",
       message: "Business ID is required. Set x-business-id header.",
@@ -51,7 +54,7 @@ const hasBusiness = middleware(async ({ ctx, next }) => {
     ctx: {
       ...ctx,
       user: ctx.user,
-      businessId: ctx.businessId,
+      requestedBusinessId: ctx.requestedBusinessId,
     },
   });
 });
