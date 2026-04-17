@@ -27,6 +27,7 @@ import {
   posShifts, InsertPosShift, PosShift,
   discountCodes, InsertDiscountCode, DiscountCode,
   posReceipts, InsertPosReceipt, PosReceipt,
+  posReceiptItems, InsertPosReceiptItem, PosReceiptItem,
   suppliers, InsertSupplier, Supplier,
   purchaseOrders, InsertPurchaseOrder, PurchaseOrder,
   purchaseOrderItems, InsertPurchaseOrderItem, PurchaseOrderItem,
@@ -257,6 +258,18 @@ async function runAutoMigration(db: ReturnType<typeof drizzle>) {
     \`notes\` text DEFAULT NULL,
     \`createdAt\` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
     \`updatedAt\` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+  )`);
+
+  await safeExec(`CREATE TABLE IF NOT EXISTS \`pos_receipt_items\` (
+    \`id\` int NOT NULL AUTO_INCREMENT PRIMARY KEY,
+    \`receiptId\` int NOT NULL,
+    \`productId\` int NOT NULL,
+    \`productName\` varchar(255) NOT NULL,
+    \`qty\` int NOT NULL,
+    \`unitPrice\` bigint NOT NULL,
+    \`totalPrice\` bigint NOT NULL,
+    \`hppSnapshot\` bigint NOT NULL DEFAULT 0,
+    \`createdAt\` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP
   )`);
 
   console.log("[Migration] Auto-migration complete.");
@@ -644,12 +657,21 @@ export async function getYearlyOmzet(businessId: number, year: number): Promise<
   const db = await getDb();
   if (!db) return new Array(12).fill(0);
   const monthly = new Array(12).fill(0);
+  // Manual transactions
   const txs = await db.select().from(transactions).where(
     and(eq(transactions.businessId, businessId), eq(transactions.isDeleted, false), eq(transactions.type, "pemasukan"), sql`${transactions.date} LIKE ${year + "%"}`)
   );
   for (const tx of txs) {
     const m = parseInt(tx.date.substring(5, 7), 10) - 1;
     if (m >= 0 && m < 12) monthly[m] += tx.amount;
+  }
+  // POS revenue (standalone)
+  const posRecs = await db.select().from(posReceipts).where(
+    and(eq(posReceipts.businessId, businessId), eq(posReceipts.isRefunded, false), sql`${posReceipts.date} LIKE ${year + "%"}`)
+  );
+  for (const r of posRecs) {
+    const m = parseInt(r.date.substring(5, 7), 10) - 1;
+    if (m >= 0 && m < 12) monthly[m] += r.grandTotal;
   }
   return monthly;
 }
@@ -719,26 +741,19 @@ export async function generateLabaRugi(businessId: number, month: number, year: 
   const bulanNames = ["Januari","Februari","Maret","April","Mei","Juni","Juli","Agustus","September","Oktober","November","Desember"];
   const period = `${bulanNames[month - 1]} ${year}`;
 
-  // Pendapatan: include "Penjualan POS" as part of Penjualan Produk
-  const penjualan = (summary.byCategory["Penjualan Produk"] || 0) + (summary.byCategory["Penjualan POS"] || 0);
+  // POS revenue comes from pos_receipts (standalone, NOT in transactions)
+  const posData = await getPosRevenueForPeriod(businessId, month, year);
+
+  // Pendapatan: manual "Penjualan Produk" from transactions + POS revenue from pos_receipts
+  const penjualanManual = summary.byCategory["Penjualan Produk"] || 0;
+  const penjualan = penjualanManual + posData.revenue;
   const jasa = summary.byCategory["Penjualan Jasa"] || 0;
   const pendapatanLain = summary.byCategory["Pendapatan Lain-lain"] || 0;
   const totalPendapatan = penjualan + jasa + pendapatanLain;
 
-  // HPP: combine "Pembelian Stok" expenses + actual HPP from POS sales (productHppSnapshot × qty)
+  // HPP: "Pembelian Stok" from transactions + HPP from POS receipt items
   const pembelianStok = summary.byCategory["Pembelian Stok"] || 0;
-  const db = await getDb();
-  const periodStr = `${year}-${String(month).padStart(2, "0")}`;
-  let hppFromPOS = 0;
-  if (db) {
-    const posTxs = await db.select().from(transactions).where(
-      and(eq(transactions.businessId, businessId), eq(transactions.isDeleted, false), eq(transactions.category, "Penjualan POS"), sql`${transactions.date} LIKE ${periodStr + "%"}`)
-    );
-    for (const tx of posTxs) {
-      hppFromPOS += (tx.productHppSnapshot ?? 0) * (tx.productQty ?? 0);
-    }
-  }
-  const hpp = pembelianStok + hppFromPOS;
+  const hpp = pembelianStok + posData.hpp;
 
   const operasional = summary.byCategory["Operasional"] || 0;
   const gaji = summary.byCategory["Gaji"] || 0;
@@ -769,24 +784,32 @@ export async function generateArusKas(businessId: number, month: number, year: n
     and(eq(transactions.businessId, businessId), eq(transactions.isDeleted, false), sql`${transactions.date} LIKE ${periodStr + "%"}`)
   ) : [];
 
-  // Group both kas masuk and kas keluar by CATEGORY (standard accounting)
-  // Map POS categories to standard accounting names
-  const categoryMap: Record<string, string> = {
-    "Penjualan POS": "Penjualan Produk",
-  };
+  // Group by category (standard accounting) — transactions only (no POS)
   const kasMasuk: Record<string, number> & { total: number } = { total: 0 } as any;
   const kasKeluar: Record<string, number> & { total: number } = { total: 0 } as any;
   for (const tx of txs) {
     if (tx.type === "pemasukan") {
-      const cat = categoryMap[tx.category] || tx.category || "Pendapatan Lainnya";
+      const cat = tx.category || "Pendapatan Lainnya";
       kasMasuk[cat] = (kasMasuk[cat] || 0) + tx.amount;
       kasMasuk.total += tx.amount;
     } else {
-      const cat = categoryMap[tx.category] || tx.category || "Pengeluaran Lainnya";
+      const cat = tx.category || "Pengeluaran Lainnya";
       kasKeluar[cat] = (kasKeluar[cat] || 0) + tx.amount;
       kasKeluar.total += tx.amount;
     }
   }
+
+  // Add POS revenue from pos_receipts (standalone)
+  const posData = await getPosRevenueForPeriod(businessId, month, year);
+  if (posData.revenue > 0) {
+    kasMasuk["Penjualan POS"] = posData.revenue;
+    kasMasuk.total += posData.revenue;
+  }
+  if (posData.refunds > 0) {
+    kasKeluar["Refund POS"] = posData.refunds;
+    kasKeluar.total += posData.refunds;
+  }
+
   return { period, kasMasuk, kasKeluar, netKas: kasMasuk.total - kasKeluar.total };
 }
 
@@ -797,7 +820,7 @@ export async function generateNeraca(businessId: number, month: number, year: nu
   const period = `${bulanNames[month - 1]} ${year}`;
   const periodStr = `${year}-${String(month).padStart(2, "0")}`;
 
-  // Kas: total pemasukan - total pengeluaran s/d periode ini
+  // Kas: total pemasukan - total pengeluaran s/d periode ini (transactions + POS)
   const allTxs = db ? await db.select().from(transactions).where(
     and(eq(transactions.businessId, businessId), eq(transactions.isDeleted, false), sql`${transactions.date} <= ${periodStr}-31`)
   ) : [];
@@ -805,6 +828,14 @@ export async function generateNeraca(businessId: number, month: number, year: nu
   for (const tx of allTxs) {
     if (tx.type === "pemasukan") totalPemasukan += tx.amount;
     else totalPengeluaran += tx.amount;
+  }
+  // Add POS revenue from pos_receipts (standalone)
+  const allPosReceipts = db ? await db.select().from(posReceipts).where(
+    and(eq(posReceipts.businessId, businessId), sql`${posReceipts.date} <= ${periodStr}-31`)
+  ) : [];
+  for (const r of allPosReceipts) {
+    if (r.isRefunded) totalPengeluaran += r.grandTotal;
+    else totalPemasukan += r.grandTotal;
   }
   const kas = totalPemasukan - totalPengeluaran;
 
@@ -1018,17 +1049,20 @@ export async function getDashboardKPIs(businessId: number): Promise<DashboardKPI
   const lastYear = month === 1 ? year - 1 : year;
   const current = await getTransactionSummary(businessId, month, year);
   const prev = await getTransactionSummary(businessId, lastMonth, lastYear);
+  // Include POS revenue (standalone, not in transactions)
+  const posNow = await getPosRevenueForPeriod(businessId, month, year);
+  const posPrev = await getPosRevenueForPeriod(businessId, lastMonth, lastYear);
   const taxes = await calcTaxForMonth(businessId, month, year);
   const estimasiPajak = taxes.reduce((sum, t) => sum + t.amount, 0);
   const lowStock = await getLowStockProducts(businessId);
   return {
-    omzetBulanIni: current.totalPemasukan,
-    totalPengeluaran: current.totalPengeluaran,
-    labaBersih: current.labaBersih,
+    omzetBulanIni: current.totalPemasukan + posNow.revenue,
+    totalPengeluaran: current.totalPengeluaran + posNow.refunds,
+    labaBersih: (current.totalPemasukan + posNow.revenue) - (current.totalPengeluaran + posNow.refunds),
     estimasiPajak,
-    omzetLastMonth: prev.totalPemasukan,
-    pengeluaranLastMonth: prev.totalPengeluaran,
-    labaLastMonth: prev.labaBersih,
+    omzetLastMonth: prev.totalPemasukan + posPrev.revenue,
+    pengeluaranLastMonth: prev.totalPengeluaran + posPrev.refunds,
+    labaLastMonth: (prev.totalPemasukan + posPrev.revenue) - (prev.totalPengeluaran + posPrev.refunds),
     txCountThisMonth: current.txCount,
     lowStockCount: lowStock.length,
   };
@@ -2360,6 +2394,50 @@ export async function createPosReceipt(data: InsertPosReceipt): Promise<number> 
   return result.id;
 }
 
+export async function createPosReceiptItems(items: InsertPosReceiptItem[]): Promise<void> {
+  const db = await getDb();
+  if (!db || items.length === 0) return;
+  await db.insert(posReceiptItems).values(items);
+}
+
+export async function getPosReceiptItemsByReceipt(receiptId: number): Promise<PosReceiptItem[]> {
+  const db = await getDb();
+  if (!db) return [];
+  return db.select().from(posReceiptItems).where(eq(posReceiptItems.receiptId, receiptId));
+}
+
+// Get POS revenue + HPP for financial reports (replaces transaction-based calculation)
+export async function getPosRevenueForPeriod(businessId: number, month: number, year: number) {
+  const db = await getDb();
+  if (!db) return { revenue: 0, hpp: 0, refunds: 0 };
+  const periodStr = `${year}-${String(month).padStart(2, "0")}`;
+
+  // Get all non-refunded receipts for this period
+  const receipts = await db.select().from(posReceipts).where(
+    and(eq(posReceipts.businessId, businessId), sql`${posReceipts.date} LIKE ${periodStr + "%"}`)
+  );
+
+  let revenue = 0, refunds = 0;
+  const receiptIds: number[] = [];
+  for (const r of receipts) {
+    if (r.isRefunded) { refunds += r.grandTotal; }
+    else { revenue += r.grandTotal; receiptIds.push(r.id); }
+  }
+
+  // Get HPP from receipt items
+  let hpp = 0;
+  if (receiptIds.length > 0) {
+    const items = await db.select().from(posReceiptItems).where(
+      sql`${posReceiptItems.receiptId} IN (${sql.join(receiptIds.map(id => sql`${id}`), sql`, `)})`
+    );
+    for (const item of items) {
+      hpp += (item.hppSnapshot ?? 0) * item.qty;
+    }
+  }
+
+  return { revenue, hpp, refunds };
+}
+
 export async function getPosReceiptsByBusiness(businessId: number, limit = 50): Promise<PosReceipt[]> {
   const db = await getDb();
   if (!db) return [];
@@ -2414,36 +2492,20 @@ export async function getDailySalesReport(businessId: number, date: string) {
 
   const netSales = totalSales - totalRefunds;
 
-  // Also get individual transactions for product-level breakdown
-  const txs = await db.select().from(transactions)
-    .where(and(
-      eq(transactions.businessId, businessId),
-      eq(transactions.date, date),
-      eq(transactions.isDeleted, false),
-      eq(transactions.category, "Penjualan POS"),
-    ))
-    .orderBy(desc(transactions.createdAt));
-
-  // Product-level aggregation
+  // Product-level breakdown from pos_receipt_items (not transactions)
+  const receiptIds = receipts.filter(r => !r.isRefunded).map(r => r.id);
   const byProduct: Record<number, { name: string; qty: number; revenue: number; hpp: number }> = {};
-  for (const tx of txs) {
-    if (tx.productId) {
-      if (!byProduct[tx.productId]) {
-        byProduct[tx.productId] = { name: tx.description?.replace(/^POS .+? /, "") || `Produk #${tx.productId}`, qty: 0, revenue: 0, hpp: 0 };
+  if (receiptIds.length > 0) {
+    const items = await db.select().from(posReceiptItems).where(
+      sql`${posReceiptItems.receiptId} IN (${sql.join(receiptIds.map(id => sql`${id}`), sql`, `)})`
+    );
+    for (const item of items) {
+      if (!byProduct[item.productId]) {
+        byProduct[item.productId] = { name: item.productName, qty: 0, revenue: 0, hpp: 0 };
       }
-      byProduct[tx.productId].qty += tx.productQty ?? 0;
-      byProduct[tx.productId].revenue += tx.amount;
-      byProduct[tx.productId].hpp += (tx.productHppSnapshot ?? 0) * (tx.productQty ?? 0);
-    }
-  }
-
-  // Get product names
-  const productIds = Object.keys(byProduct).map(Number);
-  if (productIds.length > 0) {
-    const prods = await db.select({ id: products.id, name: products.name }).from(products)
-      .where(sql`${products.id} IN (${sql.join(productIds.map(id => sql`${id}`), sql`, `)})`);
-    for (const p of prods) {
-      if (byProduct[p.id]) byProduct[p.id].name = p.name;
+      byProduct[item.productId].qty += item.qty;
+      byProduct[item.productId].revenue += item.totalPrice;
+      byProduct[item.productId].hpp += (item.hppSnapshot ?? 0) * item.qty;
     }
   }
 
@@ -2485,25 +2547,19 @@ export async function getPeriodSalesReport(businessId: number, startDate: string
 
   const netSales = totalSales - totalRefunds;
 
-  // Product breakdown
-  const txs = await db.select().from(transactions)
-    .where(and(eq(transactions.businessId, businessId), sql`${transactions.date} >= ${startDate}`, sql`${transactions.date} <= ${endDate}`, eq(transactions.isDeleted, false), eq(transactions.category, "Penjualan POS")))
-    .orderBy(desc(transactions.createdAt));
-
+  // Product breakdown from pos_receipt_items (not transactions)
+  const receiptIds = receipts.filter(r => !r.isRefunded).map(r => r.id);
   const byProduct: Record<number, { name: string; qty: number; revenue: number; hpp: number }> = {};
-  for (const tx of txs) {
-    if (tx.productId) {
-      if (!byProduct[tx.productId]) byProduct[tx.productId] = { name: `Produk #${tx.productId}`, qty: 0, revenue: 0, hpp: 0 };
-      byProduct[tx.productId].qty += tx.productQty ?? 0;
-      byProduct[tx.productId].revenue += tx.amount;
-      byProduct[tx.productId].hpp += (tx.productHppSnapshot ?? 0) * (tx.productQty ?? 0);
+  if (receiptIds.length > 0) {
+    const items = await db.select().from(posReceiptItems).where(
+      sql`${posReceiptItems.receiptId} IN (${sql.join(receiptIds.map(id => sql`${id}`), sql`, `)})`
+    );
+    for (const item of items) {
+      if (!byProduct[item.productId]) byProduct[item.productId] = { name: item.productName, qty: 0, revenue: 0, hpp: 0 };
+      byProduct[item.productId].qty += item.qty;
+      byProduct[item.productId].revenue += item.totalPrice;
+      byProduct[item.productId].hpp += (item.hppSnapshot ?? 0) * item.qty;
     }
-  }
-  const productIds = Object.keys(byProduct).map(Number);
-  if (productIds.length > 0) {
-    const prods = await db.select({ id: products.id, name: products.name }).from(products)
-      .where(sql`${products.id} IN (${sql.join(productIds.map(id => sql`${id}`), sql`, `)})`);
-    for (const p of prods) { if (byProduct[p.id]) byProduct[p.id].name = p.name; }
   }
 
   return { startDate, endDate, receipts, totalSales, totalDiscount, totalRefunds, netSales, totalTransactions, byPaymentMethod, byDate, byProduct: Object.values(byProduct).sort((a, b) => b.revenue - a.revenue) };
@@ -2598,7 +2654,7 @@ export async function seedDummyData(businessId: number): Promise<{ success: bool
 
   // ─── 4. Transactions (3 months of data) ───
   const categories = {
-    income: ["Penjualan Langsung", "Penjualan Online", "Penjualan Grosir", "Penjualan POS"],
+    income: ["Penjualan Langsung", "Penjualan Online", "Penjualan Grosir", "Penjualan Produk"],
     expense: ["Bahan Baku", "Operasional", "Gaji Karyawan", "Sewa", "Utilitas", "Marketing", "Packaging", "Pengiriman"],
   };
   const payMethods = ["Tunai", "Transfer/QRIS", "Transfer/QRIS", "Transfer/QRIS"]; // weighted towards transfer

@@ -543,6 +543,22 @@ export const posReceipts = mysqlTable("pos_receipts", {
 export type PosReceipt = typeof posReceipts.$inferSelect;
 export type InsertPosReceipt = typeof posReceipts.$inferInsert;
 
+// ─── POS Receipt Items (Item-level detail for each receipt) ───
+export const posReceiptItems = mysqlTable("pos_receipt_items", {
+  id: int("id").autoincrement().primaryKey(),
+  receiptId: int("receiptId").notNull(), // FK → pos_receipts.id
+  productId: int("productId").notNull(),
+  productName: varchar("productName", { length: 255 }).notNull(),
+  qty: int("qty").notNull(),
+  unitPrice: bigint("unitPrice", { mode: "number" }).notNull(), // selling price per unit
+  totalPrice: bigint("totalPrice", { mode: "number" }).notNull(), // qty × unitPrice
+  hppSnapshot: bigint("hppSnapshot", { mode: "number" }).notNull().default(0), // HPP per unit at time of sale
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+});
+
+export type PosReceiptItem = typeof posReceiptItems.$inferSelect;
+export type InsertPosReceiptItem = typeof posReceiptItems.$inferInsert;
+
 // ─── Suppliers (Vendor Tracking) ───
 export const suppliers = mysqlTable("suppliers", {
   id: int("id").autoincrement().primaryKey(),

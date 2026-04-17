@@ -46,7 +46,7 @@ import {
   updateBusinessDebtEnabled, updateBusinessPersonalSetupDone,
   createPosShift, getOpenShift, closePosShift, getShiftsByBusiness, getPosShiftById,
   createDiscountCode, getDiscountCodesByBusiness, validateDiscountCode, incrementDiscountUsage, updateDiscountCode, deleteDiscountCode,
-  generateReceiptCode, createPosReceipt, getPosReceiptsByBusiness, getPosReceiptById, refundPosReceipt,
+  generateReceiptCode, createPosReceipt, createPosReceiptItems, getPosReceiptsByBusiness, getPosReceiptById, refundPosReceipt,
   getDailySalesReport, getPeriodSalesReport,
   seedDummyData, clearBusinessData,
   generateNeraca, generatePerubahanModal, generateCALK,
@@ -1937,10 +1937,12 @@ Penting: Kembalikan HANYA JSON valid, tidak ada teks penjelasan.`,
       clientId: z.number().optional(),
       notes: z.string().optional(),
       date: z.string().optional(), // Allow past dates for makeup entries
-      // Cart items to create individual transactions for
+      // Cart items for receipt + stock reduction
       items: z.array(z.object({
         productId: z.number(),
+        productName: z.string().default(""),
         productQty: z.number(),
+        unitPrice: z.number().default(0),
         amount: z.number(),
         hppSnapshot: z.number().optional(),
         warehouseId: z.number().optional(),
@@ -1971,31 +1973,25 @@ Penting: Kembalikan HANYA JSON valid, tidak ada teks penjelasan.`,
         date: saleDate,
       });
 
+      // Save receipt items for product-level tracking + HPP
+      await createPosReceiptItems(input.items.map(item => ({
+        receiptId,
+        productId: item.productId,
+        productName: item.productName || `Produk #${item.productId}`,
+        qty: item.productQty,
+        unitPrice: item.unitPrice || Math.round(item.amount / Math.max(1, item.productQty)),
+        totalPrice: item.amount,
+        hppSnapshot: item.hppSnapshot ?? 0,
+      })));
+
       // Increment discount usage if applicable
       if (input.discountCodeId) {
         await incrementDiscountUsage(input.discountCodeId);
       }
 
-      // Create individual transactions for each cart item + reduce stock
-      const primaryMethod = input.payments[0]?.method ?? "Tunai";
+      // POS is standalone — NO transactions created. Revenue tracked via pos_receipts only.
+      // Only reduce stock for each cart item.
       for (const item of input.items) {
-        const txCode = await generateTxCode(bizId);
-        await createTransaction({
-          businessId: bizId,
-          txCode,
-          date: saleDate,
-          type: "pemasukan",
-          category: "Penjualan POS",
-          description: `POS ${receiptCode}`,
-          amount: item.amount,
-          paymentMethod: primaryMethod,
-          productId: item.productId,
-          productQty: item.productQty,
-          productHppSnapshot: item.hppSnapshot ?? null,
-          receiptId,
-          shiftId: input.shiftId ?? null,
-        });
-
         // ─── Reduce stock from warehouse ───
         if (item.warehouseId && item.productQty > 0) {
           const ws = await getOrCreateWarehouseStock(item.warehouseId, item.productId);
@@ -2039,21 +2035,7 @@ Penting: Kembalikan HANYA JSON valid, tidak ada teks penjelasan.`,
       const receipt = await refundPosReceipt(input.receiptId, input.reason);
       if (!receipt) throw new TRPCError({ code: "NOT_FOUND", message: "Struk tidak ditemukan atau sudah di-refund" });
 
-      // Create a refund transaction
-      const txCode = await generateTxCode(resolved.business.id);
-      await createTransaction({
-        businessId: resolved.business.id,
-        txCode,
-        date: new Date().toISOString().slice(0, 10),
-        type: "pengeluaran",
-        category: "Refund POS",
-        description: `Refund ${receipt.receiptCode}: ${input.reason}`,
-        amount: receipt.grandTotal,
-        paymentMethod: receipt.payments[0]?.method ?? "Tunai",
-        receiptId: receipt.id,
-        shiftId: receipt.shiftId ?? null,
-      });
-
+      // POS refund tracked in pos_receipts (isRefunded) — no transaction created
       return { success: true, refundAmount: receipt.grandTotal };
     }),
   }),

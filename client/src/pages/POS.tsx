@@ -11,7 +11,7 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import {
   ShoppingCart, Search, Plus, Minus, Trash2, CreditCard, Banknote,
   QrCode, Receipt, CheckCircle2, Package, X, Loader2, Printer, Warehouse,
-  SplitSquareHorizontal, Tag, Percent, Wallet, CalendarDays,
+  SplitSquareHorizontal, Tag, Percent, Wallet, CalendarDays, UserPlus, Users, Phone, User,
 } from "lucide-react";
 import { formatRupiah } from "../../../shared/finance";
 import { getProxiedImageUrl } from "@/lib/utils";
@@ -52,6 +52,14 @@ export default function POS() {
   const [saleDate, setSaleDate] = useState(() => new Date().toISOString().slice(0, 10));
   const [selectedWarehouseId, setSelectedWarehouseId] = useState<number | null>(null);
 
+  // Customer state — must select/create customer before checkout
+  const [selectedClientId, setSelectedClientId] = useState<number | null>(null);
+  const [selectedClientName, setSelectedClientName] = useState("");
+  const [customerSearchQuery, setCustomerSearchQuery] = useState("");
+  const [showNewCustomerForm, setShowNewCustomerForm] = useState(false);
+  const [newCustomerName, setNewCustomerName] = useState("");
+  const [newCustomerPhone, setNewCustomerPhone] = useState("");
+
   // Split payment state
   const [splitMode, setSplitMode] = useState(false);
   const [payments, setPayments] = useState<SplitPayment[]>([{ method: "Tunai", amount: 0 }]);
@@ -88,13 +96,37 @@ export default function POS() {
     { enabled: !!selectedWarehouseId }
   );
 
+  // Client data for customer selection
+  const { data: clients = [] } = trpc.clientMgmt.list.useQuery();
+  const createClient = trpc.clientMgmt.create.useMutation({
+    onSuccess: (data) => {
+      utils.clientMgmt.list.invalidate();
+      setSelectedClientId(data.id);
+      setSelectedClientName(newCustomerName);
+      setShowNewCustomerForm(false);
+      setNewCustomerName("");
+      setNewCustomerPhone("");
+      toast.success("Customer baru berhasil dicatat!");
+    },
+    onError: (err) => toast.error(err.message),
+  });
+
+  // Filter clients by search
+  const filteredClients = useMemo(() => {
+    if (!customerSearchQuery.trim()) return clients;
+    const q = customerSearchQuery.toLowerCase();
+    return clients.filter((c: any) =>
+      c.name?.toLowerCase().includes(q) || c.phone?.includes(q)
+    );
+  }, [clients, customerSearchQuery]);
+
   // POS Receipt mutation (new — supports split payment + discount)
   const createReceipt = trpc.posReceipt.create.useMutation({
     onSuccess: (data) => {
-      utils.transaction.list.invalidate();
       utils.report.dashboard.invalidate();
       utils.product.list.invalidate();
       utils.warehouse.stock.invalidate();
+      utils.posReceipt.list.invalidate();
       setLastReceiptCode(data.receiptCode);
       setLastCart([...cart]);
       setLastTotal(grandTotal);
@@ -135,6 +167,10 @@ export default function POS() {
     setPayments([{ method: "Tunai", amount: 0 }]);
     setAppliedDiscount(null);
     setDiscountCode("");
+    setSelectedClientId(null);
+    setSelectedClientName("");
+    setCustomerSearchQuery("");
+    setShowNewCustomerForm(false);
   };
 
   // ─── Product filtering ───
@@ -278,6 +314,7 @@ export default function POS() {
   // ─── Checkout ───
   const handleCheckout = () => {
     if (cart.length === 0) { toast.error("Keranjang kosong"); return; }
+    if (!selectedClientId) { toast.error("Pilih customer terlebih dahulu"); return; }
 
     const finalPayments = (splitMode
       ? payments.filter(p => p.amount > 0)
@@ -311,11 +348,14 @@ export default function POS() {
       payments: finalPayments,
       customerPaid: splitMode ? finalPayments.reduce((s, p) => s + p.amount, 0) : (parseInt(customerPaid) || grandTotal),
       changeAmount: change,
+      clientId: selectedClientId ?? undefined,
       notes: notes || undefined,
       date: saleDate,
       items: cart.map(item => ({
         productId: item.productId,
+        productName: item.name,
         productQty: item.qty,
+        unitPrice: item.price,
         amount: item.price * item.qty,
         hppSnapshot: item.hpp,
         warehouseId: selectedWarehouseId ?? undefined,
@@ -529,6 +569,62 @@ export default function POS() {
           </DialogHeader>
 
           <div className="space-y-4">
+            {/* Customer Selection — REQUIRED before checkout */}
+            <div className="space-y-2">
+              <label className="text-xs font-medium text-muted-foreground flex items-center gap-1.5">
+                <Users className="h-3 w-3" /> Customer <span className="text-red-400">*</span>
+              </label>
+              {selectedClientId ? (
+                <div className="flex items-center justify-between rounded-lg bg-primary/10 border border-primary/20 px-3 py-2">
+                  <div className="flex items-center gap-2">
+                    <User className="h-4 w-4 text-primary" />
+                    <span className="font-medium text-sm">{selectedClientName}</span>
+                  </div>
+                  <Button variant="ghost" size="sm" className="h-7 text-xs" onClick={() => { setSelectedClientId(null); setSelectedClientName(""); setCustomerSearchQuery(""); }}>
+                    Ganti
+                  </Button>
+                </div>
+              ) : showNewCustomerForm ? (
+                <div className="rounded-lg border p-3 space-y-2 bg-muted/20">
+                  <p className="text-xs font-medium flex items-center gap-1.5"><UserPlus className="h-3 w-3" /> Customer Baru</p>
+                  <Input placeholder="Nama customer *" value={newCustomerName} onChange={(e) => setNewCustomerName(e.target.value)} className="h-8 text-sm" />
+                  <Input placeholder="No. WhatsApp / HP" value={newCustomerPhone} onChange={(e) => setNewCustomerPhone(e.target.value)} className="h-8 text-sm" />
+                  <div className="flex gap-2">
+                    <Button variant="outline" size="sm" className="text-xs h-7" onClick={() => setShowNewCustomerForm(false)}>Batal</Button>
+                    <Button size="sm" className="text-xs h-7" disabled={!newCustomerName.trim() || createClient.isPending} onClick={() => createClient.mutate({ name: newCustomerName.trim(), phone: newCustomerPhone.trim() || undefined })}>
+                      {createClient.isPending ? <Loader2 className="h-3 w-3 animate-spin mr-1" /> : <UserPlus className="h-3 w-3 mr-1" />} Simpan
+                    </Button>
+                  </div>
+                </div>
+              ) : (
+                <div className="space-y-2">
+                  <div className="relative">
+                    <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
+                    <Input placeholder="Cari nama / no. WA..." value={customerSearchQuery} onChange={(e) => setCustomerSearchQuery(e.target.value)} className="pl-8 h-8 text-sm" />
+                  </div>
+                  <ScrollArea className="max-h-32">
+                    <div className="space-y-1">
+                      {filteredClients.slice(0, 8).map((c: any) => (
+                        <div key={c.id} className="flex items-center justify-between px-2.5 py-1.5 rounded-md hover:bg-muted/50 cursor-pointer text-sm transition-colors" onClick={() => { setSelectedClientId(c.id); setSelectedClientName(c.name); }}>
+                          <div className="flex items-center gap-2">
+                            <User className="h-3.5 w-3.5 text-muted-foreground" />
+                            <span>{c.name}</span>
+                          </div>
+                          {c.phone && <span className="text-xs text-muted-foreground flex items-center gap-1"><Phone className="h-3 w-3" />{c.phone}</span>}
+                        </div>
+                      ))}
+                      {filteredClients.length === 0 && customerSearchQuery && (
+                        <p className="text-xs text-muted-foreground text-center py-2">Tidak ditemukan</p>
+                      )}
+                    </div>
+                  </ScrollArea>
+                  <Button variant="outline" size="sm" className="w-full text-xs h-7" onClick={() => setShowNewCustomerForm(true)}>
+                    <UserPlus className="h-3 w-3 mr-1.5" /> Customer Baru
+                  </Button>
+                </div>
+              )}
+            </div>
+
             {/* Order Summary */}
             <div className="rounded-lg bg-muted/30 p-4 space-y-2">
               {cart.map(item => (
