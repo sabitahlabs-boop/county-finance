@@ -29,7 +29,7 @@ import {
   posReceipts, InsertPosReceipt, PosReceipt,
 } from "../drizzle/schema";
 import { ENV } from './_core/env';
-import type { TaxCalcResult, DashboardKPIs, LabaRugiReport, ArusKasReport } from "../shared/finance";
+import type { TaxCalcResult, DashboardKPIs, LabaRugiReport, ArusKasReport, NeracaReport, PerubahanModalReport, CALKReport } from "../shared/finance";
 
 let _db: ReturnType<typeof drizzle> | null = null;
 
@@ -525,6 +525,226 @@ export async function generateArusKas(businessId: number, month: number, year: n
     }
   }
   return { period, kasMasuk, kasKeluar, netKas: kasMasuk.total - kasKeluar.total };
+}
+
+// ─── Laporan Neraca (Posisi Keuangan) ───
+export async function generateNeraca(businessId: number, month: number, year: number): Promise<NeracaReport> {
+  const db = await getDb();
+  const bulanNames = ["Januari","Februari","Maret","April","Mei","Juni","Juli","Agustus","September","Oktober","November","Desember"];
+  const period = `${bulanNames[month - 1]} ${year}`;
+  const periodStr = `${year}-${String(month).padStart(2, "0")}`;
+
+  // Kas: total pemasukan - total pengeluaran s/d periode ini
+  const allTxs = db ? await db.select().from(transactions).where(
+    and(eq(transactions.businessId, businessId), eq(transactions.isDeleted, false), sql`${transactions.date} <= ${periodStr}-31`)
+  ) : [];
+  let totalPemasukan = 0, totalPengeluaran = 0;
+  for (const tx of allTxs) {
+    if (tx.type === "pemasukan") totalPemasukan += tx.amount;
+    else totalPengeluaran += tx.amount;
+  }
+  const kas = totalPemasukan - totalPengeluaran;
+
+  // Piutang: semua piutang aktif (belum lunas)
+  const allDebts = db ? await db.select().from(debts).where(
+    and(eq(debts.businessId, businessId), eq(debts.type, "piutang"), sql`${debts.status} != 'lunas'`)
+  ) : [];
+  const piutang = allDebts.reduce((s, d) => s + d.remainingAmount, 0);
+
+  // Hutang usaha
+  const allHutang = db ? await db.select().from(debts).where(
+    and(eq(debts.businessId, businessId), eq(debts.type, "hutang"), sql`${debts.status} != 'lunas'`)
+  ) : [];
+  const hutangUsaha = allHutang.reduce((s, d) => s + d.remainingAmount, 0);
+
+  // Persediaan: total stok * HPP
+  const allProducts = db ? await db.select().from(products).where(
+    and(eq(products.businessId, businessId), eq(products.isActive, true))
+  ) : [];
+  const persediaan = allProducts.reduce((s, p) => s + ((p.stockCurrent ?? 0) * (p.hpp ?? 0)), 0);
+
+  const totalAsetLancar = Math.max(0, kas) + piutang + persediaan;
+  const asetTetap = 0; // No fixed asset tracking yet
+  const totalAset = totalAsetLancar + asetTetap;
+  const totalKewajiban = hutangUsaha;
+
+  // Laba periode berjalan
+  const labaRugi = await generateLabaRugi(businessId, month, year);
+  const labaPeriode = labaRugi.labaBersih;
+
+  // Modal = Aset - Kewajiban (accounting equation)
+  const totalEkuitas = totalAset - totalKewajiban;
+  const modalAwal = totalEkuitas - labaPeriode;
+
+  return {
+    period,
+    aset: { kas: Math.max(0, kas), piutang, persediaan, totalAsetLancar, asetTetap, totalAset },
+    kewajiban: { hutangUsaha, hutangLain: 0, totalKewajiban },
+    ekuitas: { modalAwal, labaPeriode, prive: 0, totalEkuitas },
+    balance: Math.abs(totalAset - (totalKewajiban + totalEkuitas)) < 1,
+  };
+}
+
+// ─── Laporan Perubahan Modal ───
+export async function generatePerubahanModal(businessId: number, month: number, year: number): Promise<PerubahanModalReport> {
+  const bulanNames = ["Januari","Februari","Maret","April","Mei","Juni","Juli","Agustus","September","Oktober","November","Desember"];
+  const period = `${bulanNames[month - 1]} ${year}`;
+
+  // Calculate laba bersih this period
+  const labaRugi = await generateLabaRugi(businessId, month, year);
+  const labaBersih = labaRugi.labaBersih;
+
+  // Calculate cumulative kas up to last month
+  const db = await getDb();
+  const lastMonth = month === 1 ? 12 : month - 1;
+  const lastYear = month === 1 ? year - 1 : year;
+  const lastPeriodStr = `${lastYear}-${String(lastMonth).padStart(2, "0")}`;
+
+  const prevTxs = db ? await db.select().from(transactions).where(
+    and(eq(transactions.businessId, businessId), eq(transactions.isDeleted, false), sql`${transactions.date} <= ${lastPeriodStr}-31`)
+  ) : [];
+  let prevIn = 0, prevOut = 0;
+  for (const tx of prevTxs) {
+    if (tx.type === "pemasukan") prevIn += tx.amount;
+    else prevOut += tx.amount;
+  }
+  const modalAwal = prevIn - prevOut;
+
+  // Penambahan modal: any pemasukan categorized as "Modal" or "Investasi"
+  const periodStr = `${year}-${String(month).padStart(2, "0")}`;
+  const currentTxs = db ? await db.select().from(transactions).where(
+    and(eq(transactions.businessId, businessId), eq(transactions.isDeleted, false), sql`${transactions.date} LIKE ${periodStr + "%"}`)
+  ) : [];
+  const penambahanModal = currentTxs
+    .filter(tx => tx.type === "pemasukan" && (tx.category === "Modal" || tx.category === "Investasi"))
+    .reduce((s, tx) => s + tx.amount, 0);
+  const prive = currentTxs
+    .filter(tx => tx.type === "pengeluaran" && (tx.category === "Prive" || tx.category === "Pengambilan Pribadi"))
+    .reduce((s, tx) => s + tx.amount, 0);
+
+  const modalAkhir = modalAwal + penambahanModal + labaBersih - prive;
+
+  return { period, modalAwal, penambahanModal, labaBersih, prive, modalAkhir };
+}
+
+// ─── Catatan atas Laporan Keuangan (CALK) ───
+export async function generateCALK(businessId: number, month: number, year: number): Promise<CALKReport> {
+  const db = await getDb();
+  const bulanNames = ["Januari","Februari","Maret","April","Mei","Juni","Juli","Agustus","September","Oktober","November","Desember"];
+  const period = `${bulanNames[month - 1]} ${year}`;
+  const periodStr = `${year}-${String(month).padStart(2, "0")}`;
+
+  // Get business info
+  const biz = db ? (await db.select().from(businesses).where(eq(businesses.id, businessId)))[0] : null;
+  const businessName = biz?.businessName ?? "Bisnis";
+
+  // Get transaction count & categories
+  const txs = db ? await db.select().from(transactions).where(
+    and(eq(transactions.businessId, businessId), eq(transactions.isDeleted, false), sql`${transactions.date} LIKE ${periodStr + "%"}`)
+  ) : [];
+
+  const incomeCategories: Record<string, number> = {};
+  const expenseCategories: Record<string, number> = {};
+  let incomeCount = 0, expenseCount = 0;
+  for (const tx of txs) {
+    if (tx.type === "pemasukan") {
+      incomeCategories[tx.category] = (incomeCategories[tx.category] || 0) + tx.amount;
+      incomeCount++;
+    } else {
+      expenseCategories[tx.category] = (expenseCategories[tx.category] || 0) + tx.amount;
+      expenseCount++;
+    }
+  }
+
+  // Payment methods breakdown
+  const paymentMethods: Record<string, number> = {};
+  for (const tx of txs) {
+    paymentMethods[tx.paymentMethod] = (paymentMethods[tx.paymentMethod] || 0) + 1;
+  }
+
+  // Products info
+  const allProducts = db ? await db.select().from(products).where(
+    and(eq(products.businessId, businessId), eq(products.isActive, true))
+  ) : [];
+  const totalStockValue = allProducts.reduce((s, p) => s + ((p.stockCurrent ?? 0) * (p.hpp ?? 0)), 0);
+
+  // Debts summary
+  const allDebtsData = db ? await db.select().from(debts).where(eq(debts.businessId, businessId)) : [];
+  const piutangActive = allDebtsData.filter(d => d.type === "piutang" && d.status !== "lunas");
+  const hutangActive = allDebtsData.filter(d => d.type === "hutang" && d.status !== "lunas");
+
+  // Monthly bills
+  const allBills = db ? await db.select().from(monthlyBills).where(
+    and(eq(monthlyBills.businessId, businessId), eq(monthlyBills.isActive, true))
+  ) : [];
+
+  const { formatRupiah } = await import("../shared/finance");
+
+  const sections = [
+    {
+      title: "1. Umum",
+      items: [
+        { label: "Nama Entitas", value: businessName },
+        { label: "Jenis Usaha", value: biz?.businessType ?? "-" },
+        { label: "Status PKP", value: biz?.isPkp ? "Pengusaha Kena Pajak" : "Non-PKP" },
+        { label: "Periode Laporan", value: period },
+        { label: "Dasar Penyusunan", value: "Basis kas (cash basis) — transaksi dicatat saat kas diterima/dikeluarkan" },
+      ],
+    },
+    {
+      title: "2. Rincian Pendapatan",
+      items: Object.entries(incomeCategories).map(([cat, amount]) => ({
+        label: cat, value: formatRupiah(amount),
+      })),
+    },
+    {
+      title: "3. Rincian Beban Operasional",
+      items: Object.entries(expenseCategories).map(([cat, amount]) => ({
+        label: cat, value: formatRupiah(amount),
+      })),
+    },
+    {
+      title: "4. Persediaan Barang",
+      items: [
+        { label: "Jumlah SKU Aktif", value: `${allProducts.length} produk` },
+        { label: "Nilai Persediaan (HPP)", value: formatRupiah(totalStockValue) },
+      ],
+    },
+    {
+      title: "5. Piutang Usaha",
+      items: piutangActive.length > 0
+        ? piutangActive.map(d => ({ label: d.contactName, value: `${formatRupiah(d.remainingAmount)} (jatuh tempo: ${d.dueDate ?? "-"})` }))
+        : [{ label: "Tidak ada piutang aktif", value: "-" }],
+    },
+    {
+      title: "6. Hutang Usaha",
+      items: hutangActive.length > 0
+        ? hutangActive.map(d => ({ label: d.contactName, value: `${formatRupiah(d.remainingAmount)} (jatuh tempo: ${d.dueDate ?? "-"})` }))
+        : [{ label: "Tidak ada hutang aktif", value: "-" }],
+    },
+    {
+      title: "7. Beban Tetap Bulanan",
+      items: allBills.length > 0
+        ? allBills.map(b => ({ label: b.name, value: `${formatRupiah(b.amount)} / bulan` }))
+        : [{ label: "Tidak ada tagihan tetap", value: "-" }],
+    },
+    {
+      title: "8. Metode Pembayaran",
+      items: Object.entries(paymentMethods).map(([method, count]) => ({
+        label: method, value: `${count} transaksi`,
+      })),
+    },
+    {
+      title: "9. Statistik Transaksi",
+      items: [
+        { label: "Total Transaksi Pemasukan", value: `${incomeCount} transaksi` },
+        { label: "Total Transaksi Pengeluaran", value: `${expenseCount} transaksi` },
+        { label: "Total Transaksi Bulan Ini", value: `${txs.length} transaksi` },
+      ],
+    },
+  ];
+
+  return { period, businessName, sections };
 }
 
 export async function getDashboardKPIs(businessId: number): Promise<DashboardKPIs> {

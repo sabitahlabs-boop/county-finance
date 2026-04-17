@@ -72,7 +72,7 @@ export default function Anggaran() {
       </div>
 
       <Tabs value={activeTab} onValueChange={setActiveTab}>
-        <TabsList className="grid w-full grid-cols-3 h-12">
+        <TabsList className="grid w-full grid-cols-3 h-10 sm:h-12">
           <TabsTrigger value="tagihan" className="flex items-center gap-2 text-sm">
             <Receipt className="h-4 w-4" />
             <span className="hidden sm:inline">Tagihan Rutin</span>
@@ -678,7 +678,7 @@ function TabunganImpianTab() {
       </div>
 
       {/* Summary */}
-      <div className="grid grid-cols-3 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 sm:gap-4">
         <Card className="border-0 shadow-md bg-gradient-to-br from-purple-50 to-pink-50 dark:from-purple-950/20 dark:to-pink-950/10">
           <CardContent className="p-4">
             <div className="text-xl font-bold text-purple-700 dark:text-purple-400">{formatRupiah(totalSaved)}</div>

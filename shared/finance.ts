@@ -98,6 +98,48 @@ export interface ArusKasReport {
   netKas: number;
 }
 
+export interface NeracaReport {
+  period: string;
+  aset: {
+    kas: number;
+    piutang: number;
+    persediaan: number;
+    totalAsetLancar: number;
+    asetTetap: number;
+    totalAset: number;
+  };
+  kewajiban: {
+    hutangUsaha: number;
+    hutangLain: number;
+    totalKewajiban: number;
+  };
+  ekuitas: {
+    modalAwal: number;
+    labaPeriode: number;
+    prive: number;
+    totalEkuitas: number;
+  };
+  balance: boolean; // aset === kewajiban + ekuitas
+}
+
+export interface PerubahanModalReport {
+  period: string;
+  modalAwal: number;
+  penambahanModal: number;
+  labaBersih: number;
+  prive: number;
+  modalAkhir: number;
+}
+
+export interface CALKReport {
+  period: string;
+  businessName: string;
+  sections: {
+    title: string;
+    items: { label: string; value: string }[];
+  }[];
+}
+
 // ─── Helper: Format Rupiah ───
 export function formatRupiah(amount: number): string {
   if (amount === 0) return "Rp 0";

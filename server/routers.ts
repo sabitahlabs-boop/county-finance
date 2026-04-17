@@ -48,6 +48,7 @@ import {
   generateReceiptCode, createPosReceipt, getPosReceiptsByBusiness, getPosReceiptById, refundPosReceipt,
   getDailySalesReport,
   seedDummyData, clearBusinessData,
+  generateNeraca, generatePerubahanModal, generateCALK,
 } from "./db";
 import { PLAN_LIMITS, BULAN_INDONESIA, formatRupiah } from "../shared/finance";
 import { notifyOwner } from "./_core/notification";
@@ -664,6 +665,21 @@ export const appRouter = router({
       const biz = (await resolveBusinessForUser(ctx.user.id, ctx.requestedBusinessId))?.business;
       if (!biz) throw new TRPCError({ code: "NOT_FOUND" });
       return generateArusKas(biz.id, input.month, input.year);
+    }),
+    neraca: protectedProcedure.input(z.object({ month: z.number(), year: z.number() })).query(async ({ ctx, input }) => {
+      const biz = (await resolveBusinessForUser(ctx.user.id, ctx.requestedBusinessId))?.business;
+      if (!biz) throw new TRPCError({ code: "NOT_FOUND" });
+      return generateNeraca(biz.id, input.month, input.year);
+    }),
+    perubahanModal: protectedProcedure.input(z.object({ month: z.number(), year: z.number() })).query(async ({ ctx, input }) => {
+      const biz = (await resolveBusinessForUser(ctx.user.id, ctx.requestedBusinessId))?.business;
+      if (!biz) throw new TRPCError({ code: "NOT_FOUND" });
+      return generatePerubahanModal(biz.id, input.month, input.year);
+    }),
+    calk: protectedProcedure.input(z.object({ month: z.number(), year: z.number() })).query(async ({ ctx, input }) => {
+      const biz = (await resolveBusinessForUser(ctx.user.id, ctx.requestedBusinessId))?.business;
+      if (!biz) throw new TRPCError({ code: "NOT_FOUND" });
+      return generateCALK(biz.id, input.month, input.year);
     }),
     dashboard: protectedProcedure.query(async ({ ctx }) => {
       const biz = (await resolveBusinessForUser(ctx.user.id, ctx.requestedBusinessId))?.business;
