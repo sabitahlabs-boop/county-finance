@@ -50,6 +50,7 @@ import PenjualanKredit from "./pages/PenjualanKredit";
 import RingkasanDiskon from "./pages/RingkasanDiskon";
 import VoidRefundAnalysis from "./pages/VoidRefundAnalysis";
 import TransaksiTunai from "./pages/TransaksiTunai";
+import ManajemenRekening from "./pages/ManajemenRekening";
 import { BusinessProvider } from "./contexts/BusinessContext";
 
 function AuthenticatedRoute({ component: Component }: { component: React.ComponentType }) {
@@ -126,6 +127,7 @@ function Router() {
       <Route path="/ringkasan-diskon">{() => <AuthenticatedRoute component={RingkasanDiskon} />}</Route>
       <Route path="/void-refund">{() => <AuthenticatedRoute component={VoidRefundAnalysis} />}</Route>
       <Route path="/transaksi-tunai">{() => <AuthenticatedRoute component={TransaksiTunai} />}</Route>
+      <Route path="/manajemen-rekening">{() => <AuthenticatedRoute component={ManajemenRekening} />}</Route>
       <Route path="/landing" component={LandingPage} />
       <Route path="/accept-invite" component={AcceptInvite} />
       <Route path="/panduan" component={Panduan} />

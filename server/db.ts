@@ -196,6 +196,9 @@ async function runAutoMigration(db: ReturnType<typeof drizzle>) {
     \`updatedAt\` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
   )`);
 
+  // Add description column to bank_accounts if missing
+  await safeExec(`ALTER TABLE \`bank_accounts\` ADD COLUMN IF NOT EXISTS \`description\` text AFTER \`color\``);
+
   await safeExec(`CREATE TABLE IF NOT EXISTS \`stock_transfers\` (
     \`id\` int NOT NULL AUTO_INCREMENT PRIMARY KEY,
     \`businessId\` int NOT NULL,
@@ -3492,6 +3495,7 @@ export async function getTopProductsAndCategories(businessId: number, startDate:
 // ─── W2.1: Penjualan per Pelanggan ───
 export async function getSalesByCustomer(businessId: number, startDate: string, endDate: string) {
   const db = await getDb();
+  if (!db) throw new Error("Database not available");
 
   // Get receipts grouped by clientId
   const rows = await db
@@ -3529,6 +3533,7 @@ export async function getSalesByCustomer(businessId: number, startDate: string, 
 // ─── W2.2: Penjualan per Jam ───
 export async function getSalesByHour(businessId: number, startDate: string, endDate: string) {
   const db = await getDb();
+  if (!db) throw new Error("Database not available");
 
   const rows = await db
     .select({
@@ -3573,6 +3578,7 @@ export async function getSalesByHour(businessId: number, startDate: string, endD
 // ─── W2.3: Penjualan per Tanggal ───
 export async function getSalesByDate(businessId: number, startDate: string, endDate: string) {
   const db = await getDb();
+  if (!db) throw new Error("Database not available");
 
   const rows = await db
     .select({
@@ -3606,12 +3612,14 @@ export async function getSalesByDate(businessId: number, startDate: string, endD
 // ─── W2.4: Credit Sales CRUD & Report ───
 export async function createCreditSale(data: InsertCreditSale) {
   const db = await getDb();
+  if (!db) throw new Error("Database not available");
   const [result] = await db.insert(creditSales).values(data);
   return result.insertId;
 }
 
 export async function addCreditPayment(creditSaleId: number, payment: InsertCreditPayment) {
   const db = await getDb();
+  if (!db) throw new Error("Database not available");
 
   // Insert payment
   const [result] = await db.insert(creditPayments).values({ ...payment, creditSaleId });
@@ -3638,6 +3646,7 @@ export async function addCreditPayment(creditSaleId: number, payment: InsertCred
 
 export async function getCreditSalesReport(businessId: number, startDate?: string, endDate?: string, status?: string) {
   const db = await getDb();
+  if (!db) throw new Error("Database not available");
 
   const conditions = [eq(creditSales.businessId, businessId)];
   if (startDate) conditions.push(sql`${posReceipts.date} >= ${startDate}`);
@@ -3671,6 +3680,7 @@ export async function getCreditSalesReport(businessId: number, startDate?: strin
 
 export async function getCreditPaymentsForSale(creditSaleId: number) {
   const db = await getDb();
+  if (!db) throw new Error("Database not available");
   return db
     .select()
     .from(creditPayments)
@@ -3681,6 +3691,7 @@ export async function getCreditPaymentsForSale(creditSaleId: number) {
 // ─── W2.5: Ringkasan Diskon ───
 export async function getDiscountSummary(businessId: number, startDate: string, endDate: string) {
   const db = await getDb();
+  if (!db) throw new Error("Database not available");
 
   // Receipts with discount > 0
   const rows = await db
@@ -3730,6 +3741,7 @@ export async function getDiscountSummary(businessId: number, startDate: string, 
 // ─── W2.6: Void/Refund Analysis Detail ───
 export async function getVoidRefundAnalysis(businessId: number, startDate: string, endDate: string) {
   const db = await getDb();
+  if (!db) throw new Error("Database not available");
 
   const rows = await db
     .select({
@@ -3793,6 +3805,7 @@ export async function getVoidRefundAnalysis(businessId: number, startDate: strin
 // ─── W2.7: Transaksi Tunai / Kas Reconciliation ───
 export async function getKasReconciliation(businessId: number, startDate: string, endDate: string) {
   const db = await getDb();
+  if (!db) throw new Error("Database not available");
 
   // Cash POS income — only "Tunai" payments
   const posRows = await db

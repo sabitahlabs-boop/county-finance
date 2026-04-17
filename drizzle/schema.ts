@@ -254,6 +254,7 @@ export const bankAccounts = mysqlTable("bank_accounts", {
   accountType: mysqlEnum("accountType", ["bank", "ewallet", "cash"]).notNull().default("bank"), // bank, e-wallet, cash
   icon: varchar("icon", { length: 10 }).notNull().default("🏦"), // emoji icon
   color: varchar("color", { length: 10 }).notNull().default("#3b82f6"), // hex color for UI
+  description: text("description"), // fungsi/tujuan rekening, e.g. "Bank utama untuk pembelian"
   initialBalance: bigint("initialBalance", { mode: "number" }).notNull().default(0),
   isActive: boolean("isActive").notNull().default(true),
   sortOrder: int("sortOrder").notNull().default(0),

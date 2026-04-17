@@ -144,6 +144,7 @@ const UMKM_SIDEBAR: SidebarItem[] = [
       { icon: PiggyBank, label: "Tagihan & Anggaran", path: "/anggaran" },
       { icon: BarChart3, label: "Analitik", path: "/analitik" },
       { icon: Calculator, label: "Pajak", path: "/pajak" },
+      { icon: Wallet, label: "Manajemen Rekening", path: "/manajemen-rekening" },
     ],
   },
   {

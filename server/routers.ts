@@ -1283,9 +1283,9 @@ Penting: Kembalikan HANYA JSON valid, tidak ada teks penjelasan.`,
     }),
     balances: protectedProcedure.query(async ({ ctx }) => {
       const biz = (await resolveBusinessForUser(ctx.user.id, ctx.requestedBusinessId))?.business;
-      if (!biz) return {};
+      if (!biz) return [] as any[];
       const accounts = await getBankAccountsByBusiness(biz.id);
-      if (accounts.length === 0) return {};
+      if (accounts.length === 0) return [] as any[];
       const names = accounts.map(a => a.accountName);
       const balances = await getBalancesByAccounts(biz.id, names);
       return accounts.map(a => {
@@ -1303,6 +1303,7 @@ Penting: Kembalikan HANYA JSON valid, tidak ada teks penjelasan.`,
       accountType: z.enum(["bank", "ewallet", "cash"]),
       icon: z.string().default("\ud83c\udfe6"),
       color: z.string().default("#3b82f6"),
+      description: z.string().optional(),
       initialBalance: z.number().default(0),
     })).mutation(async ({ ctx, input }) => {
       const biz = (await resolveBusinessForUser(ctx.user.id, ctx.requestedBusinessId))?.business;
@@ -1316,6 +1317,7 @@ Penting: Kembalikan HANYA JSON valid, tidak ada teks penjelasan.`,
       accountType: z.enum(["bank", "ewallet", "cash"]).optional(),
       icon: z.string().optional(),
       color: z.string().optional(),
+      description: z.string().nullable().optional(),
       initialBalance: z.number().optional(),
     })).mutation(async ({ ctx, input }) => {
       const biz = (await resolveBusinessForUser(ctx.user.id, ctx.requestedBusinessId))?.business;
