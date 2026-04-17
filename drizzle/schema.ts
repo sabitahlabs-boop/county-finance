@@ -57,6 +57,7 @@ export const businesses = mysqlTable("businesses", {
   posEnabled: boolean("posEnabled").notNull().default(false), // toggle POS system on/off
   calculatorEnabled: boolean("calculatorEnabled").notNull().default(false), // mini calculator widget
   signatureUrl: text("signatureUrl"), // digital signature image for invoice footer
+  invoiceFooter: text("invoiceFooter"), // custom footer text for invoices
   onboardingCompleted: boolean("onboardingCompleted").notNull().default(false),
   debtEnabled: boolean("debtEnabled").notNull().default(true), // toggle hutang piutang on/off
   personalSetupDone: boolean("personalSetupDone").notNull().default(false), // personal mode first-time setup wizard completed

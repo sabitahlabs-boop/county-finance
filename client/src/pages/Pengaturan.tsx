@@ -1038,7 +1038,7 @@ function InvoiceSettingsTab({ business, updateBiz }: { business: any; updateBiz:
           {signatureUrl ? (
             <div className="space-y-3">
               <div className="rounded-lg border-2 border-dashed border-primary/30 bg-primary/5 p-4 text-center">
-                <img src={signatureUrl} alt="Tanda Tangan" className="h-16 mx-auto" />
+                <img src={getProxiedImageUrl(signatureUrl) || signatureUrl} alt="Tanda Tangan" className="h-16 mx-auto" />
               </div>
               <div className="flex gap-2">
                 <label className="flex-1 cursor-pointer">

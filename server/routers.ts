@@ -145,6 +145,9 @@ export const appRouter = router({
       bankHolder: z.string().optional(),
       qrisImageUrl: z.string().optional(),
       logoUrl: z.string().optional(),
+      signatureUrl: z.string().nullable().optional(),
+      invoiceFooter: z.string().nullable().optional(),
+      calculatorEnabled: z.boolean().optional(),
     })).mutation(async ({ ctx, input }) => {
       const biz = (await resolveBusinessForUser(ctx.user.id, ctx.requestedBusinessId))?.business;
       if (!biz) throw new TRPCError({ code: "NOT_FOUND", message: "Bisnis tidak ditemukan" });

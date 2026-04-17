@@ -68,6 +68,9 @@ async function runAutoMigration(db: ReturnType<typeof drizzle>) {
   await safeExec("ALTER TABLE `warehouses` ADD COLUMN `waCode` varchar(20) DEFAULT NULL");
   await safeExec("ALTER TABLE `warehouses` ADD COLUMN `code` varchar(20) DEFAULT NULL");
 
+  // businesses: add invoiceFooter
+  await safeExec("ALTER TABLE `businesses` ADD COLUMN `invoiceFooter` text DEFAULT NULL");
+
   // clients: add customerType, depositAmount, lastTransactionDate, activeDate, expiryDate
   await safeExec("ALTER TABLE `clients` ADD COLUMN `customerType` enum('regular','vip','wholesale') DEFAULT 'regular'");
   await safeExec("ALTER TABLE `clients` ADD COLUMN `depositAmount` bigint NOT NULL DEFAULT 0");
