@@ -286,18 +286,12 @@ function DashboardLayoutContent({
       return { ...item };
     });
 
-    // Insert POS items when enabled
+    // Insert POS as top-level menu right below Dashboard
     if (posEnabled) {
-      items = items.map((item) => {
-        if (isGroup(item) && item.label === "Transaksi & Penjualan") {
-          return { ...item, children: [...item.children, ...POS_CHILDREN] };
-        }
-        // Also add Laporan Penjualan under Laporan group
-        if (isGroup(item) && item.label === "Laporan") {
-          return { ...item, children: [...item.children, { icon: Receipt, label: "Laporan Penjualan", path: "/laporan-penjualan" }] };
-        }
-        return item;
-      });
+      const dashIdx = items.findIndex((item) => !isGroup(item) && item.path === "/");
+      const posItem: SidebarItem = { icon: ShoppingBag, label: "Kasir (POS)", path: "/pos" };
+      const salesReportItem: SidebarItem = { icon: Receipt, label: "Laporan Penjualan", path: "/laporan-penjualan" };
+      items.splice(dashIdx + 1, 0, posItem, salesReportItem);
     }
 
     // Remove Hutang & Piutang if disabled

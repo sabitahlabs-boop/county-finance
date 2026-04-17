@@ -597,27 +597,27 @@ export default function POS() {
                   </div>
                 </div>
               ) : (
-                <div className="space-y-2">
+                <div className="rounded-lg border p-3 space-y-2 bg-muted/10">
                   <div className="relative">
                     <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
                     <Input placeholder="Cari nama / no. WA..." value={customerSearchQuery} onChange={(e) => setCustomerSearchQuery(e.target.value)} className="pl-8 h-8 text-sm" />
                   </div>
-                  <ScrollArea className="max-h-32">
-                    <div className="space-y-1">
-                      {filteredClients.slice(0, 8).map((c: any) => (
-                        <div key={c.id} className="flex items-center justify-between px-2.5 py-1.5 rounded-md hover:bg-muted/50 cursor-pointer text-sm transition-colors" onClick={() => { setSelectedClientId(c.id); setSelectedClientName(c.name); }}>
-                          <div className="flex items-center gap-2">
-                            <User className="h-3.5 w-3.5 text-muted-foreground" />
-                            <span>{c.name}</span>
+                  {filteredClients.length > 0 && (
+                    <div className="max-h-28 overflow-y-auto rounded-md border bg-background">
+                      {filteredClients.slice(0, 6).map((c: any) => (
+                        <div key={c.id} className="flex items-center justify-between px-3 py-2 hover:bg-muted/50 cursor-pointer text-sm border-b last:border-b-0 transition-colors" onClick={() => { setSelectedClientId(c.id); setSelectedClientName(c.name); }}>
+                          <div className="flex items-center gap-2 min-w-0">
+                            <User className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
+                            <span className="truncate">{c.name}</span>
                           </div>
-                          {c.phone && <span className="text-xs text-muted-foreground flex items-center gap-1"><Phone className="h-3 w-3" />{c.phone}</span>}
+                          {c.phone && <span className="text-xs text-muted-foreground shrink-0 ml-2">{c.phone}</span>}
                         </div>
                       ))}
-                      {filteredClients.length === 0 && customerSearchQuery && (
-                        <p className="text-xs text-muted-foreground text-center py-2">Tidak ditemukan</p>
-                      )}
                     </div>
-                  </ScrollArea>
+                  )}
+                  {filteredClients.length === 0 && customerSearchQuery && (
+                    <p className="text-xs text-muted-foreground text-center py-1">Tidak ditemukan</p>
+                  )}
                   <Button variant="outline" size="sm" className="w-full text-xs h-7" onClick={() => setShowNewCustomerForm(true)}>
                     <UserPlus className="h-3 w-3 mr-1.5" /> Customer Baru
                   </Button>
