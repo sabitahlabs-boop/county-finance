@@ -142,6 +142,8 @@ const UMKM_SIDEBAR: SidebarItem[] = [
     label: "Laporan",
     children: [
       { icon: FileText, label: "Laporan Keuangan", path: "/laporan" },
+      { icon: FileText, label: "Rekening Koran", path: "/rekening-koran" },
+      { icon: Package, label: "Mutasi Persediaan", path: "/mutasi-persediaan" },
     ],
   },
   { icon: Users, label: "Pelanggan", path: "/client" },

@@ -21,6 +21,7 @@ import {
   createProLink, getProLinkByToken, markProLinkUsed, listProLinks, deleteProLink, upgradeBusinessToPro,
   updateBusinessMode, updateBusinessPosEnabled,
   getBankAccountsByBusiness, getBankAccountById, createBankAccount, updateBankAccount, deleteBankAccount, getBalancesByAccounts,
+  getRekeningKoranReport, getMutasiPersediaanReport,
   getClientsByBusiness, getClientById, createClient, updateClient, deleteClient,
   getDebtsByBusiness, getDebtById, createDebt, updateDebt, deleteDebt,
   getDebtPayments, createDebtPayment, deleteDebtPayment,
@@ -745,6 +746,24 @@ export const appRouter = router({
       const biz = (await resolveBusinessForUser(ctx.user.id, ctx.requestedBusinessId))?.business;
       if (!biz) throw new TRPCError({ code: "NOT_FOUND" });
       return getPeriodSalesReport(biz.id, input.startDate, input.endDate);
+    }),
+    rekeningKoran: protectedProcedure.input(z.object({
+      bankAccountName: z.string(),
+      startDate: z.string(),
+      endDate: z.string(),
+    })).query(async ({ ctx, input }) => {
+      const biz = (await resolveBusinessForUser(ctx.user.id, ctx.requestedBusinessId))?.business;
+      if (!biz) throw new TRPCError({ code: "NOT_FOUND" });
+      return getRekeningKoranReport(biz.id, input.bankAccountName, input.startDate, input.endDate);
+    }),
+    mutasiPersediaan: protectedProcedure.input(z.object({
+      productId: z.number().optional(),
+      startDate: z.string(),
+      endDate: z.string(),
+    })).query(async ({ ctx, input }) => {
+      const biz = (await resolveBusinessForUser(ctx.user.id, ctx.requestedBusinessId))?.business;
+      if (!biz) throw new TRPCError({ code: "NOT_FOUND" });
+      return getMutasiPersediaanReport(biz.id, input.productId, input.startDate, input.endDate);
     }),
   }),
 

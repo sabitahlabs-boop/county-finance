@@ -37,12 +37,6 @@ type SplitPayment = {
   customLabel?: string; // for "Lainnya" — e.g. "Kredivo", "ShopeePay"
 };
 
-const PAYMENT_METHODS = [
-  { value: "Tunai", icon: Banknote, label: "Tunai" },
-  { value: "Transfer/QRIS", icon: CreditCard, label: "Transfer/QRIS" },
-  { value: "Lainnya", icon: Wallet, label: "Lainnya" },
-];
-
 export default function POS() {
   const [cart, setCart] = useState<CartItem[]>([]);
   const [searchQuery, setSearchQuery] = useState("");
@@ -82,6 +76,23 @@ export default function POS() {
   const utils = trpc.useUtils();
   const { data: products, isLoading } = trpc.product.list.useQuery(undefined, { retry: false });
   const { data: warehouses = [] } = trpc.warehouse.list.useQuery();
+  const { data: bankAccounts = [] } = trpc.bankAccount.list.useQuery();
+
+  // Build payment methods: Tunai first, then bank accounts, then Lainnya
+  const paymentMethods = useMemo(() => {
+    const methods: Array<{ value: string; icon: React.ComponentType<{ className?: string }>; label: string }> = [
+      { value: "Tunai", icon: Banknote, label: "Tunai" },
+    ];
+    bankAccounts.forEach((acc: any) => {
+      methods.push({
+        value: acc.accountName,
+        icon: acc.accountType === "cash" ? Banknote : acc.accountType === "ewallet" ? Wallet : CreditCard,
+        label: acc.accountName,
+      });
+    });
+    methods.push({ value: "Lainnya", icon: Wallet, label: "Lainnya" });
+    return methods;
+  }, [bankAccounts]);
 
   // Auto-select default warehouse
   useEffect(() => {
@@ -430,8 +441,8 @@ export default function POS() {
                     onClick={() => addToCart(p)}
                   >
                     <div className="relative h-24 bg-muted/20 overflow-hidden">
-                      {p.imageUrl ? (
-                        <img src={getProxiedImageUrl(p.imageUrl)} alt={p.name} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300" />
+                      {p.imageUrl && p.imageUrl !== null ? (
+                        <img src={getProxiedImageUrl(p.imageUrl as string)} alt={p.name} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300" />
                       ) : (
                         <div className="w-full h-full flex items-center justify-center">
                           <Package className="h-8 w-8 text-muted-foreground/15" />
@@ -463,8 +474,8 @@ export default function POS() {
                 {outOfStockProducts.slice(0, 4).map((p: any) => (
                   <Card key={p.id} className="border shadow-sm overflow-hidden">
                     <div className="relative h-20 bg-muted/20">
-                      {p.imageUrl ? (
-                        <img src={getProxiedImageUrl(p.imageUrl)} alt={p.name} className="w-full h-full object-cover grayscale" />
+                      {p.imageUrl && p.imageUrl !== null ? (
+                        <img src={getProxiedImageUrl(p.imageUrl as string)} alt={p.name} className="w-full h-full object-cover grayscale" />
                       ) : (
                         <div className="w-full h-full flex items-center justify-center">
                           <Package className="h-6 w-6 text-muted-foreground/15" />
@@ -509,8 +520,8 @@ export default function POS() {
               {cart.map((item) => (
                 <div key={item.productId} className="flex items-center gap-3 p-2.5 rounded-lg bg-muted/30 hover:bg-muted/50 transition-colors">
                   <div className="h-12 w-12 rounded-lg overflow-hidden bg-muted/50 shrink-0">
-                    {item.imageUrl ? (
-                      <img src={getProxiedImageUrl(item.imageUrl)} alt={item.name} className="w-full h-full object-cover" />
+                    {item.imageUrl && item.imageUrl !== null ? (
+                      <img src={getProxiedImageUrl(item.imageUrl as string)} alt={item.name} className="w-full h-full object-cover" />
                     ) : (
                       <div className="w-full h-full flex items-center justify-center">
                         <Package className="h-5 w-5 text-muted-foreground/20" />
@@ -711,8 +722,8 @@ export default function POS() {
             {!splitMode ? (
               /* ─── Single Payment Mode ─── */
               <>
-                <div className="grid grid-cols-3 gap-2">
-                  {PAYMENT_METHODS.map(m => (
+                <div className={`grid gap-2 ${paymentMethods.length > 6 ? "grid-cols-2" : "grid-cols-3"}`}>
+                  {paymentMethods.map(m => (
                     <Button
                       key={m.value}
                       variant={payments[0]?.method === m.value ? "default" : "outline"}
@@ -773,8 +784,8 @@ export default function POS() {
                         </Button>
                       )}
                     </div>
-                    <div className="grid grid-cols-3 gap-1.5">
-                      {PAYMENT_METHODS.map(m => (
+                    <div className={`grid gap-1.5 ${paymentMethods.length > 6 ? "grid-cols-2" : "grid-cols-3"}`}>
+                      {paymentMethods.map(m => (
                         <Button
                           key={m.value}
                           variant={payment.method === m.value ? "default" : "outline"}

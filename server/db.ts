@@ -1347,6 +1347,7 @@ export async function getBalancesByAccounts(businessId: number, accountNames: st
   if (!db) return {};
   const result: Record<string, { income: number; expense: number }> = {};
   for (const name of accountNames) {
+    // Get transactions where paymentMethod matches
     const txs = await db.select().from(transactions).where(
       and(
         eq(transactions.businessId, businessId),
@@ -1359,11 +1360,208 @@ export async function getBalancesByAccounts(businessId: number, accountNames: st
       if (tx.type === "pemasukan") income += tx.amount;
       else expense += tx.amount;
     }
+
+    // Also get POS receipts where payments JSON contains this account name
+    const receipts = await db.select().from(posReceipts).where(
+      eq(posReceipts.businessId, businessId)
+    );
+    for (const receipt of receipts) {
+      const payments = receipt.payments as Array<{ method: string; amount: number }> || [];
+      for (const payment of payments) {
+        if (payment.method === name) {
+          income += payment.amount;
+        }
+      }
+    }
+
     result[name] = { income, expense };
   }
   return result;
 }
 
+
+// ─── Rekening Koran (Bank Statement Report) ───
+export async function getRekeningKoranReport(
+  businessId: number,
+  bankAccountName: string,
+  startDate: string,
+  endDate: string
+): Promise<Array<{ date: string; description: string; debit: number; credit: number; runningBalance: number }>> {
+  const db = await getDb();
+  if (!db) return [];
+
+  // Get initial balance from bank account
+  const account = await db.select().from(bankAccounts).where(
+    and(eq(bankAccounts.businessId, businessId), eq(bankAccounts.accountName, bankAccountName))
+  ).limit(1);
+  const initialBalance = account[0]?.initialBalance ?? 0;
+
+  const entries: Array<{ date: string; description: string; debit: number; credit: number; runningBalance: number }> = [];
+  let runningBalance = initialBalance;
+
+  // Get transactions for this account in date range
+  const txs = await db.select().from(transactions).where(
+    and(
+      eq(transactions.businessId, businessId),
+      eq(transactions.paymentMethod, bankAccountName),
+      eq(transactions.isDeleted, false),
+      gte(transactions.date, startDate),
+      lte(transactions.date, endDate)
+    )
+  ).orderBy(transactions.date);
+
+  for (const tx of txs) {
+    const debit = tx.type === "pengeluaran" ? tx.amount : 0;
+    const credit = tx.type === "pemasukan" ? tx.amount : 0;
+    runningBalance = runningBalance - debit + credit;
+    entries.push({
+      date: tx.date,
+      description: tx.description || tx.category,
+      debit,
+      credit,
+      runningBalance,
+    });
+  }
+
+  // Get POS receipts for this account in date range
+  const receipts = await db.select().from(posReceipts).where(
+    and(
+      eq(posReceipts.businessId, businessId),
+      gte(posReceipts.date, startDate),
+      lte(posReceipts.date, endDate)
+    )
+  ).orderBy(posReceipts.date);
+
+  for (const receipt of receipts) {
+    const payments = receipt.payments as Array<{ method: string; amount: number }> || [];
+    for (const payment of payments) {
+      if (payment.method === bankAccountName) {
+        runningBalance = runningBalance + payment.amount;
+        entries.push({
+          date: receipt.date,
+          description: `POS Receipt ${receipt.receiptCode}`,
+          debit: 0,
+          credit: payment.amount,
+          runningBalance,
+        });
+      }
+    }
+  }
+
+  // Sort by date
+  entries.sort((a, b) => a.date.localeCompare(b.date));
+
+  // Recalculate running balance in order
+  runningBalance = initialBalance;
+  for (const entry of entries) {
+    runningBalance = runningBalance - entry.debit + entry.credit;
+    entry.runningBalance = runningBalance;
+  }
+
+  return entries;
+}
+
+// ─── Mutasi Persediaan (Inventory Movement Report) ───
+export async function getMutasiPersediaanReport(
+  businessId: number,
+  productId?: number,
+  startDate?: string,
+  endDate?: string
+): Promise<Array<{
+  productId: number;
+  productName: string;
+  sku?: string;
+  movements: Array<{
+    date: string;
+    type: string;
+    qty: number;
+    direction: number;
+    priceIn: number;
+    priceOut: number;
+    stockBefore: number;
+    stockAfter: number;
+    reference: string;
+  }>;
+}>> {
+  const db = await getDb();
+  if (!db) return [];
+
+  // Build where conditions
+  const whereConditions: any[] = [eq(stockLogs.businessId, businessId)];
+  if (productId) whereConditions.push(eq(stockLogs.productId, productId));
+  if (startDate) whereConditions.push(gte(stockLogs.date, startDate));
+  if (endDate) whereConditions.push(lte(stockLogs.date, endDate));
+
+  // Get stock logs
+  const logs = await db.select().from(stockLogs).where(and(...whereConditions)).orderBy(stockLogs.date);
+
+  // Group by product
+  const byProduct: Record<number, {
+    productId: number;
+    productName: string;
+    sku?: string;
+    movements: Array<{
+      date: string;
+      type: string;
+      qty: number;
+      direction: number;
+      priceIn: number;
+      priceOut: number;
+      stockBefore: number;
+      stockAfter: number;
+      reference: string;
+    }>;
+  }> = {};
+
+  for (const log of logs) {
+    if (!byProduct[log.productId]) {
+      const product = await getProductById(log.productId);
+      if (product) {
+        byProduct[log.productId] = {
+          productId: log.productId,
+          productName: product.name,
+          sku: product.sku ?? undefined,
+          movements: [],
+        };
+      }
+    }
+
+    if (byProduct[log.productId]) {
+      byProduct[log.productId].movements.push({
+        date: log.date,
+        type: log.movementType,
+        qty: log.qty,
+        direction: log.direction,
+        priceIn: 0, // Will be filled below
+        priceOut: 0, // Will be filled below
+        stockBefore: log.stockBefore,
+        stockAfter: log.stockAfter,
+        reference: `Stock Log #${log.id}`,
+      });
+    }
+  }
+
+  // Fill in prices from product and POS data
+  for (const productId in byProduct) {
+    const product = await getProductById(parseInt(productId));
+    for (const movement of byProduct[productId].movements) {
+      movement.priceIn = product?.hpp ?? 0;
+      movement.priceOut = product?.sellingPrice ?? 0;
+
+      // For "out" movements, try to get actual sell price from pos_receipt_items
+      if (movement.type === "out") {
+        const posItems = await db.select().from(posReceiptItems).where(
+          eq(posReceiptItems.productId, parseInt(productId))
+        ).orderBy(desc(posReceiptItems.createdAt)).limit(1);
+        if (posItems.length > 0) {
+          movement.priceOut = posItems[0].unitPrice ?? product?.sellingPrice ?? 0;
+        }
+      }
+    }
+  }
+
+  return Object.values(byProduct);
+}
 
 // ─── Client Helpers ───
 export async function getClientsByBusiness(businessId: number): Promise<Client[]> {

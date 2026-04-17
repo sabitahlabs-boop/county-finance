@@ -37,6 +37,8 @@ import StaffManagementPage from "./pages/StaffManagement";
 import InvoiceSettingsPage from "./pages/InvoiceSettings";
 import BarcodeManagerPage from "./pages/BarcodeManager";
 import WarehouseSelectPage from "./pages/WarehouseSelect";
+import RekeningKoranPage from "./pages/RekeningKoran";
+import MutasiPersediaanPage from "./pages/MutasiPersediaan";
 import { BusinessProvider } from "./contexts/BusinessContext";
 
 function AuthenticatedRoute({ component: Component }: { component: React.ComponentType }) {
@@ -100,6 +102,8 @@ function Router() {
       <Route path="/invoice-settings">{() => <AuthenticatedRoute component={InvoiceSettingsPage} />}</Route>
       <Route path="/barcode">{() => <AuthenticatedRoute component={BarcodeManagerPage} />}</Route>
       <Route path="/select-warehouse" component={WarehouseSelectPage} />
+      <Route path="/rekening-koran">{() => <AuthenticatedRoute component={RekeningKoranPage} />}</Route>
+      <Route path="/mutasi-persediaan">{() => <AuthenticatedRoute component={MutasiPersediaanPage} />}</Route>
       <Route path="/landing" component={LandingPage} />
       <Route path="/accept-invite" component={AcceptInvite} />
       <Route path="/panduan" component={Panduan} />
