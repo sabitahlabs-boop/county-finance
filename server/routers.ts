@@ -33,6 +33,7 @@ import {
   getTransactionsByClient,
   getWarehousesByBusiness, getWarehouseById, getDefaultWarehouse, createWarehouse, updateWarehouse, deleteWarehouse, ensureDefaultWarehouse,
   getWarehouseStockByWarehouse, getWarehouseStockByProduct, adjustWarehouseStock,
+  getOrCreateWarehouseStock, updateWarehouseStockQty, recalcProductStockFromWarehouses,
   performStockTransfer, getStockTransfersByBusiness, migrateStockToDefaultWarehouse,
   getTeamMembersByBusiness, getTeamMemberByUserAndBusiness, getTeamMembershipsByUser,
   createTeamMember, updateTeamMember, deleteTeamMember, getTeamMemberById,
@@ -46,7 +47,7 @@ import {
   createPosShift, getOpenShift, closePosShift, getShiftsByBusiness, getPosShiftById,
   createDiscountCode, getDiscountCodesByBusiness, validateDiscountCode, incrementDiscountUsage, updateDiscountCode, deleteDiscountCode,
   generateReceiptCode, createPosReceipt, getPosReceiptsByBusiness, getPosReceiptById, refundPosReceipt,
-  getDailySalesReport,
+  getDailySalesReport, getPeriodSalesReport,
   seedDummyData, clearBusinessData,
   generateNeraca, generatePerubahanModal, generateCALK,
   getSuppliersByBusiness, getSupplierById, createSupplier, updateSupplier, deleteSupplier,
@@ -709,6 +710,11 @@ export const appRouter = router({
       const biz = (await resolveBusinessForUser(ctx.user.id, ctx.requestedBusinessId))?.business;
       if (!biz) throw new TRPCError({ code: "NOT_FOUND" });
       return getDailySalesReport(biz.id, input.date);
+    }),
+    periodSales: protectedProcedure.input(z.object({ startDate: z.string(), endDate: z.string() })).query(async ({ ctx, input }) => {
+      const biz = (await resolveBusinessForUser(ctx.user.id, ctx.requestedBusinessId))?.business;
+      if (!biz) throw new TRPCError({ code: "NOT_FOUND" });
+      return getPeriodSalesReport(biz.id, input.startDate, input.endDate);
     }),
   }),
 
@@ -1930,6 +1936,7 @@ Penting: Kembalikan HANYA JSON valid, tidak ada teks penjelasan.`,
       shiftId: z.number().optional(),
       clientId: z.number().optional(),
       notes: z.string().optional(),
+      date: z.string().optional(), // Allow past dates for makeup entries
       // Cart items to create individual transactions for
       items: z.array(z.object({
         productId: z.number(),
@@ -1942,7 +1949,7 @@ Penting: Kembalikan HANYA JSON valid, tidak ada teks penjelasan.`,
       const resolved = await resolveBusinessForUser(ctx.user.id, ctx.requestedBusinessId);
       if (!resolved) throw new TRPCError({ code: "NOT_FOUND" });
       const bizId = resolved.business.id;
-      const today = new Date().toISOString().slice(0, 10);
+      const saleDate = input.date || new Date().toISOString().slice(0, 10);
 
       // Generate receipt code
       const receiptCode = await generateReceiptCode(bizId);
@@ -1961,7 +1968,7 @@ Penting: Kembalikan HANYA JSON valid, tidak ada teks penjelasan.`,
         changeAmount: input.changeAmount,
         clientId: input.clientId ?? null,
         notes: input.notes ?? null,
-        date: today,
+        date: saleDate,
       });
 
       // Increment discount usage if applicable
@@ -1969,14 +1976,14 @@ Penting: Kembalikan HANYA JSON valid, tidak ada teks penjelasan.`,
         await incrementDiscountUsage(input.discountCodeId);
       }
 
-      // Create individual transactions for each cart item
+      // Create individual transactions for each cart item + reduce stock
       const primaryMethod = input.payments[0]?.method ?? "Tunai";
       for (const item of input.items) {
         const txCode = await generateTxCode(bizId);
         await createTransaction({
           businessId: bizId,
           txCode,
-          date: today,
+          date: saleDate,
           type: "pemasukan",
           category: "Penjualan POS",
           description: `POS ${receiptCode}`,
@@ -1988,6 +1995,34 @@ Penting: Kembalikan HANYA JSON valid, tidak ada teks penjelasan.`,
           receiptId,
           shiftId: input.shiftId ?? null,
         });
+
+        // ─── Reduce stock from warehouse ───
+        if (item.warehouseId && item.productQty > 0) {
+          const ws = await getOrCreateWarehouseStock(item.warehouseId, item.productId);
+          const newQty = Math.max(0, ws.quantity - item.productQty);
+          await updateWarehouseStockQty(item.warehouseId, item.productId, newQty);
+          const newTotal = await recalcProductStockFromWarehouses(item.productId);
+
+          // Create stock log
+          await createStockLog({
+            businessId: bizId,
+            productId: item.productId,
+            date: saleDate,
+            movementType: "out",
+            qty: item.productQty,
+            direction: -1,
+            stockBefore: ws.quantity,
+            stockAfter: newQty,
+            notes: `Penjualan POS ${receiptCode}`,
+          });
+        } else {
+          // Fallback: directly reduce products.stockCurrent
+          const product = await getProductById(item.productId);
+          if (product) {
+            const newStock = Math.max(0, (product.stockCurrent ?? 0) - item.productQty);
+            await updateProduct(item.productId, { stockCurrent: newStock });
+          }
+        }
       }
 
       return { receiptId, receiptCode };

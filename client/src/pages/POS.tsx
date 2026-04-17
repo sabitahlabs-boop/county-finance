@@ -11,7 +11,7 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import {
   ShoppingCart, Search, Plus, Minus, Trash2, CreditCard, Banknote,
   QrCode, Receipt, CheckCircle2, Package, X, Loader2, Printer, Warehouse,
-  SplitSquareHorizontal, Tag, Percent, Wallet,
+  SplitSquareHorizontal, Tag, Percent, Wallet, CalendarDays,
 } from "lucide-react";
 import { formatRupiah } from "../../../shared/finance";
 import { toast } from "sonner";
@@ -48,6 +48,7 @@ export default function POS() {
   const [checkoutOpen, setCheckoutOpen] = useState(false);
   const [successOpen, setSuccessOpen] = useState(false);
   const [notes, setNotes] = useState("");
+  const [saleDate, setSaleDate] = useState(() => new Date().toISOString().slice(0, 10));
   const [selectedWarehouseId, setSelectedWarehouseId] = useState<number | null>(null);
 
   // Split payment state
@@ -92,6 +93,7 @@ export default function POS() {
       utils.transaction.list.invalidate();
       utils.report.dashboard.invalidate();
       utils.product.list.invalidate();
+      utils.warehouse.stock.invalidate();
       setLastReceiptCode(data.receiptCode);
       setLastCart([...cart]);
       setLastTotal(grandTotal);
@@ -309,6 +311,7 @@ export default function POS() {
       customerPaid: splitMode ? finalPayments.reduce((s, p) => s + p.amount, 0) : (parseInt(customerPaid) || grandTotal),
       changeAmount: change,
       notes: notes || undefined,
+      date: saleDate,
       items: cart.map(item => ({
         productId: item.productId,
         productQty: item.qty,
@@ -329,6 +332,15 @@ export default function POS() {
           <div className="relative flex-1 min-w-[200px]">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
             <Input value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} placeholder="Cari produk..." className="pl-9 h-11" />
+          </div>
+          <div className="flex items-center gap-1.5">
+            <CalendarDays className="h-4 w-4 text-muted-foreground shrink-0" />
+            <Input
+              type="date"
+              value={saleDate}
+              onChange={(e) => setSaleDate(e.target.value)}
+              className="w-40 h-11 text-sm"
+            />
           </div>
           {warehouses.length > 1 && (
             <Select value={selectedWarehouseId?.toString() ?? ""} onValueChange={(v) => setSelectedWarehouseId(Number(v))}>

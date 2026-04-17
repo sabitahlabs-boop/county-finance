@@ -653,20 +653,23 @@ export async function generateArusKas(businessId: number, month: number, year: n
   const summary = await getTransactionSummary(businessId, month, year);
   const bulanNames = ["Januari","Februari","Maret","April","Mei","Juni","Juli","Agustus","September","Oktober","November","Desember"];
   const period = `${bulanNames[month - 1]} ${year}`;
-  // Split by payment method for kas masuk
   const db = await getDb();
   const periodStr = `${year}-${String(month).padStart(2, "0")}`;
   const txs = db ? await db.select().from(transactions).where(
     and(eq(transactions.businessId, businessId), eq(transactions.isDeleted, false), sql`${transactions.date} LIKE ${periodStr + "%"}`)
   ) : [];
+
+  // Group both kas masuk and kas keluar by CATEGORY (standard accounting)
   const kasMasuk: Record<string, number> & { total: number } = { total: 0 } as any;
   const kasKeluar: Record<string, number> & { total: number } = { total: 0 } as any;
   for (const tx of txs) {
     if (tx.type === "pemasukan") {
-      kasMasuk[tx.paymentMethod] = (kasMasuk[tx.paymentMethod] || 0) + tx.amount;
+      const cat = tx.category || "Pendapatan Lainnya";
+      kasMasuk[cat] = (kasMasuk[cat] || 0) + tx.amount;
       kasMasuk.total += tx.amount;
     } else {
-      kasKeluar[tx.category] = (kasKeluar[tx.category] || 0) + tx.amount;
+      const cat = tx.category || "Pengeluaran Lainnya";
+      kasKeluar[cat] = (kasKeluar[cat] || 0) + tx.amount;
       kasKeluar.total += tx.amount;
     }
   }
@@ -2342,6 +2345,54 @@ export async function getDailySalesReport(businessId: number, date: string) {
     byHour,
     byProduct: Object.values(byProduct).sort((a, b) => b.revenue - a.revenue),
   };
+}
+
+// ─── Period Sales Report (date range) ───
+export async function getPeriodSalesReport(businessId: number, startDate: string, endDate: string) {
+  const db = await getDb();
+  if (!db) return { startDate, endDate, receipts: [], totalSales: 0, totalDiscount: 0, totalRefunds: 0, netSales: 0, totalTransactions: 0, byPaymentMethod: {} as Record<string, number>, byDate: {} as Record<string, number>, byProduct: [] as Array<{ name: string; qty: number; revenue: number; hpp: number }> };
+
+  const receipts = await db.select().from(posReceipts)
+    .where(and(eq(posReceipts.businessId, businessId), sql`${posReceipts.date} >= ${startDate}`, sql`${posReceipts.date} <= ${endDate}`))
+    .orderBy(desc(posReceipts.createdAt));
+
+  let totalSales = 0, totalDiscount = 0, totalRefunds = 0, totalTransactions = 0;
+  const byPaymentMethod: Record<string, number> = {};
+  const byDate: Record<string, number> = {};
+
+  for (const r of receipts) {
+    if (r.isRefunded) { totalRefunds += r.grandTotal; }
+    else { totalSales += r.grandTotal; totalTransactions++; }
+    totalDiscount += r.discountAmount;
+    const payments = (typeof r.payments === "string" ? JSON.parse(r.payments) : r.payments) as Array<{ method: string; amount: number }>;
+    for (const p of payments) { byPaymentMethod[p.method] = (byPaymentMethod[p.method] || 0) + p.amount; }
+    if (!r.isRefunded) { byDate[r.date] = (byDate[r.date] || 0) + r.grandTotal; }
+  }
+
+  const netSales = totalSales - totalRefunds;
+
+  // Product breakdown
+  const txs = await db.select().from(transactions)
+    .where(and(eq(transactions.businessId, businessId), sql`${transactions.date} >= ${startDate}`, sql`${transactions.date} <= ${endDate}`, eq(transactions.isDeleted, false), eq(transactions.category, "Penjualan POS")))
+    .orderBy(desc(transactions.createdAt));
+
+  const byProduct: Record<number, { name: string; qty: number; revenue: number; hpp: number }> = {};
+  for (const tx of txs) {
+    if (tx.productId) {
+      if (!byProduct[tx.productId]) byProduct[tx.productId] = { name: `Produk #${tx.productId}`, qty: 0, revenue: 0, hpp: 0 };
+      byProduct[tx.productId].qty += tx.productQty ?? 0;
+      byProduct[tx.productId].revenue += tx.amount;
+      byProduct[tx.productId].hpp += (tx.productHppSnapshot ?? 0) * (tx.productQty ?? 0);
+    }
+  }
+  const productIds = Object.keys(byProduct).map(Number);
+  if (productIds.length > 0) {
+    const prods = await db.select({ id: products.id, name: products.name }).from(products)
+      .where(sql`${products.id} IN (${sql.join(productIds.map(id => sql`${id}`), sql`, `)})`);
+    for (const p of prods) { if (byProduct[p.id]) byProduct[p.id].name = p.name; }
+  }
+
+  return { startDate, endDate, receipts, totalSales, totalDiscount, totalRefunds, netSales, totalTransactions, byPaymentMethod, byDate, byProduct: Object.values(byProduct).sort((a, b) => b.revenue - a.revenue) };
 }
 
 export async function getPosReceiptById(id: number): Promise<PosReceipt | undefined> {
