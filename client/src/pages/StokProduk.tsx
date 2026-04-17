@@ -18,7 +18,7 @@ import { getProxiedImageUrl } from "@/lib/utils";
 // ─── Image Upload Helper ───
 function ImageUploader({ currentUrl, onUpload }: { currentUrl?: string | null; onUpload: (url: string) => void }) {
   const [uploading, setUploading] = useState(false);
-  const [preview, setPreview] = useState<string | null>(currentUrl || null);
+  const [preview, setPreview] = useState<string | null>(currentUrl ? getProxiedImageUrl(currentUrl) : null);
   const inputRef = useRef<HTMLInputElement>(null);
 
   const handleFile = async (file: File) => {
@@ -37,7 +37,7 @@ function ImageUploader({ currentUrl, onUpload }: { currentUrl?: string | null; o
       toast.success("Gambar diupload");
     } catch {
       toast.error("Gagal upload gambar");
-      setPreview(currentUrl || null);
+      setPreview(currentUrl ? getProxiedImageUrl(currentUrl) : null);
     } finally {
       setUploading(false);
     }
@@ -503,7 +503,7 @@ export default function StokProduk() {
                 {/* Product Image */}
                 <div className="relative h-36 bg-gradient-to-br from-muted/30 to-muted/10 overflow-hidden">
                   {p.imageUrl ? (
-                    <img src={p.imageUrl} alt={p.name} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300" />
+                    <img src={getProxiedImageUrl(p.imageUrl)} alt={p.name} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300" />
                   ) : (
                     <div className="w-full h-full flex items-center justify-center">
                       <Package className="h-12 w-12 text-muted-foreground/20" />

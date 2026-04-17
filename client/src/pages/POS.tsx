@@ -14,6 +14,7 @@ import {
   SplitSquareHorizontal, Tag, Percent, Wallet, CalendarDays,
 } from "lucide-react";
 import { formatRupiah } from "../../../shared/finance";
+import { getProxiedImageUrl } from "@/lib/utils";
 import { toast } from "sonner";
 
 type CartItem = {
@@ -390,7 +391,7 @@ export default function POS() {
                   >
                     <div className="relative h-24 bg-muted/20 overflow-hidden">
                       {p.imageUrl ? (
-                        <img src={p.imageUrl} alt={p.name} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300" />
+                        <img src={getProxiedImageUrl(p.imageUrl)} alt={p.name} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300" />
                       ) : (
                         <div className="w-full h-full flex items-center justify-center">
                           <Package className="h-8 w-8 text-muted-foreground/15" />
@@ -423,7 +424,7 @@ export default function POS() {
                   <Card key={p.id} className="border shadow-sm overflow-hidden">
                     <div className="relative h-20 bg-muted/20">
                       {p.imageUrl ? (
-                        <img src={p.imageUrl} alt={p.name} className="w-full h-full object-cover grayscale" />
+                        <img src={getProxiedImageUrl(p.imageUrl)} alt={p.name} className="w-full h-full object-cover grayscale" />
                       ) : (
                         <div className="w-full h-full flex items-center justify-center">
                           <Package className="h-6 w-6 text-muted-foreground/15" />
@@ -469,7 +470,7 @@ export default function POS() {
                 <div key={item.productId} className="flex items-center gap-3 p-2.5 rounded-lg bg-muted/30 hover:bg-muted/50 transition-colors">
                   <div className="h-12 w-12 rounded-lg overflow-hidden bg-muted/50 shrink-0">
                     {item.imageUrl ? (
-                      <img src={item.imageUrl} alt={item.name} className="w-full h-full object-cover" />
+                      <img src={getProxiedImageUrl(item.imageUrl)} alt={item.name} className="w-full h-full object-cover" />
                     ) : (
                       <div className="w-full h-full flex items-center justify-center">
                         <Package className="h-5 w-5 text-muted-foreground/20" />
