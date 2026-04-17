@@ -60,9 +60,12 @@ import {
   Truck,
   ScanBarcode,
   FileCheck,
+  Store,
+  ArrowRightLeft,
 } from "lucide-react";
 import { useTheme } from "@/contexts/ThemeContext";
 import { CSSProperties, useEffect, useMemo, useRef, useState } from "react";
+import { AnimatePresence, motion } from "framer-motion";
 import { useLocation } from "wouter";
 import { DashboardLayoutSkeleton } from "./DashboardLayoutSkeleton";
 import { Button } from "./ui/button";
@@ -244,6 +247,33 @@ function DashboardLayoutContent({
   const posEnabled = business?.posEnabled ?? false;
   const debtEnabled = business?.debtEnabled ?? true;
   const isAdmin = user?.role === "admin";
+
+  // Mode switcher mutation
+  const setModeMut = trpc.business.setMode.useMutation({
+    onSuccess: (data) => {
+      if (data.businessId) {
+        localStorage.setItem("county-active-business-id", String(data.businessId));
+        localStorage.setItem("county-mode-transition", data.appMode ?? "umkm");
+        window.location.reload();
+      }
+    },
+  });
+  const handleModeSwitch = () => {
+    const targetMode = appMode === "umkm" ? "personal" : "umkm";
+    setModeMut.mutate({ appMode: targetMode });
+  };
+
+  // Transition animation on mode switch
+  const [showTransition, setShowTransition] = useState<string | null>(null);
+  useEffect(() => {
+    const transMode = localStorage.getItem("county-mode-transition");
+    if (transMode) {
+      localStorage.removeItem("county-mode-transition");
+      setShowTransition(transMode);
+      const timer = setTimeout(() => setShowTransition(null), 1200);
+      return () => clearTimeout(timer);
+    }
+  }, []);
 
   // Business context for multi-business switching
   const {
@@ -720,6 +750,47 @@ function DashboardLayoutContent({
             </div>
           )}
 
+          {/* ─── Mode Switcher (UMKM ↔ Jurnal Pribadi) ─── */}
+          {!isCollapsed && (
+            <div className="px-3 pb-2">
+              <button
+                onClick={handleModeSwitch}
+                disabled={setModeMut.isPending}
+                className={`flex items-center gap-2.5 w-full rounded-xl border px-3 py-2 text-left transition-all text-xs font-medium ${
+                  isPersonal
+                    ? "border-county-violet/30 bg-county-violet/5 hover:bg-county-violet/10 text-county-violet"
+                    : "border-sidebar-primary/30 bg-sidebar-primary/5 hover:bg-sidebar-primary/10 text-sidebar-primary"
+                } ${setModeMut.isPending ? "opacity-60 cursor-wait" : "cursor-pointer"}`}
+              >
+                <ArrowRightLeft className="h-3.5 w-3.5 shrink-0" />
+                <span className="flex-1">
+                  {setModeMut.isPending
+                    ? "Beralih..."
+                    : appMode === "umkm"
+                      ? "Beralih ke Jurnal Pribadi"
+                      : "Beralih ke Mode UMKM"}
+                </span>
+                {appMode === "umkm" ? <BookOpen className="h-3.5 w-3.5 shrink-0" /> : <Store className="h-3.5 w-3.5 shrink-0" />}
+              </button>
+            </div>
+          )}
+          {isCollapsed && (
+            <div className="px-1 pb-2 flex justify-center">
+              <button
+                onClick={handleModeSwitch}
+                disabled={setModeMut.isPending}
+                className={`h-9 w-9 flex items-center justify-center rounded-lg border transition-all ${
+                  isPersonal
+                    ? "border-county-violet/30 bg-county-violet/5 hover:bg-county-violet/10 text-county-violet"
+                    : "border-sidebar-primary/30 bg-sidebar-primary/5 hover:bg-sidebar-primary/10 text-sidebar-primary"
+                } ${setModeMut.isPending ? "opacity-60 cursor-wait" : "cursor-pointer"}`}
+                title={appMode === "umkm" ? "Beralih ke Jurnal Pribadi" : "Beralih ke Mode UMKM"}
+              >
+                <ArrowRightLeft className="h-4 w-4" />
+              </button>
+            </div>
+          )}
+
           {/* ─── Navigation ─── */}
           <SidebarContent className="gap-0">
             <SidebarMenu
@@ -800,6 +871,48 @@ function DashboardLayoutContent({
       </div>
 
       <SidebarInset>
+        {/* Mode switch transition overlay */}
+        <AnimatePresence>
+          {showTransition && (
+            <motion.div
+              key="mode-transition"
+              initial={{ opacity: 1 }}
+              animate={{ opacity: 0 }}
+              exit={{ opacity: 0 }}
+              transition={{ duration: 1, ease: "easeOut" }}
+              className="fixed inset-0 z-[100] flex items-center justify-center pointer-events-none"
+              style={{
+                background: showTransition === "personal"
+                  ? "linear-gradient(135deg, rgba(139,92,246,0.15), rgba(16,185,129,0.08))"
+                  : "linear-gradient(135deg, rgba(30,77,155,0.15), rgba(37,99,235,0.08))",
+              }}
+            >
+              <motion.div
+                initial={{ scale: 0.8, opacity: 0 }}
+                animate={{ scale: 1, opacity: 1 }}
+                exit={{ scale: 1.1, opacity: 0 }}
+                transition={{ duration: 0.6, ease: "easeOut" }}
+                className="flex flex-col items-center gap-3"
+              >
+                <div className={`h-16 w-16 rounded-2xl flex items-center justify-center ${
+                  showTransition === "personal"
+                    ? "bg-county-violet/20 text-county-violet"
+                    : "bg-blue-600/20 text-blue-600"
+                }`}>
+                  {showTransition === "personal"
+                    ? <BookOpen className="h-8 w-8" />
+                    : <Store className="h-8 w-8" />
+                  }
+                </div>
+                <p className={`text-sm font-semibold ${
+                  showTransition === "personal" ? "text-county-violet" : "text-blue-600"
+                }`}>
+                  {showTransition === "personal" ? "Jurnal Pribadi" : "Mode UMKM"}
+                </p>
+              </motion.div>
+            </motion.div>
+          )}
+        </AnimatePresence>
         {isMobile ? (
           <div className="flex border-b h-14 items-center justify-between bg-background/95 px-2 backdrop-blur sticky top-0 z-40">
             <div className="flex items-center gap-2">

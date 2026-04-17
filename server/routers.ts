@@ -5,7 +5,7 @@ import { publicProcedure, protectedProcedure, adminProcedure, router } from "./_
 import { z } from "zod";
 import { TRPCError } from "@trpc/server";
 import {
-  getBusinessByOwnerId, getBusinessById, getBusinessBySlug, createBusiness, updateBusiness, getAllBusinesses,
+  getBusinessByOwnerId, getBusinessesByOwnerId, getBusinessByOwnerAndMode, getBusinessById, getBusinessBySlug, createBusiness, updateBusiness, getAllBusinesses,
   getActiveTaxRules, seedDefaultTaxRules, updateTaxRule,
   getProductsByBusiness, getProductById, createProduct, updateProduct, countProductsByBusiness, getLowStockProducts,
   createTransaction, updateTransaction, getTransactionsByBusiness, countTransactionsForMonth, softDeleteTransaction, getTransactionById, generateTxCode,
@@ -111,9 +111,9 @@ export const appRouter = router({
       bankHolder: z.string().optional(),
       appMode: z.enum(["personal", "umkm"]).default("umkm"),
     })).mutation(async ({ ctx, input }) => {
-      // If user already has a business, just return it (idempotent)
-      const existing = await getBusinessByOwnerId(ctx.user.id);
-      if (existing) return { id: existing.id };
+      // Check if user already has a business with this mode — idempotent per mode
+      const existingForMode = await getBusinessByOwnerAndMode(ctx.user.id, input.appMode);
+      if (existingForMode) return { id: existingForMode.id };
       // Ensure slug is unique — append a short random suffix if taken
       let slug = input.slug || input.businessName.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)/g, "").substring(0, 80);
       let slugExists = await getBusinessBySlug(slug);
@@ -155,13 +155,43 @@ export const appRouter = router({
       await updateBusiness(biz.id, input);
       return { success: true };
     }),
+    /** List all businesses owned by the current user (for mode switching) */
+    listOwn: protectedProcedure.query(async ({ ctx }) => {
+      return getBusinessesByOwnerId(ctx.user.id);
+    }),
     setMode: protectedProcedure.input(z.object({
       appMode: z.enum(["personal", "umkm"]),
     })).mutation(async ({ ctx, input }) => {
-      const biz = (await resolveBusinessForUser(ctx.user.id, ctx.requestedBusinessId))?.business;
-      if (!biz) throw new TRPCError({ code: "NOT_FOUND", message: "Bisnis tidak ditemukan" });
-      await updateBusinessMode(biz.id, input.appMode);
-      return { success: true };
+      // Find existing business for the target mode
+      let targetBiz = await getBusinessByOwnerAndMode(ctx.user.id, input.appMode);
+      if (!targetBiz) {
+        // Create a new business for the target mode, copying basic info from current business
+        const currentBiz = (await resolveBusinessForUser(ctx.user.id, ctx.requestedBusinessId))?.business;
+        const baseName = input.appMode === "personal"
+          ? `Jurnal Pribadi${currentBiz ? ` - ${ctx.user.name ?? "User"}` : ""}`
+          : `UMKM${currentBiz ? ` - ${currentBiz.businessName}` : ""}`;
+        const baseSlug = `${(currentBiz?.slug ?? "biz")}-${input.appMode}`;
+        let slug = baseSlug;
+        const slugExists = await getBusinessBySlug(slug);
+        if (slugExists) {
+          slug = `${baseSlug}-${Math.random().toString(36).substring(2, 7)}`;
+        }
+        const newId = await createBusiness({
+          slug,
+          businessName: baseName,
+          businessType: input.appMode === "personal" ? "lainnya" : (currentBiz?.businessType ?? "retail"),
+          ownerId: ctx.user.id,
+          appMode: input.appMode,
+          onboardingCompleted: true,
+          brandColor: currentBiz?.brandColor ?? "#2d9a5a",
+          plan: currentBiz?.plan ?? "free",
+          planActivatedAt: currentBiz?.planActivatedAt ?? null,
+          planExpiry: currentBiz?.planExpiry ?? null,
+        });
+        targetBiz = await getBusinessById(newId);
+      }
+      if (!targetBiz) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Gagal membuat bisnis baru" });
+      return { success: true, businessId: targetBiz.id, appMode: input.appMode };
     }),
     togglePos: protectedProcedure.input(z.object({
       posEnabled: z.boolean(),

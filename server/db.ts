@@ -348,11 +348,11 @@ export async function deleteUserWithAllData(userId: number): Promise<{ deletedUs
   const db = await getDb();
   if (!db) throw new Error("Database not available");
 
-  // Find the user's business first
-  const biz = await getBusinessByOwnerId(userId);
+  // Find ALL user's businesses (supports dual UMKM + personal)
+  const userBusinesses = await getBusinessesByOwnerId(userId);
   let deletedBusiness = false;
 
-  if (biz) {
+  for (const biz of userBusinesses) {
     // Delete in dependency order: compositions → stock logs → transactions → tax payments → monthly cache → products → business
     const bizId = biz.id;
     // Get all product IDs for this business
@@ -390,6 +390,23 @@ export async function getBusinessByOwnerId(ownerId: number): Promise<Business | 
   const db = await getDb();
   if (!db) return undefined;
   const result = await db.select().from(businesses).where(eq(businesses.ownerId, ownerId)).limit(1);
+  return result[0];
+}
+
+/** Return ALL businesses owned by this user (supports dual UMKM + personal) */
+export async function getBusinessesByOwnerId(ownerId: number): Promise<Business[]> {
+  const db = await getDb();
+  if (!db) return [];
+  return db.select().from(businesses).where(eq(businesses.ownerId, ownerId));
+}
+
+/** Return a specific mode's business for an owner */
+export async function getBusinessByOwnerAndMode(ownerId: number, mode: "personal" | "umkm"): Promise<Business | undefined> {
+  const db = await getDb();
+  if (!db) return undefined;
+  const result = await db.select().from(businesses)
+    .where(and(eq(businesses.ownerId, ownerId), eq(businesses.appMode, mode)))
+    .limit(1);
   return result[0];
 }
 

@@ -66,9 +66,18 @@ export default function Pengaturan() {
     onError: (err: any) => toast.error(err.message || "Gagal menyimpan"),
   });
   const setModeMut = trpc.business.setMode.useMutation({
-    onSuccess: () => {
-      utils.business.mine.invalidate();
-      toast.success("Mode aplikasi berhasil diubah");
+    onSuccess: (data) => {
+      if (data.businessId) {
+        // Switch to the new/existing business for the target mode
+        localStorage.setItem("county-active-business-id", String(data.businessId));
+        localStorage.setItem("county-mode-transition", data.appMode ?? "umkm");
+        toast.success(data.appMode === "personal" ? "Beralih ke Jurnal Pribadi" : "Beralih ke Mode UMKM");
+        // Reload to apply new business context
+        window.location.reload();
+      } else {
+        utils.business.mine.invalidate();
+        toast.success("Mode aplikasi berhasil diubah");
+      }
     },
     onError: (err: any) => toast.error(err.message || "Gagal mengubah mode"),
   });
