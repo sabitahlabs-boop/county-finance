@@ -4,8 +4,9 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Input } from "@/components/ui/input";
-import { Loader2 } from "lucide-react";
+import { Loader2, FileDown, Sheet } from "lucide-react";
 import { formatRupiah } from "../../../shared/finance";
+import { exportToPDF, exportToExcel, fmtRp, ExportColumn } from "@/lib/export";
 import { toast } from "sonner";
 
 export default function RekeningKoranPage() {
@@ -47,6 +48,55 @@ export default function RekeningKoranPage() {
     : selectedBankAccount?.initialBalance ?? 0;
 
   const startingBalance = selectedBankAccount?.initialBalance ?? 0;
+
+  const handleExportBankStatement = (format: "pdf" | "excel") => {
+    if (!selectedAccount || reportData.length === 0) return;
+
+    const columns: ExportColumn[] = [
+      { header: "No", key: "no", width: 8, align: "center" },
+      { header: "Tanggal", key: "date", width: 12 },
+      { header: "Keterangan", key: "description", width: 25 },
+      { header: "Debit (Rp)", key: "debit", width: 15, align: "right", format: (v: any) => v > 0 ? fmtRp(v) : "-" },
+      { header: "Kredit (Rp)", key: "credit", width: 15, align: "right", format: (v: any) => v > 0 ? fmtRp(v) : "-" },
+      { header: "Saldo (Rp)", key: "runningBalance", width: 15, align: "right", format: (v: any) => fmtRp(v) },
+    ];
+
+    const data = reportData.map((entry: any, idx: number) => ({
+      no: idx + 1,
+      date: entry.date,
+      description: entry.description,
+      debit: entry.debit,
+      credit: entry.credit,
+      runningBalance: entry.runningBalance,
+    }));
+
+    const summaryRow = {
+      no: "",
+      date: "",
+      description: "JUMLAH",
+      debit: totalDebit,
+      credit: totalCredit,
+      runningBalance: endingBalance,
+    };
+
+    const options = {
+      title: "Rekening Koran",
+      subtitle: `${selectedBankAccount?.accountName} — ${startDate} s/d ${endDate}`,
+      columns,
+      data,
+      summaryRow,
+      filename: `rekening-koran_${selectedAccount}_${startDate}_${endDate}`,
+      orientation: "landscape" as const,
+    };
+
+    if (format === "pdf") {
+      exportToPDF(options);
+      toast.success("PDF berhasil diunduh");
+    } else {
+      exportToExcel(options);
+      toast.success("Excel berhasil diunduh");
+    }
+  };
 
   return (
     <div className="flex flex-col gap-6 h-full">
@@ -137,10 +187,28 @@ export default function RekeningKoranPage() {
 
       {/* Table */}
       <Card className="flex-1 flex flex-col">
-        <CardHeader className="pb-3">
+        <CardHeader className="pb-3 flex flex-row items-center justify-between">
           <CardTitle className="text-base">
             {selectedAccount ? `Mutasi ${selectedBankAccount?.accountName}` : "Pilih Akun untuk Melihat Detail"}
           </CardTitle>
+          {selectedAccount && reportData.length > 0 && (
+            <div className="flex gap-2">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => handleExportBankStatement("pdf")}
+              >
+                <FileDown className="h-4 w-4 mr-1.5" /> PDF
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => handleExportBankStatement("excel")}
+              >
+                <Sheet className="h-4 w-4 mr-1.5" /> Excel
+              </Button>
+            </div>
+          )}
         </CardHeader>
         <CardContent className="flex-1 overflow-hidden flex flex-col">
           {isLoading ? (

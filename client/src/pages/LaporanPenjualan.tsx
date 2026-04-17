@@ -9,9 +9,11 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import {
   Receipt, TrendingUp, Banknote, CreditCard, QrCode,
   ShoppingBag, ChevronLeft, ChevronRight, Printer, ArrowUpDown,
-  Package, Tag, RotateCcw, Clock, DollarSign, CalendarRange, CalendarDays,
+  Package, Tag, RotateCcw, Clock, DollarSign, CalendarRange, CalendarDays, FileDown, Sheet,
 } from "lucide-react";
 import { formatRupiah } from "../../../shared/finance";
+import { exportToPDF, exportToExcel, fmtRp, ExportColumn } from "@/lib/export";
+import { toast } from "sonner";
 
 const HARI = ["Minggu", "Senin", "Selasa", "Rabu", "Kamis", "Jumat", "Sabtu"];
 const BULAN = ["Januari", "Februari", "Maret", "April", "Mei", "Juni", "Juli", "Agustus", "September", "Oktober", "November", "Desember"];
@@ -103,6 +105,59 @@ export default function LaporanPenjualan() {
   const periodLabel = mode === "daily"
     ? formatTanggal(selectedDate)
     : `${formatTanggalShort(startDate)} — ${formatTanggalShort(endDate)}`;
+
+  const handleExportSales = (format: "pdf" | "excel") => {
+    if (!report) return;
+
+    const columns: ExportColumn[] = [
+      { header: "Kode Struk", key: "receiptCode", width: 15 },
+      { header: mode === "period" ? "Tanggal" : "Waktu", key: "time", width: 15 },
+      { header: "Total (Rp)", key: "grandTotal", width: 18, align: "right", format: (v: any) => fmtRp(v) },
+      { header: "Diskon (Rp)", key: "discount", width: 15, align: "right", format: (v: any) => fmtRp(v) },
+      { header: "Metode", key: "method", width: 15 },
+    ];
+
+    const data = sortedReceipts.map((r: any) => {
+      const ps = (typeof r.payments === "string" ? JSON.parse(r.payments) : r.payments) as Array<{ method: string }>;
+      return {
+        receiptCode: r.receiptCode,
+        time: mode === "period" ? formatTanggalShort(r.date) : (r.createdAt ? formatTime(r.createdAt) : "-"),
+        grandTotal: r.grandTotal,
+        discount: r.discountAmount,
+        method: ps.map((p: any) => p.method).join(" + "),
+      };
+    });
+
+    const summaryRow = {
+      receiptCode: "TOTAL",
+      time: "",
+      grandTotal: report.totalSales,
+      discount: report.totalDiscount,
+      method: "",
+    };
+
+    const subtitle = mode === "daily"
+      ? `${formatTanggal(selectedDate)} — Laporan Penjualan Harian`
+      : `Periode ${formatTanggalShort(startDate)} s/d ${formatTanggalShort(endDate)}`;
+
+    const options = {
+      title: "Laporan Penjualan",
+      subtitle,
+      columns,
+      data,
+      summaryRow,
+      filename: mode === "daily" ? `penjualan_${selectedDate}` : `penjualan_${startDate}_${endDate}`,
+      orientation: "landscape" as const,
+    };
+
+    if (format === "pdf") {
+      exportToPDF(options);
+      toast.success("PDF berhasil diunduh");
+    } else {
+      exportToExcel(options);
+      toast.success("Excel berhasil diunduh");
+    }
+  };
 
   return (
     <div className="space-y-6">
@@ -443,8 +498,26 @@ export default function LaporanPenjualan() {
             </Card>
           )}
 
-          {/* Print button */}
-          <div className="flex justify-end">
+          {/* Export buttons */}
+          <div className="flex justify-end gap-2">
+            <Button
+              variant="outline"
+              size="sm"
+              className="gap-1.5"
+              onClick={() => handleExportSales("pdf")}
+              disabled={!report || sortedReceipts.length === 0}
+            >
+              <FileDown className="h-4 w-4" /> PDF
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              className="gap-1.5"
+              onClick={() => handleExportSales("excel")}
+              disabled={!report || sortedReceipts.length === 0}
+            >
+              <Sheet className="h-4 w-4" /> Excel
+            </Button>
             <Button variant="outline" size="sm" className="gap-1.5" onClick={() => {
               const w = window.open("", "_blank");
               if (!w) return;
@@ -495,7 +568,7 @@ export default function LaporanPenjualan() {
               </body></html>`);
               w.document.close();
             }}>
-              <Printer className="h-4 w-4" /> Cetak Laporan
+              <Printer className="h-4 w-4" /> Cetak
             </Button>
           </div>
         </>

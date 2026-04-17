@@ -62,6 +62,9 @@ import {
   FileCheck,
   Store,
   ArrowRightLeft,
+  CreditCard,
+  TrendingUp,
+  Search,
 } from "lucide-react";
 import { useTheme } from "@/contexts/ThemeContext";
 import { CSSProperties, useEffect, useMemo, useRef, useState } from "react";
@@ -141,9 +144,13 @@ const UMKM_SIDEBAR: SidebarItem[] = [
     icon: FileText,
     label: "Laporan",
     children: [
+      { icon: Search, label: "Daftar Laporan", path: "/laporan-index" },
       { icon: FileText, label: "Laporan Keuangan", path: "/laporan" },
       { icon: FileText, label: "Rekening Koran", path: "/rekening-koran" },
       { icon: Package, label: "Mutasi Persediaan", path: "/mutasi-persediaan" },
+      { icon: Package, label: "Penjualan per Produk", path: "/penjualan-produk" },
+      { icon: CreditCard, label: "Ringkasan Pembayaran", path: "/ringkasan-pembayaran" },
+      { icon: TrendingUp, label: "Top Produk & Kategori", path: "/top-produk" },
     ],
   },
   { icon: Users, label: "Pelanggan", path: "/client" },

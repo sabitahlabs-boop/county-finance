@@ -6,8 +6,9 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Badge } from "@/components/ui/badge";
-import { FileText, Download, TrendingUp, Printer, FileSpreadsheet, Scale, Wallet, BookOpen, CheckCircle2, AlertCircle } from "lucide-react";
+import { FileText, Download, TrendingUp, Printer, FileSpreadsheet, Scale, Wallet, BookOpen, CheckCircle2, AlertCircle, FileDown, Sheet } from "lucide-react";
 import { formatRupiah, BULAN_INDONESIA } from "../../../shared/finance";
+import { exportToPDF, exportToExcel, fmtRp, ExportColumn } from "@/lib/export";
 import { toast } from "sonner";
 
 export default function Laporan() {
@@ -27,168 +28,205 @@ export default function Laporan() {
     label: BULAN_INDONESIA[i],
   }));
 
-  const exportPDF = (type: string) => {
+  const handleExportLabaRugi = (format: "pdf" | "excel") => {
+    if (!labaRugi) return;
     const bizName = business?.businessName ?? "Bisnis Saya";
-    let content = "";
+    const columns: ExportColumn[] = [
+      { header: "Deskripsi", key: "label", width: 25 },
+      { header: "Jumlah (Rp)", key: "value", width: 18, align: "right", format: (v: any) => fmtRp(v) },
+    ];
 
-    if (type === "laba-rugi" && labaRugi) {
-      content = `
-        <h1 style="font-size:18px;font-weight:bold;margin-bottom:4px">Laporan Laba Rugi</h1>
-        <p style="color:#666;margin-bottom:16px">${bizName} &mdash; ${labaRugi.period}</p>
-        <table style="width:100%;border-collapse:collapse;font-size:13px">
-          <tr style="background:#f0fdf4"><td colspan="2" style="padding:8px;font-weight:bold;color:#166534">PENDAPATAN</td></tr>
-          <tr><td style="padding:6px 8px;color:#555">Penjualan Produk</td><td style="text-align:right;padding:6px 8px">${formatRupiah(labaRugi.pendapatan.penjualan)}</td></tr>
-          <tr><td style="padding:6px 8px;color:#555">Penjualan Jasa</td><td style="text-align:right;padding:6px 8px">${formatRupiah(labaRugi.pendapatan.jasa)}</td></tr>
-          <tr><td style="padding:6px 8px;color:#555">Lain-lain</td><td style="text-align:right;padding:6px 8px">${formatRupiah(labaRugi.pendapatan.lainLain)}</td></tr>
-          <tr style="border-top:1px solid #ddd"><td style="padding:8px;font-weight:bold">Total Pendapatan</td><td style="text-align:right;padding:8px;font-weight:bold;color:#16a34a">${formatRupiah(labaRugi.pendapatan.total)}</td></tr>
-          <tr style="background:#fef2f2"><td colspan="2" style="padding:8px;font-weight:bold;color:#991b1b">PENGELUARAN</td></tr>
-          <tr><td style="padding:6px 8px;color:#555">HPP</td><td style="text-align:right;padding:6px 8px">${formatRupiah(labaRugi.pengeluaran.hpp)}</td></tr>
-          <tr><td style="padding:6px 8px;color:#555">Operasional</td><td style="text-align:right;padding:6px 8px">${formatRupiah(labaRugi.pengeluaran.operasional)}</td></tr>
-          <tr><td style="padding:6px 8px;color:#555">Gaji</td><td style="text-align:right;padding:6px 8px">${formatRupiah(labaRugi.pengeluaran.gaji)}</td></tr>
-          <tr><td style="padding:6px 8px;color:#555">Utilitas</td><td style="text-align:right;padding:6px 8px">${formatRupiah(labaRugi.pengeluaran.utilitas)}</td></tr>
-          <tr><td style="padding:6px 8px;color:#555">Sewa</td><td style="text-align:right;padding:6px 8px">${formatRupiah(labaRugi.pengeluaran.sewa)}</td></tr>
-          <tr><td style="padding:6px 8px;color:#555">Transportasi</td><td style="text-align:right;padding:6px 8px">${formatRupiah(labaRugi.pengeluaran.transportasi)}</td></tr>
-          <tr><td style="padding:6px 8px;color:#555">Lain-lain</td><td style="text-align:right;padding:6px 8px">${formatRupiah(labaRugi.pengeluaran.lainLain)}</td></tr>
-          <tr style="border-top:1px solid #ddd"><td style="padding:8px;font-weight:bold">Total Pengeluaran</td><td style="text-align:right;padding:8px;font-weight:bold;color:#dc2626">${formatRupiah(labaRugi.pengeluaran.total)}</td></tr>
-          <tr style="border-top:2px solid #333"><td style="padding:10px 8px;font-weight:bold;font-size:14px">Laba Bersih</td><td style="text-align:right;padding:10px 8px;font-weight:bold;font-size:14px;color:${labaRugi.labaBersih >= 0 ? '#16a34a' : '#dc2626'}">${formatRupiah(labaRugi.labaBersih)}</td></tr>
-        </table>`;
-    } else if (type === "arus-kas" && arusKas) {
-      const masukRows = Object.entries(arusKas.kasMasuk).filter(([k]) => k !== "total").map(([k, v]) => `<tr><td style="padding:6px 8px;color:#555">${k}</td><td style="text-align:right;padding:6px 8px">${formatRupiah(v as number)}</td></tr>`).join("");
-      const keluarRows = Object.entries(arusKas.kasKeluar).filter(([k]) => k !== "total").map(([k, v]) => `<tr><td style="padding:6px 8px;color:#555">${k}</td><td style="text-align:right;padding:6px 8px">${formatRupiah(v as number)}</td></tr>`).join("");
-      content = `
-        <h1 style="font-size:18px;font-weight:bold;margin-bottom:4px">Laporan Arus Kas</h1>
-        <p style="color:#666;margin-bottom:16px">${bizName} &mdash; ${arusKas.period}</p>
-        <table style="width:100%;border-collapse:collapse;font-size:13px">
-          <tr style="background:#f0fdf4"><td colspan="2" style="padding:8px;font-weight:bold;color:#166534">KAS MASUK</td></tr>
-          ${masukRows}
-          <tr style="border-top:1px solid #ddd"><td style="padding:8px;font-weight:bold">Total Kas Masuk</td><td style="text-align:right;padding:8px;font-weight:bold;color:#16a34a">${formatRupiah(arusKas.kasMasuk.total)}</td></tr>
-          <tr style="background:#fef2f2"><td colspan="2" style="padding:8px;font-weight:bold;color:#991b1b">KAS KELUAR</td></tr>
-          ${keluarRows}
-          <tr style="border-top:1px solid #ddd"><td style="padding:8px;font-weight:bold">Total Kas Keluar</td><td style="text-align:right;padding:8px;font-weight:bold;color:#dc2626">${formatRupiah(arusKas.kasKeluar.total)}</td></tr>
-          <tr style="border-top:2px solid #333"><td style="padding:10px 8px;font-weight:bold;font-size:14px">Arus Kas Bersih</td><td style="text-align:right;padding:10px 8px;font-weight:bold;font-size:14px;color:${arusKas.netKas >= 0 ? '#16a34a' : '#dc2626'}">${formatRupiah(arusKas.netKas)}</td></tr>
-        </table>`;
-    } else if (type === "neraca" && neraca) {
-      content = `
-        <h1 style="font-size:18px;font-weight:bold;margin-bottom:4px">Laporan Neraca</h1>
-        <p style="color:#666;margin-bottom:16px">${bizName} &mdash; ${neraca.period}</p>
-        <table style="width:100%;border-collapse:collapse;font-size:13px">
-          <tr style="background:#f0fdf4"><td colspan="2" style="padding:8px;font-weight:bold;color:#166534">ASET</td></tr>
-          <tr><td style="padding:6px 8px;color:#555">Kas & Setara Kas</td><td style="text-align:right;padding:6px 8px">${formatRupiah(neraca.aset.kas)}</td></tr>
-          <tr><td style="padding:6px 8px;color:#555">Piutang Usaha</td><td style="text-align:right;padding:6px 8px">${formatRupiah(neraca.aset.piutang)}</td></tr>
-          <tr><td style="padding:6px 8px;color:#555">Persediaan Barang</td><td style="text-align:right;padding:6px 8px">${formatRupiah(neraca.aset.persediaan)}</td></tr>
-          <tr style="border-top:1px solid #ddd"><td style="padding:8px;font-weight:bold">Total Aset</td><td style="text-align:right;padding:8px;font-weight:bold;color:#16a34a">${formatRupiah(neraca.aset.totalAset)}</td></tr>
-          <tr style="background:#fef2f2"><td colspan="2" style="padding:8px;font-weight:bold;color:#991b1b">KEWAJIBAN</td></tr>
-          <tr><td style="padding:6px 8px;color:#555">Hutang Usaha</td><td style="text-align:right;padding:6px 8px">${formatRupiah(neraca.kewajiban.hutangUsaha)}</td></tr>
-          <tr style="border-top:1px solid #ddd"><td style="padding:8px;font-weight:bold">Total Kewajiban</td><td style="text-align:right;padding:8px;font-weight:bold;color:#dc2626">${formatRupiah(neraca.kewajiban.totalKewajiban)}</td></tr>
-          <tr style="background:#eff6ff"><td colspan="2" style="padding:8px;font-weight:bold;color:#1e40af">EKUITAS</td></tr>
-          <tr><td style="padding:6px 8px;color:#555">Modal</td><td style="text-align:right;padding:6px 8px">${formatRupiah(neraca.ekuitas.modalAwal)}</td></tr>
-          <tr><td style="padding:6px 8px;color:#555">Laba Periode</td><td style="text-align:right;padding:6px 8px">${formatRupiah(neraca.ekuitas.labaPeriode)}</td></tr>
-          <tr style="border-top:1px solid #ddd"><td style="padding:8px;font-weight:bold">Total Ekuitas</td><td style="text-align:right;padding:8px;font-weight:bold;color:#1e40af">${formatRupiah(neraca.ekuitas.totalEkuitas)}</td></tr>
-        </table>`;
+    const data = [
+      { label: "Penjualan Produk", value: labaRugi.pendapatan.penjualan },
+      { label: "Penjualan Jasa", value: labaRugi.pendapatan.jasa },
+      { label: "Pendapatan Lain-lain", value: labaRugi.pendapatan.lainLain },
+      { label: "Total Pendapatan", value: labaRugi.pendapatan.total },
+      { label: "HPP (Harga Pokok)", value: labaRugi.pengeluaran.hpp },
+      { label: "Operasional", value: labaRugi.pengeluaran.operasional },
+      { label: "Gaji", value: labaRugi.pengeluaran.gaji },
+      { label: "Utilitas", value: labaRugi.pengeluaran.utilitas },
+      { label: "Sewa", value: labaRugi.pengeluaran.sewa },
+      { label: "Transportasi", value: labaRugi.pengeluaran.transportasi },
+      { label: "Lain-lain", value: labaRugi.pengeluaran.lainLain },
+      { label: "Total Pengeluaran", value: labaRugi.pengeluaran.total },
+      { label: "Laba Kotor", value: labaRugi.labaKotor },
+      { label: "Laba Bersih", value: labaRugi.labaBersih },
+    ];
+
+    const options = {
+      title: "Laporan Laba Rugi",
+      subtitle: `${bizName} — ${labaRugi.period}`,
+      columns,
+      data,
+      filename: `laba-rugi_${BULAN_INDONESIA[month - 1]}_${year}`,
+      orientation: "portrait" as const,
+    };
+
+    if (format === "pdf") {
+      exportToPDF(options);
+      toast.success("PDF berhasil diunduh");
+    } else {
+      exportToExcel(options);
+      toast.success("Excel berhasil diunduh");
     }
-
-    if (!content) return;
-    const html = `<!DOCTYPE html><html><head><meta charset="utf-8"><title>Laporan County</title><style>body{font-family:Arial,sans-serif;padding:32px;color:#111}table{width:100%}@media print{body{padding:16px}}</style></head><body>${content}<p style="margin-top:32px;font-size:11px;color:#999">Dicetak dari County &mdash; ${new Date().toLocaleDateString("id-ID")}</p></body></html>`;
-    const win = window.open("", "_blank");
-    if (win) { win.document.write(html); win.document.close(); win.focus(); setTimeout(() => win.print(), 500); }
-    toast.success("Dialog cetak PDF dibuka");
   };
 
-  const exportExcel = (type: string) => {
-    const period = `${BULAN_INDONESIA[month - 1]}_${year}`;
+  const handleExportArusKas = (format: "pdf" | "excel") => {
+    if (!arusKas) return;
     const bizName = business?.businessName ?? "Bisnis Saya";
-    let rows: string[][] = [];
+    const columns: ExportColumn[] = [
+      { header: "Deskripsi", key: "label", width: 25 },
+      { header: "Jumlah (Rp)", key: "value", width: 18, align: "right", format: (v: any) => fmtRp(v) },
+    ];
 
-    if (type === "laba-rugi" && labaRugi) {
-      rows = [
-        ["Laporan Laba Rugi", ""], ["Bisnis", bizName], ["Periode", labaRugi.period], ["", ""],
-        ["PENDAPATAN", "Jumlah (Rp)"],
-        ["Penjualan Produk", String(labaRugi.pendapatan.penjualan)],
-        ["Penjualan Jasa", String(labaRugi.pendapatan.jasa)],
-        ["Pendapatan Lain-lain", String(labaRugi.pendapatan.lainLain)],
-        ["Total Pendapatan", String(labaRugi.pendapatan.total)], ["", ""],
-        ["PENGELUARAN", "Jumlah (Rp)"],
-        ["HPP (Harga Pokok)", String(labaRugi.pengeluaran.hpp)],
-        ["Operasional", String(labaRugi.pengeluaran.operasional)],
-        ["Gaji", String(labaRugi.pengeluaran.gaji)],
-        ["Utilitas", String(labaRugi.pengeluaran.utilitas)],
-        ["Sewa", String(labaRugi.pengeluaran.sewa)],
-        ["Transportasi", String(labaRugi.pengeluaran.transportasi)],
-        ["Lain-lain", String(labaRugi.pengeluaran.lainLain)],
-        ["Total Pengeluaran", String(labaRugi.pengeluaran.total)], ["", ""],
-        ["Laba Kotor", String(labaRugi.labaKotor)],
-        ["Laba Bersih", String(labaRugi.labaBersih)],
-        ["Margin Laba", `${labaRugi.marginPct}%`],
-        ["Estimasi Pajak", String(labaRugi.taxEstimate)],
-      ];
-    } else if (type === "arus-kas" && arusKas) {
-      rows = [
-        ["Laporan Arus Kas", ""], ["Bisnis", bizName], ["Periode", arusKas.period], ["", ""],
-        ["KAS MASUK", "Jumlah (Rp)"],
-        ...Object.entries(arusKas.kasMasuk).filter(([k]) => k !== "total").map(([k, v]) => [k, String(v)]),
-        ["Total Kas Masuk", String(arusKas.kasMasuk.total)], ["", ""],
-        ["KAS KELUAR", "Jumlah (Rp)"],
-        ...Object.entries(arusKas.kasKeluar).filter(([k]) => k !== "total").map(([k, v]) => [k, String(v)]),
-        ["Total Kas Keluar", String(arusKas.kasKeluar.total)], ["", ""],
-        ["Arus Kas Bersih", String(arusKas.netKas)],
-      ];
-    } else if (type === "neraca" && neraca) {
-      rows = [
-        ["Laporan Neraca", ""], ["Bisnis", bizName], ["Periode", neraca.period], ["", ""],
-        ["ASET", "Jumlah (Rp)"],
-        ["Kas & Setara Kas", String(neraca.aset.kas)],
-        ["Piutang Usaha", String(neraca.aset.piutang)],
-        ["Persediaan Barang", String(neraca.aset.persediaan)],
-        ["Total Aset", String(neraca.aset.totalAset)], ["", ""],
-        ["KEWAJIBAN", "Jumlah (Rp)"],
-        ["Hutang Usaha", String(neraca.kewajiban.hutangUsaha)],
-        ["Total Kewajiban", String(neraca.kewajiban.totalKewajiban)], ["", ""],
-        ["EKUITAS", "Jumlah (Rp)"],
-        ["Modal", String(neraca.ekuitas.modalAwal)],
-        ["Laba Periode", String(neraca.ekuitas.labaPeriode)],
-        ["Total Ekuitas", String(neraca.ekuitas.totalEkuitas)],
-      ];
-    } else if (type === "perubahan-modal" && perubahanModal) {
-      rows = [
-        ["Laporan Perubahan Modal", ""], ["Bisnis", bizName], ["Periode", perubahanModal.period], ["", ""],
-        ["Keterangan", "Jumlah (Rp)"],
-        ["Modal Awal", String(perubahanModal.modalAwal)],
-        ["Penambahan Modal", String(perubahanModal.penambahanModal)],
-        ["Laba Bersih", String(perubahanModal.labaBersih)],
-        ["Prive (Pengambilan Pribadi)", String(perubahanModal.prive)],
-        ["Modal Akhir", String(perubahanModal.modalAkhir)],
-      ];
+    const masukItems = Object.entries(arusKas.kasMasuk)
+      .filter(([k]) => k !== "total")
+      .map(([label, value]) => ({ label, value }));
+
+    const keluarItems = Object.entries(arusKas.kasKeluar)
+      .filter(([k]) => k !== "total")
+      .map(([label, value]) => ({ label, value }));
+
+    const data = [
+      ...masukItems,
+      { label: "Total Kas Masuk", value: arusKas.kasMasuk.total },
+      ...keluarItems,
+      { label: "Total Kas Keluar", value: arusKas.kasKeluar.total },
+      { label: "Arus Kas Bersih", value: arusKas.netKas },
+    ];
+
+    const options = {
+      title: "Laporan Arus Kas",
+      subtitle: `${bizName} — ${arusKas.period}`,
+      columns,
+      data,
+      filename: `arus-kas_${BULAN_INDONESIA[month - 1]}_${year}`,
+      orientation: "portrait" as const,
+    };
+
+    if (format === "pdf") {
+      exportToPDF(options);
+      toast.success("PDF berhasil diunduh");
+    } else {
+      exportToExcel(options);
+      toast.success("Excel berhasil diunduh");
     }
-
-    if (rows.length === 0) return;
-    const xmlHeader = `<?xml version="1.0" encoding="UTF-8"?>\n<?mso-application progid="Excel.Sheet"?>\n<Workbook xmlns="urn:schemas-microsoft-com:office:spreadsheet" xmlns:ss="urn:schemas-microsoft-com:office:spreadsheet">\n<Worksheet ss:Name="Laporan">\n<Table>\n`;
-    const xmlRows = rows.map(row => {
-      const cells = row.map(cell => {
-        const isNum = /^-?\d+(\.\d+)?$/.test(cell);
-        return isNum
-          ? `<Cell><Data ss:Type="Number">${cell}</Data></Cell>`
-          : `<Cell><Data ss:Type="String">${cell.replace(/&/g, "&amp;").replace(/</g, "&lt;")}</Data></Cell>`;
-      }).join("");
-      return `<Row>${cells}</Row>`;
-    }).join("\n");
-    const xmlFooter = `\n</Table>\n</Worksheet>\n</Workbook>`;
-    const blob = new Blob([xmlHeader + xmlRows + xmlFooter], { type: "application/vnd.ms-excel" });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a"); a.href = url; a.download = `${type}_${period}.xls`; a.click();
-    URL.revokeObjectURL(url);
-    toast.success("File Excel berhasil diunduh");
   };
 
-  const ExportButtons = ({ type }: { type: string }) => (
-    <div className="flex gap-1.5 flex-wrap">
-      <Button variant="outline" size="sm" className="h-8 text-xs" onClick={() => exportPDF(type)}>
-        <Printer className="h-3.5 w-3.5 mr-1" /> PDF
-      </Button>
-      <Button variant="outline" size="sm" className="h-8 text-xs" onClick={() => exportExcel(type)}>
-        <FileSpreadsheet className="h-3.5 w-3.5 mr-1" /> Excel
-      </Button>
-    </div>
-  );
+  const handleExportNeraca = (format: "pdf" | "excel") => {
+    if (!neraca) return;
+    const bizName = business?.businessName ?? "Bisnis Saya";
+    const columns: ExportColumn[] = [
+      { header: "Deskripsi", key: "label", width: 25 },
+      { header: "Jumlah (Rp)", key: "value", width: 18, align: "right", format: (v: any) => fmtRp(v) },
+    ];
+
+    const data = [
+      { label: "Kas & Setara Kas", value: neraca.aset.kas },
+      { label: "Piutang Usaha", value: neraca.aset.piutang },
+      { label: "Persediaan Barang", value: neraca.aset.persediaan },
+      { label: "Total Aset Lancar", value: neraca.aset.totalAsetLancar },
+      { label: "Aset Tetap", value: neraca.aset.asetTetap },
+      { label: "Total Aset", value: neraca.aset.totalAset },
+      { label: "Hutang Usaha", value: neraca.kewajiban.hutangUsaha },
+      { label: "Hutang Lain-lain", value: neraca.kewajiban.hutangLain },
+      { label: "Total Kewajiban", value: neraca.kewajiban.totalKewajiban },
+      { label: "Modal", value: neraca.ekuitas.modalAwal },
+      { label: "Laba Periode Berjalan", value: neraca.ekuitas.labaPeriode },
+      { label: "Prive", value: neraca.ekuitas.prive },
+      { label: "Total Ekuitas", value: neraca.ekuitas.totalEkuitas },
+    ];
+
+    const options = {
+      title: "Laporan Neraca",
+      subtitle: `${bizName} — ${neraca.period}`,
+      columns,
+      data,
+      filename: `neraca_${BULAN_INDONESIA[month - 1]}_${year}`,
+      orientation: "portrait" as const,
+    };
+
+    if (format === "pdf") {
+      exportToPDF(options);
+      toast.success("PDF berhasil diunduh");
+    } else {
+      exportToExcel(options);
+      toast.success("Excel berhasil diunduh");
+    }
+  };
+
+  const handleExportPerubahanModal = (format: "pdf" | "excel") => {
+    if (!perubahanModal) return;
+    const bizName = business?.businessName ?? "Bisnis Saya";
+    const columns: ExportColumn[] = [
+      { header: "Deskripsi", key: "label", width: 25 },
+      { header: "Jumlah (Rp)", key: "value", width: 18, align: "right", format: (v: any) => fmtRp(v) },
+    ];
+
+    const data = [
+      { label: "Modal Awal Periode", value: perubahanModal.modalAwal },
+      { label: "Penambahan Modal", value: perubahanModal.penambahanModal },
+      { label: "Laba/Rugi Bersih", value: perubahanModal.labaBersih },
+      { label: "Prive / Pengambilan Pribadi", value: perubahanModal.prive },
+      { label: "Modal Akhir Periode", value: perubahanModal.modalAkhir },
+    ];
+
+    const options = {
+      title: "Laporan Perubahan Modal",
+      subtitle: `${bizName} — ${perubahanModal.period}`,
+      columns,
+      data,
+      filename: `perubahan-modal_${BULAN_INDONESIA[month - 1]}_${year}`,
+      orientation: "portrait" as const,
+    };
+
+    if (format === "pdf") {
+      exportToPDF(options);
+      toast.success("PDF berhasil diunduh");
+    } else {
+      exportToExcel(options);
+      toast.success("Excel berhasil diunduh");
+    }
+  };
+
+  const ExportButtons = ({ type }: { type: string }) => {
+    const handlers: Record<string, (format: "pdf" | "excel") => void> = {
+      "laba-rugi": handleExportLabaRugi,
+      "arus-kas": handleExportArusKas,
+      "neraca": handleExportNeraca,
+      "perubahan-modal": handleExportPerubahanModal,
+    };
+
+    const handler = handlers[type];
+    const hasData =
+      (type === "laba-rugi" && labaRugi) ||
+      (type === "arus-kas" && arusKas) ||
+      (type === "neraca" && neraca) ||
+      (type === "perubahan-modal" && perubahanModal);
+
+    return (
+      <div className="flex gap-1.5 flex-wrap">
+        <Button
+          variant="outline"
+          size="sm"
+          className="h-8 text-xs"
+          onClick={() => handler?.("pdf")}
+          disabled={!hasData}
+        >
+          <FileDown className="h-3.5 w-3.5 mr-1" /> PDF
+        </Button>
+        <Button
+          variant="outline"
+          size="sm"
+          className="h-8 text-xs"
+          onClick={() => handler?.("excel")}
+          disabled={!hasData}
+        >
+          <Sheet className="h-3.5 w-3.5 mr-1" /> Excel
+        </Button>
+      </div>
+    );
+  };
 
   return (
     <div className="space-y-4 sm:space-y-6">

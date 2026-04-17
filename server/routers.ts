@@ -49,6 +49,7 @@ import {
   createDiscountCode, getDiscountCodesByBusiness, validateDiscountCode, incrementDiscountUsage, updateDiscountCode, deleteDiscountCode,
   generateReceiptCode, createPosReceipt, createPosReceiptItems, getPosReceiptsByBusiness, getPosReceiptById, refundPosReceipt,
   getDailySalesReport, getPeriodSalesReport,
+  getSalesByProduct, getPaymentMethodSummary, getTopProductsAndCategories,
   seedDummyData, clearBusinessData,
   generateNeraca, generatePerubahanModal, generateCALK,
   getSuppliersByBusiness, getSupplierById, createSupplier, updateSupplier, deleteSupplier,
@@ -764,6 +765,34 @@ export const appRouter = router({
       const biz = (await resolveBusinessForUser(ctx.user.id, ctx.requestedBusinessId))?.business;
       if (!biz) throw new TRPCError({ code: "NOT_FOUND" });
       return getMutasiPersediaanReport(biz.id, input.productId, input.startDate, input.endDate);
+    }),
+    // ─── Wave 1: Sales by Product ───
+    salesByProduct: protectedProcedure.input(z.object({
+      startDate: z.string(),
+      endDate: z.string(),
+    })).query(async ({ ctx, input }) => {
+      const biz = (await resolveBusinessForUser(ctx.user.id, ctx.requestedBusinessId))?.business;
+      if (!biz) throw new TRPCError({ code: "NOT_FOUND" });
+      return getSalesByProduct(biz.id, input.startDate, input.endDate);
+    }),
+    // ─── Wave 1: Payment Method Summary ───
+    paymentSummary: protectedProcedure.input(z.object({
+      startDate: z.string(),
+      endDate: z.string(),
+    })).query(async ({ ctx, input }) => {
+      const biz = (await resolveBusinessForUser(ctx.user.id, ctx.requestedBusinessId))?.business;
+      if (!biz) throw new TRPCError({ code: "NOT_FOUND" });
+      return getPaymentMethodSummary(biz.id, input.startDate, input.endDate);
+    }),
+    // ─── Wave 1: Top Products and Categories ───
+    topProducts: protectedProcedure.input(z.object({
+      startDate: z.string(),
+      endDate: z.string(),
+      limit: z.number().optional().default(10),
+    })).query(async ({ ctx, input }) => {
+      const biz = (await resolveBusinessForUser(ctx.user.id, ctx.requestedBusinessId))?.business;
+      if (!biz) throw new TRPCError({ code: "NOT_FOUND" });
+      return getTopProductsAndCategories(biz.id, input.startDate, input.endDate, input.limit);
     }),
   }),
 

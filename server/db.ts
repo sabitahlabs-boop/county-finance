@@ -3249,3 +3249,210 @@ export async function getAccessibleWarehouses(businessId: number, userId: number
   const whIds = accessRows.map(a => a.warehouseId);
   return db.select().from(warehouses).where(and(eq(warehouses.businessId, businessId), eq(warehouses.isActive, true), inArray(warehouses.id, whIds)));
 }
+
+// ─── WAVE 1: Sales by Product Report ───
+export async function getSalesByProduct(businessId: number, startDate: string, endDate: string) {
+  const db = await getDb();
+  if (!db) return [];
+
+  // Query pos_receipt_items joined with pos_receipts (for date filtering) and products
+  const items = await db.select({
+    productId: posReceiptItems.productId,
+    productName: posReceiptItems.productName,
+    sku: products.sku,
+    barcode: products.barcode,
+    category: products.category,
+    qty: posReceiptItems.qty,
+    unitPrice: posReceiptItems.unitPrice,
+    totalPrice: posReceiptItems.totalPrice,
+    hppSnapshot: posReceiptItems.hppSnapshot,
+  })
+    .from(posReceiptItems)
+    .innerJoin(posReceipts, eq(posReceiptItems.receiptId, posReceipts.id))
+    .innerJoin(products, eq(posReceiptItems.productId, products.id))
+    .where(
+      and(
+        eq(posReceipts.businessId, businessId),
+        sql`${posReceipts.date} >= ${startDate}`,
+        sql`${posReceipts.date} <= ${endDate}`,
+        eq(posReceipts.isRefunded, false)
+      )
+    );
+
+  // Group by productId
+  const groupedByProduct: Record<number, {
+    productId: number;
+    productName: string;
+    sku: string | null;
+    barcode: string | null;
+    category: string | null;
+    qtyTerjual: number;
+    totalPenjualan: number;
+    totalHPP: number;
+    laba: number;
+  }> = {};
+
+  for (const item of items) {
+    const key = item.productId;
+    if (!groupedByProduct[key]) {
+      groupedByProduct[key] = {
+        productId: item.productId,
+        productName: item.productName,
+        sku: item.sku ?? null,
+        barcode: item.barcode ?? null,
+        category: item.category ?? null,
+        qtyTerjual: 0,
+        totalPenjualan: 0,
+        totalHPP: 0,
+        laba: 0,
+      };
+    }
+    groupedByProduct[key].qtyTerjual += item.qty;
+    groupedByProduct[key].totalPenjualan += item.totalPrice;
+    groupedByProduct[key].totalHPP += (item.hppSnapshot ?? 0) * item.qty;
+  }
+
+  // Calculate laba and convert to array
+  const result = Object.values(groupedByProduct).map(p => ({
+    ...p,
+    laba: p.totalPenjualan - p.totalHPP,
+  }));
+
+  return result;
+}
+
+// ─── WAVE 1: Payment Method Summary Report ───
+export async function getPaymentMethodSummary(businessId: number, startDate: string, endDate: string) {
+  const db = await getDb();
+  if (!db) return [];
+
+  // 1. Get payments from transactions (pemasukan, non-deleted)
+  const txRecords = await db.select({
+    paymentMethod: transactions.paymentMethod,
+    amount: transactions.amount,
+  })
+    .from(transactions)
+    .where(
+      and(
+        eq(transactions.businessId, businessId),
+        eq(transactions.type, "pemasukan"),
+        eq(transactions.isDeleted, false),
+        sql`${transactions.date} >= ${startDate}`,
+        sql`${transactions.date} <= ${endDate}`
+      )
+    );
+
+  // 2. Get payments from pos_receipts
+  const receipts = await db.select({
+    payments: posReceipts.payments,
+  })
+    .from(posReceipts)
+    .where(
+      and(
+        eq(posReceipts.businessId, businessId),
+        eq(posReceipts.isRefunded, false),
+        sql`${posReceipts.date} >= ${startDate}`,
+        sql`${posReceipts.date} <= ${endDate}`
+      )
+    );
+
+  // Aggregate by payment method
+  const byMethod: Record<string, { totalAmount: number; transactionCount: number }> = {};
+
+  // Add transaction payments
+  for (const tx of txRecords) {
+    const method = tx.paymentMethod;
+    if (!byMethod[method]) {
+      byMethod[method] = { totalAmount: 0, transactionCount: 0 };
+    }
+    byMethod[method].totalAmount += tx.amount;
+    byMethod[method].transactionCount += 1;
+  }
+
+  // Add POS receipt payments
+  for (const receipt of receipts) {
+    const payments = (typeof receipt.payments === "string" ? JSON.parse(receipt.payments) : receipt.payments) as Array<{ method: string; amount: number }>;
+    for (const p of payments) {
+      const method = p.method;
+      if (!byMethod[method]) {
+        byMethod[method] = { totalAmount: 0, transactionCount: 0 };
+      }
+      byMethod[method].totalAmount += p.amount;
+      // Count as partial transaction (split payment)
+      byMethod[method].transactionCount += 1;
+    }
+  }
+
+  // Convert to array
+  const result = Object.entries(byMethod).map(([method, data]) => ({
+    method,
+    totalAmount: data.totalAmount,
+    transactionCount: data.transactionCount,
+  }));
+
+  return result;
+}
+
+// ─── WAVE 1: Top Products and Categories ───
+export async function getTopProductsAndCategories(businessId: number, startDate: string, endDate: string, limit: number = 10) {
+  const db = await getDb();
+  if (!db) return { topProducts: [], topCategories: [] };
+
+  // 1. Top Products: group by productId, sum qty & totalPrice, order by totalPrice desc
+  const productItems = await db.select({
+    productId: posReceiptItems.productId,
+    productName: posReceiptItems.productName,
+    qty: sql<number>`SUM(${posReceiptItems.qty})`,
+    totalPrice: sql<number>`SUM(${posReceiptItems.totalPrice})`,
+  })
+    .from(posReceiptItems)
+    .innerJoin(posReceipts, eq(posReceiptItems.receiptId, posReceipts.id))
+    .where(
+      and(
+        eq(posReceipts.businessId, businessId),
+        sql`${posReceipts.date} >= ${startDate}`,
+        sql`${posReceipts.date} <= ${endDate}`,
+        eq(posReceipts.isRefunded, false)
+      )
+    )
+    .groupBy(posReceiptItems.productId, posReceiptItems.productName)
+    .orderBy(desc(sql<number>`SUM(${posReceiptItems.totalPrice})`))
+    .limit(limit);
+
+  const topProducts = productItems.map((p, idx) => ({
+    rank: idx + 1,
+    productName: p.productName,
+    qty: p.qty,
+    totalPenjualan: p.totalPrice,
+  }));
+
+  // 2. Top Categories: group by category, sum qty & totalPrice, order by totalPrice desc
+  const categoryItems = await db.select({
+    category: products.category,
+    qty: sql<number>`SUM(${posReceiptItems.qty})`,
+    totalPrice: sql<number>`SUM(${posReceiptItems.totalPrice})`,
+  })
+    .from(posReceiptItems)
+    .innerJoin(posReceipts, eq(posReceiptItems.receiptId, posReceipts.id))
+    .innerJoin(products, eq(posReceiptItems.productId, products.id))
+    .where(
+      and(
+        eq(posReceipts.businessId, businessId),
+        sql`${posReceipts.date} >= ${startDate}`,
+        sql`${posReceipts.date} <= ${endDate}`,
+        eq(posReceipts.isRefunded, false)
+      )
+    )
+    .groupBy(products.category)
+    .orderBy(desc(sql<number>`SUM(${posReceiptItems.totalPrice})`))
+    .limit(limit);
+
+  const topCategories = categoryItems.map((c, idx) => ({
+    rank: idx + 1,
+    kategori: c.category ?? "Tanpa Kategori",
+    qty: c.qty,
+    totalPenjualan: c.totalPrice,
+  }));
+
+  return { topProducts, topCategories };
+}

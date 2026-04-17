@@ -3,8 +3,9 @@ import { trpc } from "@/lib/trpc";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Loader2, Package } from "lucide-react";
+import { Loader2, Package, FileDown, Sheet } from "lucide-react";
 import { formatRupiah } from "../../../shared/finance";
+import { exportToPDF, exportToExcel, fmtRp, ExportColumn } from "@/lib/export";
 import { toast } from "sonner";
 
 export default function MutasiPersediaanPage() {
@@ -98,6 +99,51 @@ export default function MutasiPersediaanPage() {
         return "text-warning";
       default:
         return "";
+    }
+  };
+
+  const handleExportInventoryMovement = (format: "pdf" | "excel") => {
+    if (!currentReportData || !selectedProduct) return;
+
+    const columns: ExportColumn[] = [
+      { header: "No", key: "no", width: 8, align: "center" },
+      { header: "Tanggal", key: "date", width: 12 },
+      { header: "Jenis", key: "type", width: 12 },
+      { header: "Qty", key: "qty", width: 10, align: "right" },
+      { header: "Harga Masuk (Rp)", key: "priceIn", width: 15, align: "right", format: (v: any) => fmtRp(v) },
+      { header: "Harga Keluar (Rp)", key: "priceOut", width: 15, align: "right", format: (v: any) => fmtRp(v) },
+      { header: "Stok Sebelum", key: "stockBefore", width: 12, align: "right" },
+      { header: "Stok Sesudah", key: "stockAfter", width: 12, align: "right" },
+      { header: "Referensi", key: "reference", width: 15 },
+    ];
+
+    const data = currentReportData.movements.map((movement: any, idx: number) => ({
+      no: idx + 1,
+      date: movement.date,
+      type: getMovementTypeLabel(movement.type),
+      qty: movement.qty,
+      priceIn: movement.priceIn,
+      priceOut: movement.priceOut,
+      stockBefore: movement.stockBefore,
+      stockAfter: movement.stockAfter,
+      reference: movement.reference,
+    }));
+
+    const options = {
+      title: "Mutasi Persediaan",
+      subtitle: `${selectedProduct.name} (SKU: ${selectedProduct.sku || "-"}) — ${startDate} s/d ${endDate}`,
+      columns,
+      data,
+      filename: `mutasi-persediaan_${selectedProduct.id}_${startDate}_${endDate}`,
+      orientation: "landscape" as const,
+    };
+
+    if (format === "pdf") {
+      exportToPDF(options);
+      toast.success("PDF berhasil diunduh");
+    } else {
+      exportToExcel(options);
+      toast.success("Excel berhasil diunduh");
     }
   };
 
@@ -231,10 +277,28 @@ export default function MutasiPersediaanPage() {
 
       {/* Table */}
       <Card className="flex-1 flex flex-col">
-        <CardHeader className="pb-3">
+        <CardHeader className="pb-3 flex flex-row items-center justify-between">
           <CardTitle className="text-base">
             {selectedProductId && selectedProduct ? `Mutasi ${selectedProduct.name}` : "Pilih Produk untuk Melihat Detail"}
           </CardTitle>
+          {selectedProductId && selectedProduct && currentReportData && currentReportData.movements.length > 0 && (
+            <div className="flex gap-2">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => handleExportInventoryMovement("pdf")}
+              >
+                <FileDown className="h-4 w-4 mr-1.5" /> PDF
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => handleExportInventoryMovement("excel")}
+              >
+                <Sheet className="h-4 w-4 mr-1.5" /> Excel
+              </Button>
+            </div>
+          )}
         </CardHeader>
         <CardContent className="flex-1 overflow-hidden flex flex-col">
           {isLoading ? (

@@ -39,6 +39,10 @@ import BarcodeManagerPage from "./pages/BarcodeManager";
 import WarehouseSelectPage from "./pages/WarehouseSelect";
 import RekeningKoranPage from "./pages/RekeningKoran";
 import MutasiPersediaanPage from "./pages/MutasiPersediaan";
+import PenjualanProduk from "./pages/PenjualanProduk";
+import RingkasanPembayaran from "./pages/RingkasanPembayaran";
+import TopProduk from "./pages/TopProduk";
+import LaporanIndex from "./pages/LaporanIndex";
 import { BusinessProvider } from "./contexts/BusinessContext";
 
 function AuthenticatedRoute({ component: Component }: { component: React.ComponentType }) {
@@ -104,6 +108,10 @@ function Router() {
       <Route path="/select-warehouse" component={WarehouseSelectPage} />
       <Route path="/rekening-koran">{() => <AuthenticatedRoute component={RekeningKoranPage} />}</Route>
       <Route path="/mutasi-persediaan">{() => <AuthenticatedRoute component={MutasiPersediaanPage} />}</Route>
+      <Route path="/penjualan-produk">{() => <AuthenticatedRoute component={PenjualanProduk} />}</Route>
+      <Route path="/ringkasan-pembayaran">{() => <AuthenticatedRoute component={RingkasanPembayaran} />}</Route>
+      <Route path="/top-produk">{() => <AuthenticatedRoute component={TopProduk} />}</Route>
+      <Route path="/laporan-index">{() => <AuthenticatedRoute component={LaporanIndex} />}</Route>
       <Route path="/landing" component={LandingPage} />
       <Route path="/accept-invite" component={AcceptInvite} />
       <Route path="/panduan" component={Panduan} />
