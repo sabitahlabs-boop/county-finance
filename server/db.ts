@@ -1,4 +1,4 @@
-import { eq, and, sql, desc, gte, lte, ne, inArray } from "drizzle-orm";
+import { eq, and, sql, desc, gte, lte, ne, inArray, isNotNull, isNull } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/mysql2";
 import {
   InsertUser, users,
@@ -80,6 +80,17 @@ async function runAutoMigration(db: ReturnType<typeof drizzle>) {
   await safeExec("ALTER TABLE `clients` ADD COLUMN `lastTransactionDate` varchar(10) DEFAULT NULL");
   await safeExec("ALTER TABLE `clients` ADD COLUMN `activeDate` varchar(10) DEFAULT NULL");
   await safeExec("ALTER TABLE `clients` ADD COLUMN `expiryDate` varchar(10) DEFAULT NULL");
+
+  // transactions: add bankAccountId for FK tracking
+  await safeExec("ALTER TABLE `transactions` ADD COLUMN IF NOT EXISTS `bankAccountId` int AFTER `receiptId`");
+
+  // Populate bankAccountId from existing name matches
+  await safeExec(`
+    UPDATE \`transactions\` t
+    INNER JOIN \`bank_accounts\` ba ON ba.\`accountName\` = t.\`paymentMethod\` AND ba.\`businessId\` = t.\`businessId\`
+    SET t.\`bankAccountId\` = ba.\`id\`
+    WHERE t.\`bankAccountId\` IS NULL
+  `);
 
   // --- Create new tables ---
   await safeExec(`CREATE TABLE IF NOT EXISTS \`suppliers\` (
@@ -1372,31 +1383,85 @@ export async function deleteBankAccount(id: number): Promise<void> {
   await db.update(bankAccounts).set({ isActive: false }).where(eq(bankAccounts.id, id));
 }
 
-// Get transaction totals grouped by bank account (via paymentMethod matching accountName)
+// Get transaction totals grouped by bank account
+// Supports both new bankAccountId FK and legacy paymentMethod name matching
 export async function getBalancesByAccounts(businessId: number, accountNames: string[]): Promise<Record<string, { income: number; expense: number }>> {
   const db = await getDb();
   if (!db) return {};
+
+  // Get receiptIds that already have linked transactions
+  const linkedTxs = await db.select({ receiptId: transactions.receiptId })
+    .from(transactions)
+    .where(and(
+      eq(transactions.businessId, businessId),
+      eq(transactions.isDeleted, false),
+      isNotNull(transactions.receiptId)
+    ));
+  const linkedReceiptIds = new Set(linkedTxs.map(t => t.receiptId).filter(Boolean));
+
   const result: Record<string, { income: number; expense: number }> = {};
+
+  // Get all bank accounts for this business
+  const allAccounts = await getBankAccountsByBusiness(businessId);
+
   for (const name of accountNames) {
-    // Get transactions where paymentMethod matches
-    const txs = await db.select().from(transactions).where(
-      and(
-        eq(transactions.businessId, businessId),
-        eq(transactions.paymentMethod, name),
-        eq(transactions.isDeleted, false)
-      )
-    );
+    // Find the matching bank account by name
+    const account = allAccounts.find(a => a.accountName === name);
+
     let income = 0, expense = 0;
-    for (const tx of txs) {
-      if (tx.type === "pemasukan") income += tx.amount;
-      else expense += tx.amount;
+
+    if (account) {
+      // Primary: match by bankAccountId (new way)
+      const txsById = await db.select().from(transactions).where(
+        and(
+          eq(transactions.businessId, businessId),
+          eq(transactions.bankAccountId, account.id),
+          eq(transactions.isDeleted, false)
+        )
+      );
+
+      for (const tx of txsById) {
+        if (tx.type === "pemasukan") income += tx.amount;
+        else expense += tx.amount;
+      }
+
+      // Fallback: match by name for old transactions without bankAccountId
+      const txsByName = await db.select().from(transactions).where(
+        and(
+          eq(transactions.businessId, businessId),
+          eq(transactions.paymentMethod, name),
+          isNull(transactions.bankAccountId),
+          eq(transactions.isDeleted, false)
+        )
+      );
+
+      for (const tx of txsByName) {
+        if (tx.type === "pemasukan") income += tx.amount;
+        else expense += tx.amount;
+      }
+    } else {
+      // Account not found in DB — only match by name (legacy)
+      const txs = await db.select().from(transactions).where(
+        and(
+          eq(transactions.businessId, businessId),
+          eq(transactions.paymentMethod, name),
+          eq(transactions.isDeleted, false)
+        )
+      );
+
+      for (const tx of txs) {
+        if (tx.type === "pemasukan") income += tx.amount;
+        else expense += tx.amount;
+      }
     }
 
     // Also get POS receipts where payments JSON contains this account name
+    // Only count receipts that DON'T have linked transactions (legacy data)
     const receipts = await db.select().from(posReceipts).where(
       eq(posReceipts.businessId, businessId)
     );
     for (const receipt of receipts) {
+      if (linkedReceiptIds.has(receipt.id)) continue; // already in transactions
       const payments = receipt.payments as Array<{ method: string; amount: number }> || [];
       for (const payment of payments) {
         if (payment.method === name) {
@@ -1454,7 +1519,18 @@ export async function getRekeningKoranReport(
     });
   }
 
+  // Get receiptIds that already have linked transactions
+  const linkedTxs = await db.select({ receiptId: transactions.receiptId })
+    .from(transactions)
+    .where(and(
+      eq(transactions.businessId, businessId),
+      eq(transactions.isDeleted, false),
+      isNotNull(transactions.receiptId)
+    ));
+  const linkedReceiptIds = new Set(linkedTxs.map(t => t.receiptId).filter(Boolean));
+
   // Get POS receipts for this account in date range
+  // Only count receipts that DON'T have linked transactions (legacy data)
   const receipts = await db.select().from(posReceipts).where(
     and(
       eq(posReceipts.businessId, businessId),
@@ -1464,6 +1540,7 @@ export async function getRekeningKoranReport(
   ).orderBy(posReceipts.date);
 
   for (const receipt of receipts) {
+    if (linkedReceiptIds.has(receipt.id)) continue; // already in transactions
     const payments = receipt.payments as Array<{ method: string; amount: number }> || [];
     for (const payment of payments) {
       if (payment.method === bankAccountName) {
@@ -2658,6 +2735,17 @@ export async function getPosRevenueForPeriod(businessId: number, month: number, 
   if (!db) return { revenue: 0, hpp: 0, refunds: 0 };
   const periodStr = `${year}-${String(month).padStart(2, "0")}`;
 
+  // Get receiptIds that already have linked transactions (to avoid double-counting)
+  const linkedTxs = await db.select({ receiptId: transactions.receiptId })
+    .from(transactions)
+    .where(and(
+      eq(transactions.businessId, businessId),
+      eq(transactions.isDeleted, false),
+      isNotNull(transactions.receiptId),
+      sql`${transactions.date} LIKE ${periodStr + "%"}`
+    ));
+  const linkedReceiptIds = new Set(linkedTxs.map(t => t.receiptId).filter(Boolean));
+
   // Get all non-refunded receipts for this period
   const receipts = await db.select().from(posReceipts).where(
     and(eq(posReceipts.businessId, businessId), sql`${posReceipts.date} LIKE ${periodStr + "%"}`)
@@ -2666,6 +2754,8 @@ export async function getPosRevenueForPeriod(businessId: number, month: number, 
   let revenue = 0, refunds = 0;
   const receiptIds: number[] = [];
   for (const r of receipts) {
+    // Skip receipts that already have linked transactions
+    if (linkedReceiptIds.has(r.id)) continue;
     if (r.isRefunded) { refunds += r.grandTotal; }
     else { revenue += r.grandTotal; receiptIds.push(r.id); }
   }

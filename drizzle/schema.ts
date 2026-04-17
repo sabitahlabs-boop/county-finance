@@ -137,6 +137,7 @@ export const transactions = mysqlTable("transactions", {
   notes: text("notes"),
   shiftId: int("shiftId"), // link to pos_shifts (for POS transactions)
   receiptId: int("receiptId"), // link to pos_receipts (for grouped POS checkout)
+  bankAccountId: int("bankAccountId"), // FK to bank_accounts for balance tracking
   createdAt: timestamp("createdAt").defaultNow().notNull(),
 });
 

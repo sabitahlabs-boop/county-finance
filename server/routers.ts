@@ -4,6 +4,8 @@ import { systemRouter } from "./_core/systemRouter";
 import { publicProcedure, protectedProcedure, adminProcedure, router } from "./_core/trpc";
 import { z } from "zod";
 import { TRPCError } from "@trpc/server";
+import { eq, and } from "drizzle-orm";
+import { transactions } from "../drizzle/schema";
 import {
   getBusinessByOwnerId, getBusinessesByOwnerId, getBusinessByOwnerAndMode, getBusinessById, getBusinessBySlug, createBusiness, updateBusiness, getAllBusinesses,
   getActiveTaxRules, seedDefaultTaxRules, updateTaxRule,
@@ -47,7 +49,7 @@ import {
   updateBusinessDebtEnabled, updateBusinessPersonalSetupDone,
   createPosShift, getOpenShift, closePosShift, getShiftsByBusiness, getPosShiftById,
   createDiscountCode, getDiscountCodesByBusiness, validateDiscountCode, incrementDiscountUsage, updateDiscountCode, deleteDiscountCode,
-  generateReceiptCode, createPosReceipt, createPosReceiptItems, getPosReceiptsByBusiness, getPosReceiptById, refundPosReceipt,
+  generateReceiptCode, createPosReceipt, createPosReceiptItems, getPosReceiptsByBusiness, getPosReceiptById, refundPosReceipt, getPosReceiptItemsByReceipt,
   getDailySalesReport, getPeriodSalesReport,
   getSalesByProduct, getPaymentMethodSummary, getTopProductsAndCategories,
   seedDummyData, clearBusinessData,
@@ -61,6 +63,7 @@ import {
   getSalesByCustomer, getSalesByHour, getSalesByDate,
   createCreditSale, addCreditPayment, getCreditSalesReport, getCreditPaymentsForSale,
   getDiscountSummary, getVoidRefundAnalysis, getKasReconciliation,
+  getDb,
 } from "./db";
 import { PLAN_LIMITS, BULAN_INDONESIA, formatRupiah } from "../shared/finance";
 import { notifyOwner } from "./_core/notification";
@@ -274,6 +277,16 @@ export const appRouter = router({
       if (!result) throw new TRPCError({ code: "NOT_FOUND" });
       // Auto-create journal transaction
       const txCode = await generateTxCode(biz.id);
+      const paymentMethod = input.bankAccountName || "tunai";
+
+      // Resolve bankAccountId from paymentMethod name
+      let bankAccountId: number | undefined;
+      const accounts = await getBankAccountsByBusiness(biz.id);
+      const matchedAccount = accounts.find(a => a.accountName === paymentMethod);
+      if (matchedAccount) {
+        bankAccountId = matchedAccount.id;
+      }
+
       await createTransaction({
         businessId: biz.id,
         txCode,
@@ -282,8 +295,9 @@ export const appRouter = router({
         category: "Tabungan Impian",
         description: `Setor tabungan: ${result.name}`,
         amount: input.amount,
-        paymentMethod: input.bankAccountName || "tunai",
+        paymentMethod,
         taxRelated: false,
+        bankAccountId,
         notes: `Tabungan impian "${result.name}" — progress ${formatRupiah(result.currentAmount)} / ${formatRupiah(result.targetAmount)}`,
       });
       return result;
@@ -345,6 +359,16 @@ export const appRouter = router({
       if (!bill) throw new TRPCError({ code: "NOT_FOUND", message: "Tagihan tidak ditemukan" });
       // Create journal transaction for the bill payment
       const txCode = await generateTxCode(biz.id);
+      const paymentMethod = input.bankAccountName || "tunai";
+
+      // Resolve bankAccountId from paymentMethod name
+      let bankAccountId: number | undefined;
+      const accounts = await getBankAccountsByBusiness(biz.id);
+      const matchedAccount = accounts.find(a => a.accountName === paymentMethod);
+      if (matchedAccount) {
+        bankAccountId = matchedAccount.id;
+      }
+
       const txId = await createTransaction({
         businessId: biz.id,
         txCode,
@@ -353,8 +377,9 @@ export const appRouter = router({
         category: "Tagihan Bulanan",
         description: `Bayar tagihan: ${bill.name}`,
         amount: input.amount,
-        paymentMethod: input.bankAccountName || "tunai",
+        paymentMethod,
         taxRelated: false,
+        bankAccountId,
         notes: `Tagihan rutin "${bill.name}" (${bill.category}) — jatuh tempo tgl ${bill.dueDay}${input.notes ? " | " + input.notes : ""}`,
       });
       return { txId, success: true };
@@ -609,7 +634,16 @@ export const appRouter = router({
           }
         }
       }
-      const id = await createTransaction({ ...input, businessId: biz.id, txCode, productHppSnapshot, taxRelated: true });
+
+      // Resolve bankAccountId from paymentMethod name
+      let bankAccountId: number | undefined;
+      const accounts = await getBankAccountsByBusiness(biz.id);
+      const matchedAccount = accounts.find(a => a.accountName === input.paymentMethod);
+      if (matchedAccount) {
+        bankAccountId = matchedAccount.id;
+      }
+
+      const id = await createTransaction({ ...input, businessId: biz.id, txCode, productHppSnapshot, taxRelated: true, bankAccountId });
       return { id, txCode };
     }),
     update: protectedProcedure.input(z.object({
@@ -1488,6 +1522,15 @@ Penting: Kembalikan HANYA JSON valid, tidak ada teks penjelasan.`,
       // Auto-create journal transaction
       const txCode = await generateTxCode(biz.id);
       const paymentAccount = input.bankAccountName || input.paymentMethod;
+
+      // Resolve bankAccountId from paymentMethod name
+      let bankAccountId: number | undefined;
+      const accounts = await getBankAccountsByBusiness(biz.id);
+      const matchedAccount = accounts.find(a => a.accountName === paymentAccount);
+      if (matchedAccount) {
+        bankAccountId = matchedAccount.id;
+      }
+
       if (debt.type === "hutang") {
         // Hutang: kita bayar hutang → pengeluaran dari rekening kita
         await createTransaction({
@@ -1500,6 +1543,7 @@ Penting: Kembalikan HANYA JSON valid, tidak ada teks penjelasan.`,
           amount: input.amount,
           paymentMethod: paymentAccount,
           taxRelated: false,
+          bankAccountId,
           notes: `Hutang ke ${debt.counterpartyName} — sisa ${formatRupiah(remaining - input.amount)}${input.notes ? " | " + input.notes : ""}`,
         });
       } else {
@@ -1514,6 +1558,7 @@ Penting: Kembalikan HANYA JSON valid, tidak ada teks penjelasan.`,
           amount: input.amount,
           paymentMethod: paymentAccount,
           taxRelated: false,
+          bankAccountId,
           notes: `Piutang dari ${debt.counterpartyName} — sisa ${formatRupiah(remaining - input.amount)}${input.notes ? " | " + input.notes : ""}`,
         });
       }
@@ -2192,7 +2237,36 @@ Penting: Kembalikan HANYA JSON valid, tidak ada teks penjelasan.`,
         await incrementDiscountUsage(input.discountCodeId);
       }
 
-      // POS is standalone — NO transactions created. Revenue tracked via pos_receipts only.
+      // ─── Auto-create journal transactions for unified ledger ───
+      // Create one transaction per payment method for accurate bank account tracking
+      const posAccounts = await getBankAccountsByBusiness(bizId);
+      for (const payment of input.payments) {
+        const txCode = await generateTxCode(bizId);
+
+        // Resolve bankAccountId from payment method name
+        let bankAccountId: number | undefined;
+        const matchedAccount = posAccounts.find(a => a.accountName === payment.method);
+        if (matchedAccount) {
+          bankAccountId = matchedAccount.id;
+        }
+
+        await createTransaction({
+          businessId: bizId,
+          txCode,
+          date: saleDate,
+          type: "pemasukan",
+          category: "Penjualan POS",
+          description: `Penjualan POS ${receiptCode}`,
+          amount: payment.amount,
+          paymentMethod: payment.method,
+          clientId: input.clientId ?? null,
+          shiftId: input.shiftId ?? null,
+          receiptId,
+          bankAccountId,
+          notes: input.notes ?? null,
+        });
+      }
+
       // Only reduce stock for each cart item.
       for (const item of input.items) {
         // ─── Reduce stock from warehouse ───
@@ -2227,7 +2301,7 @@ Penting: Kembalikan HANYA JSON valid, tidak ada teks penjelasan.`,
       return { receiptId, receiptCode };
     }),
 
-    // Refund a receipt
+    // Refund a receipt - atomic with stock restoration and reversal transactions
     refund: protectedProcedure.input(z.object({
       receiptId: z.number(),
       reason: z.string().min(1),
@@ -2235,10 +2309,92 @@ Penting: Kembalikan HANYA JSON valid, tidak ada teks penjelasan.`,
       const resolved = await resolveBusinessForUser(ctx.user.id, ctx.requestedBusinessId);
       if (!resolved) throw new TRPCError({ code: "NOT_FOUND" });
 
+      const bizId = resolved.business.id;
+
+      // Mark receipt as refunded
       const receipt = await refundPosReceipt(input.receiptId, input.reason);
       if (!receipt) throw new TRPCError({ code: "NOT_FOUND", message: "Struk tidak ditemukan atau sudah di-refund" });
 
-      // POS refund tracked in pos_receipts (isRefunded) — no transaction created
+      // ─── 1. Restore stock for each receipt item ───
+      const receiptItems = await getPosReceiptItemsByReceipt(input.receiptId);
+
+      // Determine warehouse: use shift's warehouse or fall back to default
+      let warehouseId: number | undefined;
+      if (receipt.shiftId) {
+        const shift = await getPosShiftById(receipt.shiftId);
+        warehouseId = shift?.warehouseId ?? undefined;
+      }
+      if (!warehouseId) {
+        const defaultWh = await getDefaultWarehouse(bizId);
+        warehouseId = defaultWh?.id;
+      }
+
+      for (const item of receiptItems) {
+        if (warehouseId) {
+          // Restore stock in warehouse
+          const ws = await getOrCreateWarehouseStock(warehouseId, item.productId);
+          const newQty = ws.quantity + item.qty;
+          await updateWarehouseStockQty(warehouseId, item.productId, newQty);
+          await recalcProductStockFromWarehouses(item.productId);
+
+          // Create stock log for refund restoration
+          await createStockLog({
+            businessId: bizId,
+            productId: item.productId,
+            date: receipt.date,
+            movementType: "in",
+            qty: item.qty,
+            direction: 1,
+            stockBefore: ws.quantity,
+            stockAfter: newQty,
+            notes: `Refund POS ${receipt.receiptCode} — ${input.reason}`,
+          });
+        } else {
+          // Fallback: directly update product stockCurrent
+          const product = await getProductById(item.productId);
+          if (product) {
+            const newStock = (product.stockCurrent ?? 0) + item.qty;
+            await updateProduct(item.productId, { stockCurrent: newStock });
+          }
+        }
+      }
+
+      // ─── 2. Create reversal journal transactions ───
+      // For each payment method in the receipt, create a pengeluaran (refund expense) transaction
+      const payments = receipt.payments as Array<{ method: string; amount: number }>;
+      if (Array.isArray(payments)) {
+        for (const payment of payments) {
+          const txCode = await generateTxCode(bizId);
+          await createTransaction({
+            businessId: bizId,
+            txCode,
+            date: receipt.date,
+            type: "pengeluaran",
+            category: "Refund POS",
+            description: `Refund POS ${receipt.receiptCode} — ${input.reason}`,
+            amount: payment.amount,
+            paymentMethod: payment.method || "tunai",
+            clientId: receipt.clientId || undefined,
+            shiftId: receipt.shiftId || undefined,
+            receiptId: input.receiptId,
+            taxRelated: false,
+          });
+        }
+      }
+
+      // ─── 3. Soft-delete original POS transactions ───
+      // If P1.1 created pemasukan transactions with receiptId, mark them as deleted
+      const db = await getDb();
+      if (db) {
+        await db.update(transactions)
+          .set({ isDeleted: true })
+          .where(and(
+            eq(transactions.receiptId, input.receiptId),
+            eq(transactions.businessId, bizId),
+            eq(transactions.isDeleted, false)
+          ));
+      }
+
       return { success: true, refundAmount: receipt.grandTotal };
     }),
   }),
