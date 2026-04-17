@@ -328,38 +328,42 @@ export default function POS() {
     <div className="flex flex-col lg:flex-row gap-4 h-[calc(100vh-6rem)]">
       {/* ─── Left: Product Grid ─── */}
       <div className="flex-1 flex flex-col min-h-0">
-        <div className="flex items-center gap-3 mb-4 flex-wrap">
-          <div className="relative flex-1 min-w-[200px]">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-            <Input value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} placeholder="Cari produk..." className="pl-9 h-11" />
+        <div className="shrink-0 relative z-10 mb-4 space-y-2">
+          <div className="flex items-center gap-3">
+            <div className="relative flex-1 min-w-0">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+              <Input value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} placeholder="Cari produk..." className="pl-9 h-10" />
+            </div>
+            <Badge variant="secondary" className="h-10 px-3 text-xs shrink-0">
+              <Package className="h-3.5 w-3.5 mr-1" /> {filteredProducts.length}
+            </Badge>
           </div>
-          <div className="flex items-center gap-1.5">
-            <CalendarDays className="h-4 w-4 text-muted-foreground shrink-0" />
-            <Input
-              type="date"
-              value={saleDate}
-              onChange={(e) => setSaleDate(e.target.value)}
-              className="w-40 h-11 text-sm"
-            />
+          <div className="flex items-center gap-2">
+            <div className="flex items-center gap-1.5 shrink-0">
+              <CalendarDays className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
+              <Input
+                type="date"
+                value={saleDate}
+                onChange={(e) => setSaleDate(e.target.value)}
+                className="w-36 h-8 text-xs"
+              />
+            </div>
+            {warehouses.length > 1 && (
+              <Select value={selectedWarehouseId?.toString() ?? ""} onValueChange={(v) => setSelectedWarehouseId(Number(v))}>
+                <SelectTrigger className="w-40 h-8 text-xs">
+                  <Warehouse className="h-3.5 w-3.5 mr-1 text-muted-foreground" />
+                  <SelectValue placeholder="Gudang" />
+                </SelectTrigger>
+                <SelectContent>
+                  {warehouses.map((wh: any) => (
+                    <SelectItem key={wh.id} value={wh.id.toString()}>
+                      {wh.name} {wh.isDefault ? "(Utama)" : ""}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            )}
           </div>
-          {warehouses.length > 1 && (
-            <Select value={selectedWarehouseId?.toString() ?? ""} onValueChange={(v) => setSelectedWarehouseId(Number(v))}>
-              <SelectTrigger className="w-48 h-11">
-                <Warehouse className="h-4 w-4 mr-1.5 text-muted-foreground" />
-                <SelectValue placeholder="Gudang" />
-              </SelectTrigger>
-              <SelectContent>
-                {warehouses.map((wh: any) => (
-                  <SelectItem key={wh.id} value={wh.id.toString()}>
-                    {wh.name} {wh.isDefault ? "(Utama)" : ""}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          )}
-          <Badge variant="secondary" className="h-11 px-4 text-sm shrink-0">
-            <Package className="h-4 w-4 mr-1.5" /> {filteredProducts.length} produk
-          </Badge>
         </div>
 
         <ScrollArea className="flex-1">

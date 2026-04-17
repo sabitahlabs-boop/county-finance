@@ -625,11 +625,28 @@ export async function generateLabaRugi(businessId: number, month: number, year: 
   const summary = await getTransactionSummary(businessId, month, year);
   const bulanNames = ["Januari","Februari","Maret","April","Mei","Juni","Juli","Agustus","September","Oktober","November","Desember"];
   const period = `${bulanNames[month - 1]} ${year}`;
-  const penjualan = summary.byCategory["Penjualan Produk"] || 0;
+
+  // Pendapatan: include "Penjualan POS" as part of Penjualan Produk
+  const penjualan = (summary.byCategory["Penjualan Produk"] || 0) + (summary.byCategory["Penjualan POS"] || 0);
   const jasa = summary.byCategory["Penjualan Jasa"] || 0;
   const pendapatanLain = summary.byCategory["Pendapatan Lain-lain"] || 0;
   const totalPendapatan = penjualan + jasa + pendapatanLain;
-  const hpp = summary.byCategory["Pembelian Stok"] || 0;
+
+  // HPP: combine "Pembelian Stok" expenses + actual HPP from POS sales (productHppSnapshot × qty)
+  const pembelianStok = summary.byCategory["Pembelian Stok"] || 0;
+  const db = await getDb();
+  const periodStr = `${year}-${String(month).padStart(2, "0")}`;
+  let hppFromPOS = 0;
+  if (db) {
+    const posTxs = await db.select().from(transactions).where(
+      and(eq(transactions.businessId, businessId), eq(transactions.isDeleted, false), eq(transactions.category, "Penjualan POS"), sql`${transactions.date} LIKE ${periodStr + "%"}`)
+    );
+    for (const tx of posTxs) {
+      hppFromPOS += (tx.productHppSnapshot ?? 0) * (tx.productQty ?? 0);
+    }
+  }
+  const hpp = pembelianStok + hppFromPOS;
+
   const operasional = summary.byCategory["Operasional"] || 0;
   const gaji = summary.byCategory["Gaji"] || 0;
   const utilitas = summary.byCategory["Utilitas"] || 0;
@@ -660,15 +677,19 @@ export async function generateArusKas(businessId: number, month: number, year: n
   ) : [];
 
   // Group both kas masuk and kas keluar by CATEGORY (standard accounting)
+  // Map POS categories to standard accounting names
+  const categoryMap: Record<string, string> = {
+    "Penjualan POS": "Penjualan Produk",
+  };
   const kasMasuk: Record<string, number> & { total: number } = { total: 0 } as any;
   const kasKeluar: Record<string, number> & { total: number } = { total: 0 } as any;
   for (const tx of txs) {
     if (tx.type === "pemasukan") {
-      const cat = tx.category || "Pendapatan Lainnya";
+      const cat = categoryMap[tx.category] || tx.category || "Pendapatan Lainnya";
       kasMasuk[cat] = (kasMasuk[cat] || 0) + tx.amount;
       kasMasuk.total += tx.amount;
     } else {
-      const cat = tx.category || "Pengeluaran Lainnya";
+      const cat = categoryMap[tx.category] || tx.category || "Pengeluaran Lainnya";
       kasKeluar[cat] = (kasKeluar[cat] || 0) + tx.amount;
       kasKeluar.total += tx.amount;
     }
@@ -698,13 +719,13 @@ export async function generateNeraca(businessId: number, month: number, year: nu
   const allDebts = db ? await db.select().from(debts).where(
     and(eq(debts.businessId, businessId), eq(debts.type, "piutang"), sql`${debts.status} != 'lunas'`)
   ) : [];
-  const piutang = allDebts.reduce((s, d) => s + d.remainingAmount, 0);
+  const piutang = allDebts.reduce((s, d) => s + (d.totalAmount - d.paidAmount), 0);
 
   // Hutang usaha
   const allHutang = db ? await db.select().from(debts).where(
     and(eq(debts.businessId, businessId), eq(debts.type, "hutang"), sql`${debts.status} != 'lunas'`)
   ) : [];
-  const hutangUsaha = allHutang.reduce((s, d) => s + d.remainingAmount, 0);
+  const hutangUsaha = allHutang.reduce((s, d) => s + (d.totalAmount - d.paidAmount), 0);
 
   // Persediaan: total stok * HPP
   const allProducts = db ? await db.select().from(products).where(
@@ -862,13 +883,13 @@ export async function generateCALK(businessId: number, month: number, year: numb
     {
       title: "5. Piutang Usaha",
       items: piutangActive.length > 0
-        ? piutangActive.map(d => ({ label: d.contactName, value: `${formatRupiah(d.remainingAmount)} (jatuh tempo: ${d.dueDate ?? "-"})` }))
+        ? piutangActive.map(d => ({ label: d.counterpartyName, value: `${formatRupiah(d.totalAmount - d.paidAmount)} (jatuh tempo: ${d.dueDate ?? "-"})` }))
         : [{ label: "Tidak ada piutang aktif", value: "-" }],
     },
     {
       title: "6. Hutang Usaha",
       items: hutangActive.length > 0
-        ? hutangActive.map(d => ({ label: d.contactName, value: `${formatRupiah(d.remainingAmount)} (jatuh tempo: ${d.dueDate ?? "-"})` }))
+        ? hutangActive.map(d => ({ label: d.counterpartyName, value: `${formatRupiah(d.totalAmount - d.paidAmount)} (jatuh tempo: ${d.dueDate ?? "-"})` }))
         : [{ label: "Tidak ada hutang aktif", value: "-" }],
     },
     {

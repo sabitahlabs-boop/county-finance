@@ -13,6 +13,7 @@ import { formatRupiah, PRODUCT_UNITS } from "../../../shared/finance";
 import { generateSKU } from "../../../shared/productCategories";
 import { toast } from "sonner";
 import { COGSCalculator } from "@/components/COGSCalculator";
+import { getProxiedImageUrl } from "@/lib/utils";
 
 // ─── Image Upload Helper ───
 function ImageUploader({ currentUrl, onUpload }: { currentUrl?: string | null; onUpload: (url: string) => void }) {
