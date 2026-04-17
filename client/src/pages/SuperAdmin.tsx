@@ -17,7 +17,7 @@ export default function SuperAdmin() {
   const utils = trpc.useUtils();
   const { data: businesses, isLoading: bizLoading } = trpc.admin.businesses.useQuery(undefined, { retry: false });
   const { data: users, isLoading: usersLoading } = trpc.admin.users.useQuery(undefined, { retry: false });
-  const { data: proLinks, isLoading: linksLoading } = trpc.admin.listProLinks.useQuery(undefined, { retry: false });
+  const { data: proLinks, isLoading: linksLoading } = trpc.admin.listProLinks.useQuery(undefined, { retry: false, refetchInterval: 15000 });
 
   const [deleteConfirm, setDeleteConfirm] = useState<{ userId: number; userName: string } | null>(null);
   const [showGenerate, setShowGenerate] = useState(false);
@@ -84,7 +84,18 @@ export default function SuperAdmin() {
       setGeneratedLink(fullUrl);
       toast.success("Link Pro berhasil dibuat!");
     },
-    onError: (err) => toast.error(err.message),
+    onError: (err) => {
+      // tRPC wraps Zod errors as JSON array string — parse to show clean message
+      try {
+        const parsed = JSON.parse(err.message);
+        if (Array.isArray(parsed)) {
+          const messages = parsed.map((e: any) => e.message).filter(Boolean);
+          toast.error(messages.join(", ") || "Validasi gagal");
+          return;
+        }
+      } catch {}
+      toast.error(err.message);
+    },
   });
 
   const deleteLinkMut = trpc.admin.deleteProLink.useMutation({
