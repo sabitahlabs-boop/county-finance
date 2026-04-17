@@ -58,6 +58,9 @@ import {
   getLoyaltyPoints, getLoyaltyPointsByBusiness, addLoyaltyPoints, redeemLoyaltyPoints, getLoyaltyTransactionsByClient,
   getInvoiceSettings, upsertInvoiceSettings,
   getWarehouseAccessByUser, getWarehouseAccessByWarehouse, setWarehouseAccess, getAccessibleWarehouses,
+  getSalesByCustomer, getSalesByHour, getSalesByDate,
+  createCreditSale, addCreditPayment, getCreditSalesReport, getCreditPaymentsForSale,
+  getDiscountSummary, getVoidRefundAnalysis, getKasReconciliation,
 } from "./db";
 import { PLAN_LIMITS, BULAN_INDONESIA, formatRupiah } from "../shared/finance";
 import { notifyOwner } from "./_core/notification";
@@ -793,6 +796,126 @@ export const appRouter = router({
       const biz = (await resolveBusinessForUser(ctx.user.id, ctx.requestedBusinessId))?.business;
       if (!biz) throw new TRPCError({ code: "NOT_FOUND" });
       return getTopProductsAndCategories(biz.id, input.startDate, input.endDate, input.limit);
+    }),
+
+    // ═══ Wave 2: Sales Deep Dive ═══
+
+    // ─── W2.1: Sales by Customer ───
+    salesByCustomer: protectedProcedure.input(z.object({
+      startDate: z.string(),
+      endDate: z.string(),
+    })).query(async ({ ctx, input }) => {
+      const biz = (await resolveBusinessForUser(ctx.user.id, ctx.requestedBusinessId))?.business;
+      if (!biz) throw new TRPCError({ code: "NOT_FOUND" });
+      return getSalesByCustomer(biz.id, input.startDate, input.endDate);
+    }),
+
+    // ─── W2.2: Sales by Hour ───
+    salesByHour: protectedProcedure.input(z.object({
+      startDate: z.string(),
+      endDate: z.string(),
+    })).query(async ({ ctx, input }) => {
+      const biz = (await resolveBusinessForUser(ctx.user.id, ctx.requestedBusinessId))?.business;
+      if (!biz) throw new TRPCError({ code: "NOT_FOUND" });
+      return getSalesByHour(biz.id, input.startDate, input.endDate);
+    }),
+
+    // ─── W2.3: Sales by Date ───
+    salesByDate: protectedProcedure.input(z.object({
+      startDate: z.string(),
+      endDate: z.string(),
+    })).query(async ({ ctx, input }) => {
+      const biz = (await resolveBusinessForUser(ctx.user.id, ctx.requestedBusinessId))?.business;
+      if (!biz) throw new TRPCError({ code: "NOT_FOUND" });
+      return getSalesByDate(biz.id, input.startDate, input.endDate);
+    }),
+
+    // ─── W2.5: Discount Summary ───
+    discountSummary: protectedProcedure.input(z.object({
+      startDate: z.string(),
+      endDate: z.string(),
+    })).query(async ({ ctx, input }) => {
+      const biz = (await resolveBusinessForUser(ctx.user.id, ctx.requestedBusinessId))?.business;
+      if (!biz) throw new TRPCError({ code: "NOT_FOUND" });
+      return getDiscountSummary(biz.id, input.startDate, input.endDate);
+    }),
+
+    // ─── W2.6: Void/Refund Analysis ───
+    voidRefundAnalysis: protectedProcedure.input(z.object({
+      startDate: z.string(),
+      endDate: z.string(),
+    })).query(async ({ ctx, input }) => {
+      const biz = (await resolveBusinessForUser(ctx.user.id, ctx.requestedBusinessId))?.business;
+      if (!biz) throw new TRPCError({ code: "NOT_FOUND" });
+      return getVoidRefundAnalysis(biz.id, input.startDate, input.endDate);
+    }),
+
+    // ─── W2.7: Kas Reconciliation ───
+    kasReconciliation: protectedProcedure.input(z.object({
+      startDate: z.string(),
+      endDate: z.string(),
+    })).query(async ({ ctx, input }) => {
+      const biz = (await resolveBusinessForUser(ctx.user.id, ctx.requestedBusinessId))?.business;
+      if (!biz) throw new TRPCError({ code: "NOT_FOUND" });
+      return getKasReconciliation(biz.id, input.startDate, input.endDate);
+    }),
+  }),
+
+  // ─── Credit Sales (Penjualan Kredit) ───
+  credit: router({
+    list: protectedProcedure.input(z.object({
+      startDate: z.string().optional(),
+      endDate: z.string().optional(),
+      status: z.string().optional(),
+    })).query(async ({ ctx, input }) => {
+      const biz = (await resolveBusinessForUser(ctx.user.id, ctx.requestedBusinessId))?.business;
+      if (!biz) throw new TRPCError({ code: "NOT_FOUND" });
+      return getCreditSalesReport(biz.id, input.startDate, input.endDate, input.status);
+    }),
+
+    create: protectedProcedure.input(z.object({
+      receiptId: z.number(),
+      clientId: z.number(),
+      totalAmount: z.number(),
+      dueDate: z.string().optional(),
+      notes: z.string().optional(),
+    })).mutation(async ({ ctx, input }) => {
+      const biz = (await resolveBusinessForUser(ctx.user.id, ctx.requestedBusinessId))?.business;
+      if (!biz) throw new TRPCError({ code: "NOT_FOUND" });
+      const id = await createCreditSale({
+        businessId: biz.id,
+        receiptId: input.receiptId,
+        clientId: input.clientId,
+        totalAmount: input.totalAmount,
+        paidAmount: 0,
+        remainingAmount: input.totalAmount,
+        dueDate: input.dueDate,
+        notes: input.notes,
+      });
+      return { success: true, id };
+    }),
+
+    addPayment: protectedProcedure.input(z.object({
+      creditSaleId: z.number(),
+      amount: z.number(),
+      paymentMethod: z.string().optional(),
+      date: z.string(),
+      notes: z.string().optional(),
+    })).mutation(async ({ ctx, input }) => {
+      const id = await addCreditPayment(input.creditSaleId, {
+        creditSaleId: input.creditSaleId,
+        amount: input.amount,
+        paymentMethod: input.paymentMethod ?? "tunai",
+        date: input.date,
+        notes: input.notes,
+      });
+      return { success: true, id };
+    }),
+
+    payments: protectedProcedure.input(z.object({
+      creditSaleId: z.number(),
+    })).query(async ({ ctx, input }) => {
+      return getCreditPaymentsForSale(input.creditSaleId);
     }),
   }),
 

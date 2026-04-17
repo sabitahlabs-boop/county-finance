@@ -35,6 +35,8 @@ import {
   loyaltyTransactions, InsertLoyaltyTransaction, LoyaltyTransaction,
   invoiceSettings, InsertInvoiceSetting, InvoiceSetting,
   warehouseAccess, InsertWarehouseAccess, WarehouseAccess,
+  creditSales, InsertCreditSale, CreditSale,
+  creditPayments, InsertCreditPayment, CreditPayment,
 } from "../drizzle/schema";
 import { ENV } from './_core/env';
 import type { TaxCalcResult, DashboardKPIs, LabaRugiReport, ArusKasReport, NeracaReport, PerubahanModalReport, CALKReport } from "../shared/finance";
@@ -269,6 +271,32 @@ async function runAutoMigration(db: ReturnType<typeof drizzle>) {
     \`unitPrice\` bigint NOT NULL,
     \`totalPrice\` bigint NOT NULL,
     \`hppSnapshot\` bigint NOT NULL DEFAULT 0,
+    \`createdAt\` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP
+  )`);
+
+  // ── Credit Sales (Penjualan Kredit) ──
+  await safeExec(`CREATE TABLE IF NOT EXISTS \`credit_sales\` (
+    \`id\` int NOT NULL AUTO_INCREMENT PRIMARY KEY,
+    \`businessId\` int NOT NULL,
+    \`receiptId\` int NOT NULL,
+    \`clientId\` int NOT NULL,
+    \`totalAmount\` bigint NOT NULL,
+    \`paidAmount\` bigint NOT NULL DEFAULT 0,
+    \`remainingAmount\` bigint NOT NULL,
+    \`creditStatus\` enum('belum_lunas','cicilan','lunas') NOT NULL DEFAULT 'belum_lunas',
+    \`dueDate\` varchar(10),
+    \`notes\` text,
+    \`createdAt\` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    \`updatedAt\` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+  )`);
+
+  await safeExec(`CREATE TABLE IF NOT EXISTS \`credit_payments\` (
+    \`id\` int NOT NULL AUTO_INCREMENT PRIMARY KEY,
+    \`creditSaleId\` int NOT NULL,
+    \`amount\` bigint NOT NULL,
+    \`paymentMethod\` varchar(30) NOT NULL DEFAULT 'tunai',
+    \`notes\` text,
+    \`date\` varchar(10) NOT NULL,
     \`createdAt\` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP
   )`);
 
@@ -3455,4 +3483,422 @@ export async function getTopProductsAndCategories(businessId: number, startDate:
   }));
 
   return { topProducts, topCategories };
+}
+
+// ═════════════════════════════════════════════════════════
+// WAVE 2 — Sales Deep Dive
+// ═════════════════════════════════════════════════════════
+
+// ─── W2.1: Penjualan per Pelanggan ───
+export async function getSalesByCustomer(businessId: number, startDate: string, endDate: string) {
+  const db = await getDb();
+
+  // Get receipts grouped by clientId
+  const rows = await db
+    .select({
+      clientId: posReceipts.clientId,
+      clientName: clients.name,
+      clientType: clients.type,
+      transactionCount: sql<number>`COUNT(*)`,
+      totalPenjualan: sql<number>`SUM(${posReceipts.grandTotal})`,
+      totalDiskon: sql<number>`SUM(${posReceipts.discountAmount})`,
+    })
+    .from(posReceipts)
+    .leftJoin(clients, eq(posReceipts.clientId, clients.id))
+    .where(
+      and(
+        eq(posReceipts.businessId, businessId),
+        sql`${posReceipts.date} >= ${startDate}`,
+        sql`${posReceipts.date} <= ${endDate}`,
+        eq(posReceipts.isRefunded, false)
+      )
+    )
+    .groupBy(posReceipts.clientId, clients.name, clients.type)
+    .orderBy(desc(sql<number>`SUM(${posReceipts.grandTotal})`));
+
+  return rows.map((r) => ({
+    clientId: r.clientId,
+    clientName: r.clientName ?? "Pelanggan Umum",
+    clientType: r.clientType ?? "regular",
+    transactionCount: r.transactionCount,
+    totalPenjualan: r.totalPenjualan,
+    totalDiskon: r.totalDiskon,
+  }));
+}
+
+// ─── W2.2: Penjualan per Jam ───
+export async function getSalesByHour(businessId: number, startDate: string, endDate: string) {
+  const db = await getDb();
+
+  const rows = await db
+    .select({
+      hour: sql<number>`HOUR(${posReceipts.createdAt})`,
+      transactionCount: sql<number>`COUNT(*)`,
+      totalPenjualan: sql<number>`SUM(${posReceipts.grandTotal})`,
+      avgPerTransaction: sql<number>`AVG(${posReceipts.grandTotal})`,
+    })
+    .from(posReceipts)
+    .where(
+      and(
+        eq(posReceipts.businessId, businessId),
+        sql`${posReceipts.date} >= ${startDate}`,
+        sql`${posReceipts.date} <= ${endDate}`,
+        eq(posReceipts.isRefunded, false)
+      )
+    )
+    .groupBy(sql`HOUR(${posReceipts.createdAt})`)
+    .orderBy(sql`HOUR(${posReceipts.createdAt})`);
+
+  // Fill all 24 hours
+  const hourMap = new Map(rows.map((r) => [r.hour, r]));
+  const result = [];
+  for (let h = 0; h < 24; h++) {
+    const data = hourMap.get(h);
+    result.push({
+      hour: h,
+      label: `${String(h).padStart(2, "0")}:00`,
+      transactionCount: data?.transactionCount ?? 0,
+      totalPenjualan: data?.totalPenjualan ?? 0,
+      avgPerTransaction: Math.round(data?.avgPerTransaction ?? 0),
+    });
+  }
+
+  // Find peak hour
+  const peakHour = result.reduce((best, curr) =>
+    curr.totalPenjualan > best.totalPenjualan ? curr : best, result[0]);
+
+  return { hours: result, peakHour };
+}
+
+// ─── W2.3: Penjualan per Tanggal ───
+export async function getSalesByDate(businessId: number, startDate: string, endDate: string) {
+  const db = await getDb();
+
+  const rows = await db
+    .select({
+      date: posReceipts.date,
+      transactionCount: sql<number>`COUNT(*)`,
+      totalPenjualan: sql<number>`SUM(${posReceipts.grandTotal})`,
+      totalDiskon: sql<number>`SUM(${posReceipts.discountAmount})`,
+      refundCount: sql<number>`SUM(CASE WHEN ${posReceipts.isRefunded} = 1 THEN 1 ELSE 0 END)`,
+    })
+    .from(posReceipts)
+    .where(
+      and(
+        eq(posReceipts.businessId, businessId),
+        sql`${posReceipts.date} >= ${startDate}`,
+        sql`${posReceipts.date} <= ${endDate}`,
+      )
+    )
+    .groupBy(posReceipts.date)
+    .orderBy(posReceipts.date);
+
+  return rows.map((r) => ({
+    date: r.date,
+    transactionCount: r.transactionCount,
+    totalPenjualan: r.totalPenjualan,
+    totalDiskon: r.totalDiskon,
+    refundCount: r.refundCount,
+    netPenjualan: r.totalPenjualan - r.totalDiskon,
+  }));
+}
+
+// ─── W2.4: Credit Sales CRUD & Report ───
+export async function createCreditSale(data: InsertCreditSale) {
+  const db = await getDb();
+  const [result] = await db.insert(creditSales).values(data);
+  return result.insertId;
+}
+
+export async function addCreditPayment(creditSaleId: number, payment: InsertCreditPayment) {
+  const db = await getDb();
+
+  // Insert payment
+  const [result] = await db.insert(creditPayments).values({ ...payment, creditSaleId });
+
+  // Update credit_sales totals
+  const [credit] = await db.select().from(creditSales).where(eq(creditSales.id, creditSaleId));
+  if (credit) {
+    const newPaid = credit.paidAmount + payment.amount;
+    const newRemaining = credit.totalAmount - newPaid;
+    const newStatus = newRemaining <= 0 ? "lunas" : newPaid > 0 ? "cicilan" : "belum_lunas";
+
+    await db
+      .update(creditSales)
+      .set({
+        paidAmount: newPaid,
+        remainingAmount: Math.max(0, newRemaining),
+        status: newStatus,
+      })
+      .where(eq(creditSales.id, creditSaleId));
+  }
+
+  return result.insertId;
+}
+
+export async function getCreditSalesReport(businessId: number, startDate?: string, endDate?: string, status?: string) {
+  const db = await getDb();
+
+  const conditions = [eq(creditSales.businessId, businessId)];
+  if (startDate) conditions.push(sql`${posReceipts.date} >= ${startDate}`);
+  if (endDate) conditions.push(sql`${posReceipts.date} <= ${endDate}`);
+  if (status && status !== "all") conditions.push(eq(creditSales.status, status as any));
+
+  const rows = await db
+    .select({
+      id: creditSales.id,
+      receiptId: creditSales.receiptId,
+      receiptCode: posReceipts.receiptCode,
+      receiptDate: posReceipts.date,
+      clientId: creditSales.clientId,
+      clientName: clients.name,
+      totalAmount: creditSales.totalAmount,
+      paidAmount: creditSales.paidAmount,
+      remainingAmount: creditSales.remainingAmount,
+      status: creditSales.status,
+      dueDate: creditSales.dueDate,
+      notes: creditSales.notes,
+      createdAt: creditSales.createdAt,
+    })
+    .from(creditSales)
+    .innerJoin(posReceipts, eq(creditSales.receiptId, posReceipts.id))
+    .innerJoin(clients, eq(creditSales.clientId, clients.id))
+    .where(and(...conditions))
+    .orderBy(desc(creditSales.createdAt));
+
+  return rows;
+}
+
+export async function getCreditPaymentsForSale(creditSaleId: number) {
+  const db = await getDb();
+  return db
+    .select()
+    .from(creditPayments)
+    .where(eq(creditPayments.creditSaleId, creditSaleId))
+    .orderBy(desc(creditPayments.createdAt));
+}
+
+// ─── W2.5: Ringkasan Diskon ───
+export async function getDiscountSummary(businessId: number, startDate: string, endDate: string) {
+  const db = await getDb();
+
+  // Receipts with discount > 0
+  const rows = await db
+    .select({
+      discountCodeId: posReceipts.discountCodeId,
+      discountCode: discountCodes.code,
+      discountName: discountCodes.name,
+      discountType: discountCodes.discountType,
+      discountValue: discountCodes.discountValue,
+      orderCount: sql<number>`COUNT(*)`,
+      totalDiscount: sql<number>`SUM(${posReceipts.discountAmount})`,
+      totalBeforeDiscount: sql<number>`SUM(${posReceipts.subtotal})`,
+    })
+    .from(posReceipts)
+    .leftJoin(discountCodes, eq(posReceipts.discountCodeId, discountCodes.id))
+    .where(
+      and(
+        eq(posReceipts.businessId, businessId),
+        sql`${posReceipts.date} >= ${startDate}`,
+        sql`${posReceipts.date} <= ${endDate}`,
+        sql`${posReceipts.discountAmount} > 0`,
+        eq(posReceipts.isRefunded, false)
+      )
+    )
+    .groupBy(
+      posReceipts.discountCodeId,
+      discountCodes.code,
+      discountCodes.name,
+      discountCodes.discountType,
+      discountCodes.discountValue
+    )
+    .orderBy(desc(sql<number>`SUM(${posReceipts.discountAmount})`));
+
+  return rows.map((r) => ({
+    discountCodeId: r.discountCodeId,
+    code: r.discountCode ?? "Manual",
+    name: r.discountName ?? "Diskon Manual",
+    type: r.discountType ?? "fixed",
+    value: r.discountValue ?? 0,
+    orderCount: r.orderCount,
+    totalDiscount: r.totalDiscount,
+    totalBeforeDiscount: r.totalBeforeDiscount,
+    avgDiscountPerOrder: Math.round(r.totalDiscount / r.orderCount),
+  }));
+}
+
+// ─── W2.6: Void/Refund Analysis Detail ───
+export async function getVoidRefundAnalysis(businessId: number, startDate: string, endDate: string) {
+  const db = await getDb();
+
+  const rows = await db
+    .select({
+      id: posReceipts.id,
+      receiptCode: posReceipts.receiptCode,
+      date: posReceipts.date,
+      grandTotal: posReceipts.grandTotal,
+      refundAmount: posReceipts.refundAmount,
+      refundReason: posReceipts.refundReason,
+      refundedAt: posReceipts.refundedAt,
+      clientId: posReceipts.clientId,
+      clientName: clients.name,
+      payments: posReceipts.payments,
+    })
+    .from(posReceipts)
+    .leftJoin(clients, eq(posReceipts.clientId, clients.id))
+    .where(
+      and(
+        eq(posReceipts.businessId, businessId),
+        sql`${posReceipts.date} >= ${startDate}`,
+        sql`${posReceipts.date} <= ${endDate}`,
+        eq(posReceipts.isRefunded, true)
+      )
+    )
+    .orderBy(desc(posReceipts.refundedAt));
+
+  const summary = {
+    totalRefunds: rows.length,
+    totalRefundAmount: rows.reduce((sum, r) => sum + (r.refundAmount ?? r.grandTotal), 0),
+    byReason: {} as Record<string, { count: number; amount: number }>,
+    byDate: {} as Record<string, { count: number; amount: number }>,
+  };
+
+  for (const r of rows) {
+    const reason = r.refundReason ?? "Tidak ada alasan";
+    if (!summary.byReason[reason]) summary.byReason[reason] = { count: 0, amount: 0 };
+    summary.byReason[reason].count++;
+    summary.byReason[reason].amount += r.refundAmount ?? r.grandTotal;
+
+    if (!summary.byDate[r.date]) summary.byDate[r.date] = { count: 0, amount: 0 };
+    summary.byDate[r.date].count++;
+    summary.byDate[r.date].amount += r.refundAmount ?? r.grandTotal;
+  }
+
+  return {
+    receipts: rows.map((r) => ({
+      id: r.id,
+      receiptCode: r.receiptCode,
+      date: r.date,
+      grandTotal: r.grandTotal,
+      refundAmount: r.refundAmount ?? r.grandTotal,
+      refundReason: r.refundReason ?? "-",
+      refundedAt: r.refundedAt,
+      clientName: r.clientName ?? "Pelanggan Umum",
+      payments: r.payments,
+    })),
+    summary,
+  };
+}
+
+// ─── W2.7: Transaksi Tunai / Kas Reconciliation ───
+export async function getKasReconciliation(businessId: number, startDate: string, endDate: string) {
+  const db = await getDb();
+
+  // Cash POS income — only "Tunai" payments
+  const posRows = await db
+    .select({
+      totalCashIncome: sql<number>`SUM(${posReceipts.grandTotal})`,
+      transactionCount: sql<number>`COUNT(*)`,
+    })
+    .from(posReceipts)
+    .where(
+      and(
+        eq(posReceipts.businessId, businessId),
+        sql`${posReceipts.date} >= ${startDate}`,
+        sql`${posReceipts.date} <= ${endDate}`,
+        eq(posReceipts.isRefunded, false),
+        sql`JSON_CONTAINS(${posReceipts.payments}, '{"method":"Tunai"}')`,
+      )
+    );
+
+  // Cash refunds
+  const refundRows = await db
+    .select({
+      totalCashRefund: sql<number>`COALESCE(SUM(${posReceipts.refundAmount}), 0)`,
+      refundCount: sql<number>`COUNT(*)`,
+    })
+    .from(posReceipts)
+    .where(
+      and(
+        eq(posReceipts.businessId, businessId),
+        sql`${posReceipts.date} >= ${startDate}`,
+        sql`${posReceipts.date} <= ${endDate}`,
+        eq(posReceipts.isRefunded, true),
+      )
+    );
+
+  // Manual cash transactions from transactions table
+  const txCashIn = await db
+    .select({
+      total: sql<number>`COALESCE(SUM(${transactions.amount}), 0)`,
+      count: sql<number>`COUNT(*)`,
+    })
+    .from(transactions)
+    .where(
+      and(
+        eq(transactions.businessId, businessId),
+        sql`${transactions.date} >= ${startDate}`,
+        sql`${transactions.date} <= ${endDate}`,
+        eq(transactions.type, "pemasukan"),
+        eq(transactions.paymentMethod, "tunai"),
+        eq(transactions.isDeleted, false),
+      )
+    );
+
+  const txCashOut = await db
+    .select({
+      total: sql<number>`COALESCE(SUM(${transactions.amount}), 0)`,
+      count: sql<number>`COUNT(*)`,
+    })
+    .from(transactions)
+    .where(
+      and(
+        eq(transactions.businessId, businessId),
+        sql`${transactions.date} >= ${startDate}`,
+        sql`${transactions.date} <= ${endDate}`,
+        eq(transactions.type, "pengeluaran"),
+        eq(transactions.paymentMethod, "tunai"),
+        eq(transactions.isDeleted, false),
+      )
+    );
+
+  // Change given back to customers
+  const changeRows = await db
+    .select({
+      totalChange: sql<number>`COALESCE(SUM(${posReceipts.changeAmount}), 0)`,
+    })
+    .from(posReceipts)
+    .where(
+      and(
+        eq(posReceipts.businessId, businessId),
+        sql`${posReceipts.date} >= ${startDate}`,
+        sql`${posReceipts.date} <= ${endDate}`,
+        eq(posReceipts.isRefunded, false),
+      )
+    );
+
+  const cashIncome = posRows[0]?.totalCashIncome ?? 0;
+  const cashRefund = refundRows[0]?.totalCashRefund ?? 0;
+  const manualCashIn = txCashIn[0]?.total ?? 0;
+  const manualCashOut = txCashOut[0]?.total ?? 0;
+  const totalChange = changeRows[0]?.totalChange ?? 0;
+
+  const totalKasMasuk = cashIncome + manualCashIn;
+  const totalKasKeluar = cashRefund + manualCashOut + totalChange;
+  const netKas = totalKasMasuk - totalKasKeluar;
+
+  return {
+    pendapatanTunaiPOS: cashIncome,
+    pendapatanTunaiManual: manualCashIn,
+    totalKasMasuk,
+    voidTunai: cashRefund,
+    pengeluaranTunai: manualCashOut,
+    kembalianPelanggan: totalChange,
+    totalKasKeluar,
+    netKas,
+    posTransactionCount: posRows[0]?.transactionCount ?? 0,
+    refundCount: refundRows[0]?.refundCount ?? 0,
+    manualInCount: txCashIn[0]?.count ?? 0,
+    manualOutCount: txCashOut[0]?.count ?? 0,
+  };
 }

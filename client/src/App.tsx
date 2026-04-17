@@ -43,6 +43,13 @@ import PenjualanProduk from "./pages/PenjualanProduk";
 import RingkasanPembayaran from "./pages/RingkasanPembayaran";
 import TopProduk from "./pages/TopProduk";
 import LaporanIndex from "./pages/LaporanIndex";
+import PenjualanPelanggan from "./pages/PenjualanPelanggan";
+import PenjualanJam from "./pages/PenjualanJam";
+import PenjualanTanggal from "./pages/PenjualanTanggal";
+import PenjualanKredit from "./pages/PenjualanKredit";
+import RingkasanDiskon from "./pages/RingkasanDiskon";
+import VoidRefundAnalysis from "./pages/VoidRefundAnalysis";
+import TransaksiTunai from "./pages/TransaksiTunai";
 import { BusinessProvider } from "./contexts/BusinessContext";
 
 function AuthenticatedRoute({ component: Component }: { component: React.ComponentType }) {
@@ -112,6 +119,13 @@ function Router() {
       <Route path="/ringkasan-pembayaran">{() => <AuthenticatedRoute component={RingkasanPembayaran} />}</Route>
       <Route path="/top-produk">{() => <AuthenticatedRoute component={TopProduk} />}</Route>
       <Route path="/laporan-index">{() => <AuthenticatedRoute component={LaporanIndex} />}</Route>
+      <Route path="/penjualan-pelanggan">{() => <AuthenticatedRoute component={PenjualanPelanggan} />}</Route>
+      <Route path="/penjualan-jam">{() => <AuthenticatedRoute component={PenjualanJam} />}</Route>
+      <Route path="/penjualan-tanggal">{() => <AuthenticatedRoute component={PenjualanTanggal} />}</Route>
+      <Route path="/penjualan-kredit">{() => <AuthenticatedRoute component={PenjualanKredit} />}</Route>
+      <Route path="/ringkasan-diskon">{() => <AuthenticatedRoute component={RingkasanDiskon} />}</Route>
+      <Route path="/void-refund">{() => <AuthenticatedRoute component={VoidRefundAnalysis} />}</Route>
+      <Route path="/transaksi-tunai">{() => <AuthenticatedRoute component={TransaksiTunai} />}</Route>
       <Route path="/landing" component={LandingPage} />
       <Route path="/accept-invite" component={AcceptInvite} />
       <Route path="/panduan" component={Panduan} />

@@ -559,6 +559,39 @@ export const posReceiptItems = mysqlTable("pos_receipt_items", {
 export type PosReceiptItem = typeof posReceiptItems.$inferSelect;
 export type InsertPosReceiptItem = typeof posReceiptItems.$inferInsert;
 
+// ─── Credit Sales (Penjualan Kredit / Beli Sekarang Bayar Nanti) ───
+export const creditSales = mysqlTable("credit_sales", {
+  id: int("id").autoincrement().primaryKey(),
+  businessId: int("businessId").notNull(),
+  receiptId: int("receiptId").notNull(), // FK → pos_receipts.id
+  clientId: int("clientId").notNull(), // FK → clients.id (wajib untuk kredit)
+  totalAmount: bigint("totalAmount", { mode: "number" }).notNull(), // total tagihan kredit
+  paidAmount: bigint("paidAmount", { mode: "number" }).notNull().default(0), // jumlah yang sudah dibayar
+  remainingAmount: bigint("remainingAmount", { mode: "number" }).notNull(), // sisa tagihan
+  status: mysqlEnum("creditStatus", ["belum_lunas", "cicilan", "lunas"]).notNull().default("belum_lunas"),
+  dueDate: varchar("dueDate", { length: 10 }), // yyyy-mm-dd, optional deadline
+  notes: text("notes"),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+});
+
+export type CreditSale = typeof creditSales.$inferSelect;
+export type InsertCreditSale = typeof creditSales.$inferInsert;
+
+// ─── Credit Payments (Pelunasan Kredit) ───
+export const creditPayments = mysqlTable("credit_payments", {
+  id: int("id").autoincrement().primaryKey(),
+  creditSaleId: int("creditSaleId").notNull(), // FK → credit_sales.id
+  amount: bigint("amount", { mode: "number" }).notNull(),
+  paymentMethod: varchar("paymentMethod", { length: 30 }).notNull().default("tunai"),
+  notes: text("notes"),
+  date: varchar("date", { length: 10 }).notNull(), // yyyy-mm-dd
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+});
+
+export type CreditPayment = typeof creditPayments.$inferSelect;
+export type InsertCreditPayment = typeof creditPayments.$inferInsert;
+
 // ─── Suppliers (Vendor Tracking) ───
 export const suppliers = mysqlTable("suppliers", {
   id: int("id").autoincrement().primaryKey(),

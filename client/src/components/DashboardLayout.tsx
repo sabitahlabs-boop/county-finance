@@ -65,6 +65,12 @@ import {
   CreditCard,
   TrendingUp,
   Search,
+  Clock,
+  CalendarDays,
+  Banknote,
+  Tag,
+  RotateCcw,
+  Wallet,
 } from "lucide-react";
 import { useTheme } from "@/contexts/ThemeContext";
 import { CSSProperties, useEffect, useMemo, useRef, useState } from "react";
@@ -151,6 +157,13 @@ const UMKM_SIDEBAR: SidebarItem[] = [
       { icon: Package, label: "Penjualan per Produk", path: "/penjualan-produk" },
       { icon: CreditCard, label: "Ringkasan Pembayaran", path: "/ringkasan-pembayaran" },
       { icon: TrendingUp, label: "Top Produk & Kategori", path: "/top-produk" },
+      { icon: Users, label: "Penjualan per Pelanggan", path: "/penjualan-pelanggan" },
+      { icon: Clock, label: "Penjualan per Jam", path: "/penjualan-jam" },
+      { icon: CalendarDays, label: "Penjualan per Tanggal", path: "/penjualan-tanggal" },
+      { icon: Banknote, label: "Penjualan Kredit", path: "/penjualan-kredit" },
+      { icon: Tag, label: "Ringkasan Diskon", path: "/ringkasan-diskon" },
+      { icon: RotateCcw, label: "Void & Refund", path: "/void-refund" },
+      { icon: Wallet, label: "Transaksi Tunai", path: "/transaksi-tunai" },
     ],
   },
   { icon: Users, label: "Pelanggan", path: "/client" },

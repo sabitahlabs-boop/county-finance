@@ -17,6 +17,12 @@ import {
   ArrowRightLeft,
   Calculator,
   ClipboardList,
+  Users,
+  Clock,
+  CalendarDays,
+  Banknote,
+  Tag,
+  RotateCcw,
 } from "lucide-react";
 
 interface ReportEntry {
@@ -103,6 +109,64 @@ const REPORTS: ReportEntry[] = [
     icon: CreditCard,
     category: "Laporan Penjualan",
     keywords: ["payment", "tunai", "transfer", "qris", "cash", "debit", "credit"],
+  },
+
+  // ── Wave 2: Sales Deep Dive ──
+  {
+    name: "Penjualan per Pelanggan",
+    description: "Siapa yang beli paling banyak — total belanja per pelanggan",
+    path: "/penjualan-pelanggan",
+    icon: Users,
+    category: "Laporan Penjualan",
+    keywords: ["customer", "pelanggan", "pembeli", "vip", "wholesale"],
+  },
+  {
+    name: "Penjualan per Jam",
+    description: "Peak hours analysis — jam berapa penjualan paling ramai",
+    path: "/penjualan-jam",
+    icon: Clock,
+    category: "Laporan Penjualan",
+    keywords: ["hourly", "jam", "peak", "ramai", "sibuk"],
+  },
+  {
+    name: "Penjualan per Tanggal",
+    description: "Daily breakdown — total penjualan per hari dalam rentang periode",
+    path: "/penjualan-tanggal",
+    icon: CalendarDays,
+    category: "Laporan Penjualan",
+    keywords: ["daily", "harian", "tanggal", "hari"],
+  },
+  {
+    name: "Penjualan Kredit & Pelunasan",
+    description: "Beli sekarang bayar nanti — tracking kredit dan cicilan pelanggan",
+    path: "/penjualan-kredit",
+    icon: Banknote,
+    category: "Laporan Penjualan",
+    keywords: ["credit", "kredit", "cicilan", "piutang", "pelunasan", "hutang"],
+  },
+  {
+    name: "Ringkasan Diskon",
+    description: "Detail penggunaan diskon: kode, nama, jumlah, dan total potongan",
+    path: "/ringkasan-diskon",
+    icon: Tag,
+    category: "Laporan Penjualan",
+    keywords: ["discount", "diskon", "promo", "potongan", "kode diskon"],
+  },
+  {
+    name: "Void & Refund Analysis",
+    description: "Rincian pembatalan dan pengembalian per tanggal dan pelanggan",
+    path: "/void-refund",
+    icon: RotateCcw,
+    category: "Laporan Penjualan",
+    keywords: ["void", "refund", "batal", "retur", "pengembalian"],
+  },
+  {
+    name: "Transaksi Tunai (Kas Reconciliation)",
+    description: "Rekonsiliasi kas: pendapatan tunai, void, pengeluaran, kembalian, saldo bersih",
+    path: "/transaksi-tunai",
+    icon: Wallet,
+    category: "Laporan Penjualan",
+    keywords: ["cash", "tunai", "kas", "reconciliation", "saldo", "kembalian"],
   },
 
   // ── Laporan Operasional ──
