@@ -31,6 +31,12 @@ import Panduan from "./pages/Panduan";
 import LaporanPenjualan from "./pages/LaporanPenjualan";
 import GudangPage from "./pages/Gudang";
 import AcceptInvite from "./pages/AcceptInvite";
+import PurchaseOrderPage from "./pages/PurchaseOrder";
+import MarketingPage from "./pages/Marketing";
+import StaffManagementPage from "./pages/StaffManagement";
+import InvoiceSettingsPage from "./pages/InvoiceSettings";
+import BarcodeManagerPage from "./pages/BarcodeManager";
+import WarehouseSelectPage from "./pages/WarehouseSelect";
 import { BusinessProvider } from "./contexts/BusinessContext";
 
 function AuthenticatedRoute({ component: Component }: { component: React.ComponentType }) {
@@ -88,6 +94,12 @@ function Router() {
       <Route path="/anggaran">{() => <AuthenticatedRoute component={Anggaran} />}</Route>
       <Route path="/analitik">{() => <AuthenticatedRoute component={SalesAnalytics} />}</Route>
       <Route path="/gudang">{() => <AuthenticatedRoute component={GudangPage} />}</Route>
+      <Route path="/purchase-order">{() => <AuthenticatedRoute component={PurchaseOrderPage} />}</Route>
+      <Route path="/marketing">{() => <AuthenticatedRoute component={MarketingPage} />}</Route>
+      <Route path="/staff">{() => <AuthenticatedRoute component={StaffManagementPage} />}</Route>
+      <Route path="/invoice-settings">{() => <AuthenticatedRoute component={InvoiceSettingsPage} />}</Route>
+      <Route path="/barcode">{() => <AuthenticatedRoute component={BarcodeManagerPage} />}</Route>
+      <Route path="/select-warehouse" component={WarehouseSelectPage} />
       <Route path="/landing" component={LandingPage} />
       <Route path="/accept-invite" component={AcceptInvite} />
       <Route path="/panduan" component={Panduan} />

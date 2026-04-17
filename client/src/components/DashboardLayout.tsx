@@ -55,6 +55,10 @@ import {
   Crown,
   Briefcase,
   Receipt,
+  Megaphone,
+  Truck,
+  ScanBarcode,
+  FileCheck,
 } from "lucide-react";
 import { useTheme } from "@/contexts/ThemeContext";
 import { CSSProperties, useEffect, useMemo, useRef, useState } from "react";
@@ -106,6 +110,7 @@ const UMKM_SIDEBAR: SidebarItem[] = [
     label: "Transaksi & Penjualan",
     children: [
       { icon: ArrowLeftRight, label: "Semua Transaksi", path: "/transaksi" },
+      { icon: Truck, label: "Purchase Order", path: "/purchase-order" },
     ],
   },
   {
@@ -113,6 +118,7 @@ const UMKM_SIDEBAR: SidebarItem[] = [
     label: "Produk & Inventori",
     children: [
       { icon: Package, label: "Stok Produk", path: "/stok" },
+      { icon: ScanBarcode, label: "Barcode", path: "/barcode" },
       { icon: History, label: "Riwayat Stok", path: "/riwayat-stok" },
       { icon: Warehouse, label: "Gudang", path: "/gudang" },
     ],
@@ -135,7 +141,9 @@ const UMKM_SIDEBAR: SidebarItem[] = [
     ],
   },
   { icon: Users, label: "Pelanggan", path: "/client" },
-  { icon: UsersRound, label: "Pegawai", path: "/pengaturan?tab=team" },
+  { icon: Megaphone, label: "Marketing", path: "/marketing" },
+  { icon: UsersRound, label: "Pegawai", path: "/staff" },
+  { icon: FileCheck, label: "Invoice", path: "/invoice-settings" },
   { icon: Settings, label: "Pengaturan", path: "/pengaturan" },
   { icon: HelpCircle, label: "Panduan", path: "/panduan" },
 ];

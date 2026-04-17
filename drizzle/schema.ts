@@ -102,6 +102,10 @@ export const products = mysqlTable("products", {
   stockMinimum: int("stockMinimum").notNull().default(5),
   unit: varchar("unit", { length: 20 }).notNull().default("pcs"),
   imageUrl: text("imageUrl"),
+  barcode: varchar("barcode", { length: 100 }),
+  imei: varchar("imei", { length: 50 }),
+  motorCode: varchar("motorCode", { length: 50 }),
+  productCode: varchar("productCode", { length: 50 }),
   priceType: mysqlEnum("priceType", ["fixed", "dynamic"]).notNull().default("fixed"),
   discountPercent: decimal("discountPercent", { precision: 5, scale: 2 }).notNull().default("0"), // 0-100
   isActive: boolean("isActive").notNull().default(true),
@@ -268,6 +272,11 @@ export const clients = mysqlTable("clients", {
   phone: varchar("phone", { length: 30 }),
   company: varchar("company", { length: 255 }),
   address: text("address"),
+  type: mysqlEnum("customerType", ["regular", "vip", "wholesale"]).default("regular"),
+  depositAmount: bigint("depositAmount", { mode: "number" }).notNull().default(0),
+  lastTransactionDate: varchar("lastTransactionDate", { length: 10 }),
+  activeDate: varchar("activeDate", { length: 10 }),
+  expiryDate: varchar("expiryDate", { length: 10 }),
   notes: text("notes"),
   isActive: boolean("isActive").notNull().default(true),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
@@ -349,6 +358,8 @@ export const warehouses = mysqlTable("warehouses", {
   name: varchar("name", { length: 255 }).notNull(), // e.g. "Gudang Utama", "Gudang Toko A"
   address: text("address"),
   phone: varchar("phone", { length: 50 }),
+  waCode: varchar("waCode", { length: 20 }),
+  code: varchar("code", { length: 20 }),
   notes: text("notes"),
   isDefault: boolean("isDefault").notNull().default(false), // one default per business
   isActive: boolean("isActive").notNull().default(true),
@@ -530,3 +541,118 @@ export const posReceipts = mysqlTable("pos_receipts", {
 
 export type PosReceipt = typeof posReceipts.$inferSelect;
 export type InsertPosReceipt = typeof posReceipts.$inferInsert;
+
+// ─── Suppliers (Vendor Tracking) ───
+export const suppliers = mysqlTable("suppliers", {
+  id: int("id").autoincrement().primaryKey(),
+  businessId: int("businessId").notNull(),
+  name: varchar("name", { length: 255 }).notNull(),
+  contactPerson: varchar("contactPerson", { length: 255 }),
+  email: varchar("email", { length: 320 }),
+  phone: varchar("phone", { length: 30 }),
+  address: text("address"),
+  notes: text("notes"),
+  isActive: boolean("isActive").notNull().default(true),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+});
+
+export type Supplier = typeof suppliers.$inferSelect;
+export type InsertSupplier = typeof suppliers.$inferInsert;
+
+// ─── Purchase Orders ───
+export const purchaseOrders = mysqlTable("purchase_orders", {
+  id: int("id").autoincrement().primaryKey(),
+  businessId: int("businessId").notNull(),
+  poNumber: varchar("poNumber", { length: 30 }).notNull(),
+  supplierId: int("supplierId").notNull(),
+  date: varchar("date", { length: 10 }).notNull(),
+  description: text("description"),
+  totalAmount: bigint("totalAmount", { mode: "number" }).notNull().default(0),
+  paymentStatus: mysqlEnum("paymentStatus", ["unpaid", "partial", "paid"]).notNull().default("unpaid"),
+  receiptStatus: mysqlEnum("receiptStatus", ["pending", "partial", "received"]).notNull().default("pending"),
+  notes: text("notes"),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+});
+
+export type PurchaseOrder = typeof purchaseOrders.$inferSelect;
+export type InsertPurchaseOrder = typeof purchaseOrders.$inferInsert;
+
+// ─── Purchase Order Items ───
+export const purchaseOrderItems = mysqlTable("purchase_order_items", {
+  id: int("id").autoincrement().primaryKey(),
+  purchaseOrderId: int("purchaseOrderId").notNull(),
+  productId: int("productId"),
+  productName: varchar("productName", { length: 255 }).notNull(),
+  qty: int("qty").notNull(),
+  unitPrice: bigint("unitPrice", { mode: "number" }).notNull(),
+  totalPrice: bigint("totalPrice", { mode: "number" }).notNull(),
+  receivedQty: int("receivedQty").notNull().default(0),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+});
+
+export type PurchaseOrderItem = typeof purchaseOrderItems.$inferSelect;
+export type InsertPurchaseOrderItem = typeof purchaseOrderItems.$inferInsert;
+
+// ─── Loyalty Points ───
+export const loyaltyPoints = mysqlTable("loyalty_points", {
+  id: int("id").autoincrement().primaryKey(),
+  businessId: int("businessId").notNull(),
+  clientId: int("clientId").notNull(),
+  points: int("points").notNull().default(0),
+  totalEarned: int("totalEarned").notNull().default(0),
+  totalRedeemed: int("totalRedeemed").notNull().default(0),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+});
+
+export type LoyaltyPoint = typeof loyaltyPoints.$inferSelect;
+export type InsertLoyaltyPoint = typeof loyaltyPoints.$inferInsert;
+
+// ─── Loyalty Transactions ───
+export const loyaltyTransactions = mysqlTable("loyalty_transactions", {
+  id: int("id").autoincrement().primaryKey(),
+  businessId: int("businessId").notNull(),
+  clientId: int("clientId").notNull(),
+  type: mysqlEnum("type", ["earn", "redeem"]).notNull(),
+  points: int("points").notNull(),
+  referenceId: int("referenceId"),
+  description: text("description"),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+});
+
+export type LoyaltyTransaction = typeof loyaltyTransactions.$inferSelect;
+export type InsertLoyaltyTransaction = typeof loyaltyTransactions.$inferInsert;
+
+// ─── Invoice Settings ───
+export const invoiceSettings = mysqlTable("invoice_settings", {
+  id: int("id").autoincrement().primaryKey(),
+  businessId: int("businessId").notNull().unique(),
+  showCustomerName: boolean("showCustomerName").notNull().default(true),
+  showCustomerAddress: boolean("showCustomerAddress").notNull().default(true),
+  showCustomerPhone: boolean("showCustomerPhone").notNull().default(true),
+  showInvoiceNumber: boolean("showInvoiceNumber").notNull().default(true),
+  showPurchaseDate: boolean("showPurchaseDate").notNull().default(true),
+  showDueDate: boolean("showDueDate").notNull().default(false),
+  showPaymentMethod: boolean("showPaymentMethod").notNull().default(true),
+  showTotal: boolean("showTotal").notNull().default(true),
+  showSignature: boolean("showSignature").notNull().default(false),
+  showLogo: boolean("showLogo").notNull().default(true),
+  footerText: text("footerText"),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+});
+
+export type InvoiceSetting = typeof invoiceSettings.$inferSelect;
+export type InsertInvoiceSetting = typeof invoiceSettings.$inferInsert;
+
+// ─── Warehouse Access ───
+export const warehouseAccess = mysqlTable("warehouse_access", {
+  id: int("id").autoincrement().primaryKey(),
+  warehouseId: int("warehouseId").notNull(),
+  userId: int("userId").notNull(),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+});
+
+export type WarehouseAccess = typeof warehouseAccess.$inferSelect;
+export type InsertWarehouseAccess = typeof warehouseAccess.$inferInsert;

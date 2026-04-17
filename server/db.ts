@@ -27,6 +27,13 @@ import {
   posShifts, InsertPosShift, PosShift,
   discountCodes, InsertDiscountCode, DiscountCode,
   posReceipts, InsertPosReceipt, PosReceipt,
+  suppliers, InsertSupplier, Supplier,
+  purchaseOrders, InsertPurchaseOrder, PurchaseOrder,
+  purchaseOrderItems, InsertPurchaseOrderItem, PurchaseOrderItem,
+  loyaltyPoints, InsertLoyaltyPoint, LoyaltyPoint,
+  loyaltyTransactions, InsertLoyaltyTransaction, LoyaltyTransaction,
+  invoiceSettings, InsertInvoiceSetting, InvoiceSetting,
+  warehouseAccess, InsertWarehouseAccess, WarehouseAccess,
 } from "../drizzle/schema";
 import { ENV } from './_core/env';
 import type { TaxCalcResult, DashboardKPIs, LabaRugiReport, ArusKasReport, NeracaReport, PerubahanModalReport, CALKReport } from "../shared/finance";
@@ -2445,4 +2452,211 @@ export async function clearBusinessData(businessId: number): Promise<{ success: 
   await db.delete(warehouses).where(and(eq(warehouses.businessId, businessId), eq(warehouses.isDefault, false)));
 
   return { success: true };
+}
+
+// ─── Supplier Helpers ───
+export async function getSuppliersByBusiness(businessId: number): Promise<Supplier[]> {
+  const db = await getDb();
+  if (!db) return [];
+  return db.select().from(suppliers).where(eq(suppliers.businessId, businessId)).orderBy(desc(suppliers.createdAt));
+}
+
+export async function getSupplierById(id: number): Promise<Supplier | undefined> {
+  const db = await getDb();
+  if (!db) return undefined;
+  const rows = await db.select().from(suppliers).where(eq(suppliers.id, id)).limit(1);
+  return rows[0];
+}
+
+export async function createSupplier(data: InsertSupplier): Promise<{ id: number }> {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  const result = await db.insert(suppliers).values(data);
+  return { id: result[0].insertId };
+}
+
+export async function updateSupplier(id: number, data: Partial<InsertSupplier>): Promise<void> {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  await db.update(suppliers).set(data).where(eq(suppliers.id, id));
+}
+
+export async function deleteSupplier(id: number): Promise<void> {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  await db.delete(suppliers).where(eq(suppliers.id, id));
+}
+
+// ─── Purchase Order Helpers ───
+export async function generatePONumber(businessId: number): Promise<string> {
+  const db = await getDb();
+  if (!db) return `PO-${Date.now()}`;
+  const today = new Date();
+  const dateStr = `${today.getFullYear()}${String(today.getMonth() + 1).padStart(2, "0")}${String(today.getDate()).padStart(2, "0")}`;
+  const rows = await db.select({ count: sql<number>`count(*)` }).from(purchaseOrders).where(eq(purchaseOrders.businessId, businessId));
+  const seq = (Number(rows[0]?.count ?? 0) + 1).toString().padStart(3, "0");
+  return `PO-${dateStr}-${seq}`;
+}
+
+export async function getPurchaseOrdersByBusiness(businessId: number): Promise<PurchaseOrder[]> {
+  const db = await getDb();
+  if (!db) return [];
+  return db.select().from(purchaseOrders).where(eq(purchaseOrders.businessId, businessId)).orderBy(desc(purchaseOrders.createdAt));
+}
+
+export async function getPurchaseOrderById(id: number): Promise<PurchaseOrder | undefined> {
+  const db = await getDb();
+  if (!db) return undefined;
+  const rows = await db.select().from(purchaseOrders).where(eq(purchaseOrders.id, id)).limit(1);
+  return rows[0];
+}
+
+export async function createPurchaseOrder(data: InsertPurchaseOrder): Promise<{ id: number }> {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  const result = await db.insert(purchaseOrders).values(data);
+  return { id: result[0].insertId };
+}
+
+export async function updatePurchaseOrder(id: number, data: Partial<InsertPurchaseOrder>): Promise<void> {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  await db.update(purchaseOrders).set(data).where(eq(purchaseOrders.id, id));
+}
+
+export async function deletePurchaseOrder(id: number): Promise<void> {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  await db.delete(purchaseOrderItems).where(eq(purchaseOrderItems.purchaseOrderId, id));
+  await db.delete(purchaseOrders).where(eq(purchaseOrders.id, id));
+}
+
+// ─── Purchase Order Item Helpers ───
+export async function getPurchaseOrderItems(poId: number): Promise<PurchaseOrderItem[]> {
+  const db = await getDb();
+  if (!db) return [];
+  return db.select().from(purchaseOrderItems).where(eq(purchaseOrderItems.purchaseOrderId, poId));
+}
+
+export async function createPurchaseOrderItem(data: InsertPurchaseOrderItem): Promise<{ id: number }> {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  const result = await db.insert(purchaseOrderItems).values(data);
+  return { id: result[0].insertId };
+}
+
+export async function deletePurchaseOrderItems(poId: number): Promise<void> {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  await db.delete(purchaseOrderItems).where(eq(purchaseOrderItems.purchaseOrderId, poId));
+}
+
+// ─── Loyalty Point Helpers ───
+export async function getLoyaltyPoints(businessId: number, clientId: number): Promise<LoyaltyPoint | undefined> {
+  const db = await getDb();
+  if (!db) return undefined;
+  const rows = await db.select().from(loyaltyPoints).where(and(eq(loyaltyPoints.businessId, businessId), eq(loyaltyPoints.clientId, clientId))).limit(1);
+  return rows[0];
+}
+
+export async function getLoyaltyPointsByBusiness(businessId: number): Promise<LoyaltyPoint[]> {
+  const db = await getDb();
+  if (!db) return [];
+  return db.select().from(loyaltyPoints).where(eq(loyaltyPoints.businessId, businessId));
+}
+
+export async function addLoyaltyPoints(businessId: number, clientId: number, points: number, description?: string): Promise<void> {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  // Upsert loyalty points
+  const existing = await getLoyaltyPoints(businessId, clientId);
+  if (existing) {
+    await db.update(loyaltyPoints).set({
+      points: existing.points + points,
+      totalEarned: existing.totalEarned + points,
+    }).where(eq(loyaltyPoints.id, existing.id));
+  } else {
+    await db.insert(loyaltyPoints).values({ businessId, clientId, points, totalEarned: points, totalRedeemed: 0 });
+  }
+  // Log transaction
+  await db.insert(loyaltyTransactions).values({ businessId, clientId, type: "earn", points, description: description ?? "Poin dari transaksi" });
+}
+
+export async function redeemLoyaltyPoints(businessId: number, clientId: number, points: number, description?: string): Promise<boolean> {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  const existing = await getLoyaltyPoints(businessId, clientId);
+  if (!existing || existing.points < points) return false;
+  await db.update(loyaltyPoints).set({
+    points: existing.points - points,
+    totalRedeemed: existing.totalRedeemed + points,
+  }).where(eq(loyaltyPoints.id, existing.id));
+  await db.insert(loyaltyTransactions).values({ businessId, clientId, type: "redeem", points, description: description ?? "Penukaran poin" });
+  return true;
+}
+
+export async function getLoyaltyTransactionsByClient(businessId: number, clientId: number): Promise<LoyaltyTransaction[]> {
+  const db = await getDb();
+  if (!db) return [];
+  return db.select().from(loyaltyTransactions).where(and(eq(loyaltyTransactions.businessId, businessId), eq(loyaltyTransactions.clientId, clientId))).orderBy(desc(loyaltyTransactions.createdAt));
+}
+
+// ─── Invoice Settings Helpers ───
+export async function getInvoiceSettings(businessId: number): Promise<InvoiceSetting | undefined> {
+  const db = await getDb();
+  if (!db) return undefined;
+  const rows = await db.select().from(invoiceSettings).where(eq(invoiceSettings.businessId, businessId)).limit(1);
+  return rows[0];
+}
+
+export async function upsertInvoiceSettings(businessId: number, data: Partial<InsertInvoiceSetting>): Promise<void> {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  const existing = await getInvoiceSettings(businessId);
+  if (existing) {
+    await db.update(invoiceSettings).set(data).where(eq(invoiceSettings.businessId, businessId));
+  } else {
+    await db.insert(invoiceSettings).values({ businessId, ...data } as InsertInvoiceSetting);
+  }
+}
+
+// ─── Warehouse Access Helpers ───
+export async function getWarehouseAccessByUser(userId: number): Promise<WarehouseAccess[]> {
+  const db = await getDb();
+  if (!db) return [];
+  return db.select().from(warehouseAccess).where(eq(warehouseAccess.userId, userId));
+}
+
+export async function getWarehouseAccessByWarehouse(warehouseId: number): Promise<WarehouseAccess[]> {
+  const db = await getDb();
+  if (!db) return [];
+  return db.select().from(warehouseAccess).where(eq(warehouseAccess.warehouseId, warehouseId));
+}
+
+export async function setWarehouseAccess(warehouseId: number, userIds: number[]): Promise<void> {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  // Clear existing access
+  await db.delete(warehouseAccess).where(eq(warehouseAccess.warehouseId, warehouseId));
+  // Insert new access
+  if (userIds.length > 0) {
+    await db.insert(warehouseAccess).values(userIds.map(userId => ({ warehouseId, userId })));
+  }
+}
+
+export async function getAccessibleWarehouses(businessId: number, userId: number, isOwner: boolean): Promise<Warehouse[]> {
+  const db = await getDb();
+  if (!db) return [];
+  // Owners see all warehouses
+  if (isOwner) {
+    return db.select().from(warehouses).where(and(eq(warehouses.businessId, businessId), eq(warehouses.isActive, true)));
+  }
+  // Team members only see warehouses they have access to
+  const accessRows = await getWarehouseAccessByUser(userId);
+  if (accessRows.length === 0) {
+    // If no specific access, show all (backward compatible)
+    return db.select().from(warehouses).where(and(eq(warehouses.businessId, businessId), eq(warehouses.isActive, true)));
+  }
+  const whIds = accessRows.map(a => a.warehouseId);
+  return db.select().from(warehouses).where(and(eq(warehouses.businessId, businessId), eq(warehouses.isActive, true), inArray(warehouses.id, whIds)));
 }
