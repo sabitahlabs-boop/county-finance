@@ -36,6 +36,7 @@ export default function GudangPage() {
       utils.warehouse.list.invalidate();
       utils.warehouse.stock.invalidate();
     },
+    onError: (err) => toast.error(err.message),
   });
 
   const ensureDefault = trpc.warehouse.ensureDefault.useMutation({
@@ -46,6 +47,7 @@ export default function GudangPage() {
         migrateStock.mutate();
       }
     },
+    onError: (err) => toast.error(err.message),
   });
 
   useEffect(() => {

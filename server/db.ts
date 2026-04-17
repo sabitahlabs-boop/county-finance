@@ -166,6 +166,99 @@ async function runAutoMigration(db: ReturnType<typeof drizzle>) {
     \`createdAt\` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP
   )`);
 
+  await safeExec(`CREATE TABLE IF NOT EXISTS \`pro_links\` (
+    \`id\` int NOT NULL AUTO_INCREMENT PRIMARY KEY,
+    \`token\` varchar(64) NOT NULL UNIQUE,
+    \`email\` varchar(320) NOT NULL,
+    \`buyerName\` varchar(255) DEFAULT NULL,
+    \`notes\` text DEFAULT NULL,
+    \`isUsed\` boolean NOT NULL DEFAULT false,
+    \`usedByUserId\` int DEFAULT NULL,
+    \`usedAt\` timestamp NULL DEFAULT NULL,
+    \`expiresAt\` timestamp NULL DEFAULT NULL,
+    \`createdAt\` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP
+  )`);
+
+  await safeExec(`CREATE TABLE IF NOT EXISTS \`bank_accounts\` (
+    \`id\` int NOT NULL AUTO_INCREMENT PRIMARY KEY,
+    \`businessId\` int NOT NULL,
+    \`accountName\` varchar(100) NOT NULL,
+    \`accountType\` enum('bank','ewallet','cash') NOT NULL DEFAULT 'bank',
+    \`icon\` varchar(10) NOT NULL DEFAULT '🏦',
+    \`color\` varchar(10) NOT NULL DEFAULT '#3b82f6',
+    \`initialBalance\` bigint NOT NULL DEFAULT 0,
+    \`isActive\` boolean NOT NULL DEFAULT true,
+    \`sortOrder\` int NOT NULL DEFAULT 0,
+    \`createdAt\` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    \`updatedAt\` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+  )`);
+
+  await safeExec(`CREATE TABLE IF NOT EXISTS \`stock_transfers\` (
+    \`id\` int NOT NULL AUTO_INCREMENT PRIMARY KEY,
+    \`businessId\` int NOT NULL,
+    \`fromWarehouseId\` int NOT NULL,
+    \`toWarehouseId\` int NOT NULL,
+    \`productId\` int NOT NULL,
+    \`qty\` int NOT NULL,
+    \`date\` varchar(10) NOT NULL,
+    \`notes\` text DEFAULT NULL,
+    \`createdAt\` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP
+  )`);
+
+  await safeExec(`CREATE TABLE IF NOT EXISTS \`team_members\` (
+    \`id\` int NOT NULL AUTO_INCREMENT PRIMARY KEY,
+    \`businessId\` int NOT NULL,
+    \`userId\` int NOT NULL,
+    \`role\` enum('owner','manager','kasir','gudang','viewer') NOT NULL DEFAULT 'viewer',
+    \`permissions\` json NOT NULL,
+    \`invitedBy\` int DEFAULT NULL,
+    \`status\` enum('active','suspended') NOT NULL DEFAULT 'active',
+    \`joinedAt\` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    \`updatedAt\` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+  )`);
+
+  await safeExec(`CREATE TABLE IF NOT EXISTS \`team_invites\` (
+    \`id\` int NOT NULL AUTO_INCREMENT PRIMARY KEY,
+    \`businessId\` int NOT NULL,
+    \`email\` varchar(320) NOT NULL,
+    \`role\` enum('manager','kasir','gudang','viewer') NOT NULL DEFAULT 'viewer',
+    \`permissions\` json NOT NULL,
+    \`token\` varchar(64) NOT NULL UNIQUE,
+    \`invitedBy\` int NOT NULL,
+    \`status\` enum('pending','accepted','expired') NOT NULL DEFAULT 'pending',
+    \`expiresAt\` timestamp NOT NULL,
+    \`createdAt\` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP
+  )`);
+
+  await safeExec(`CREATE TABLE IF NOT EXISTS \`savings_goals\` (
+    \`id\` int NOT NULL AUTO_INCREMENT PRIMARY KEY,
+    \`businessId\` int NOT NULL,
+    \`name\` varchar(255) NOT NULL,
+    \`targetAmount\` bigint NOT NULL,
+    \`currentAmount\` bigint NOT NULL DEFAULT 0,
+    \`icon\` varchar(10) NOT NULL DEFAULT '✈️',
+    \`color\` varchar(10) NOT NULL DEFAULT '#3b82f6',
+    \`targetDate\` varchar(10) DEFAULT NULL,
+    \`isCompleted\` boolean NOT NULL DEFAULT false,
+    \`notes\` text DEFAULT NULL,
+    \`createdAt\` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    \`updatedAt\` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+  )`);
+
+  await safeExec(`CREATE TABLE IF NOT EXISTS \`monthly_bills\` (
+    \`id\` int NOT NULL AUTO_INCREMENT PRIMARY KEY,
+    \`businessId\` int NOT NULL,
+    \`name\` varchar(255) NOT NULL,
+    \`amount\` bigint NOT NULL,
+    \`dueDay\` int NOT NULL DEFAULT 1,
+    \`category\` varchar(100) NOT NULL DEFAULT 'Tagihan',
+    \`icon\` varchar(10) NOT NULL DEFAULT '📋',
+    \`isActive\` boolean NOT NULL DEFAULT true,
+    \`notes\` text DEFAULT NULL,
+    \`createdAt\` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    \`updatedAt\` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+  )`);
+
   console.log("[Migration] Auto-migration complete.");
 }
 

@@ -6,6 +6,7 @@ import { getLoginUrl } from "@/const";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Crown, Loader2, CheckCircle, XCircle, ArrowRight, Shield } from "lucide-react";
+import { toast } from "sonner";
 
 export default function ProActivation() {
   const [, params] = useRoute("/pro/:token");
@@ -25,9 +26,9 @@ export default function ProActivation() {
   const activate = trpc.proLink.activate.useMutation({
     onSuccess: () => {
       setActivated(true);
-      // Clean up sessionStorage
       sessionStorage.removeItem("pro_activation_token");
     },
+    onError: (err) => toast.error(err.message),
   });
 
   // Store token in sessionStorage so we can use it after OAuth redirect

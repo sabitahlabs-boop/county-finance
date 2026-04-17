@@ -9,6 +9,7 @@ import { Label } from '@/components/ui/label';
 import { trpc } from '@/lib/trpc';
 import { getProxiedImageUrl } from '@/lib/utils';
 import { toast } from 'sonner';
+import { toast } from 'sonner';
 
 interface InvoiceSettingsState {
   showCustomerName: boolean;
@@ -63,9 +64,12 @@ export default function InvoiceSettings() {
 
   const { data: invoiceSetting } = trpc.invoiceSettings.get.useQuery();
   const { data: business } = trpc.business.mine.useQuery();
-  const updateSettingsMutation = trpc.invoiceSettings.update.useMutation();
+  const updateSettingsMutation = trpc.invoiceSettings.update.useMutation({
+    onError: (err) => toast.error(err.message),
+  });
   const updateBizMutation = trpc.business.update.useMutation({
     onSuccess: () => utils.business.mine.invalidate(),
+    onError: (err) => toast.error(err.message),
   });
 
   const logoUrl = useMemo(() => getProxiedImageUrl(business?.logoUrl), [business?.logoUrl]);

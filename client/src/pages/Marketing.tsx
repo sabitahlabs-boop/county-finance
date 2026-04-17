@@ -37,6 +37,7 @@ import {
   BarChart3,
 } from 'lucide-react';
 import { trpc } from '@/lib/trpc';
+import { toast } from 'sonner';
 import { formatRupiah } from '../../../shared/finance';
 
 interface Client {
@@ -262,6 +263,7 @@ interface DiscountFormData {
 }
 
 const VoucherDiscountTab = () => {
+  const utils = trpc.useUtils();
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [editingId, setEditingId] = useState<number | null>(null);
   const [formData, setFormData] = useState<DiscountFormData>({
@@ -278,9 +280,18 @@ const VoucherDiscountTab = () => {
   });
 
   const { data: discountCodes = [] } = trpc.discount.list.useQuery();
-  const createMutation = trpc.discount.create.useMutation();
-  const updateMutation = trpc.discount.update.useMutation();
-  const deleteMutation = trpc.discount.delete.useMutation();
+  const createMutation = trpc.discount.create.useMutation({
+    onSuccess: () => { utils.discount.list.invalidate(); toast.success("Diskon berhasil dibuat"); },
+    onError: (err) => toast.error(err.message),
+  });
+  const updateMutation = trpc.discount.update.useMutation({
+    onSuccess: () => { utils.discount.list.invalidate(); toast.success("Diskon berhasil diupdate"); },
+    onError: (err) => toast.error(err.message),
+  });
+  const deleteMutation = trpc.discount.delete.useMutation({
+    onSuccess: () => { utils.discount.list.invalidate(); toast.success("Diskon berhasil dihapus"); },
+    onError: (err) => toast.error(err.message),
+  });
 
   const handleReset = () => {
     setFormData({
@@ -664,6 +675,7 @@ interface LoyaltyData {
 }
 
 const LoyaltyPointTab = () => {
+  const utils = trpc.useUtils();
   const [isDialogOpen, setIsDialogOpen] = useState<boolean>(false);
   const [selectedClientId, setSelectedClientId] = useState<string>('');
   // Note: selectedClientId is a string for Select component compatibility
@@ -671,7 +683,10 @@ const LoyaltyPointTab = () => {
 
   const { data: loyaltyData = [] } = trpc.loyalty.allPoints.useQuery();
   const { data: clients = [] } = trpc.clientMgmt.list.useQuery();
-  const addPointsMutation = trpc.loyalty.addPoints.useMutation();
+  const addPointsMutation = trpc.loyalty.addPoints.useMutation({
+    onSuccess: () => { utils.loyalty.allPoints.invalidate(); toast.success("Poin berhasil ditambahkan"); },
+    onError: (err) => toast.error(err.message),
+  });
 
   const totalPointsCirculating = loyaltyData.reduce(
     (sum, item) => sum + item.points,

@@ -43,7 +43,10 @@ export default function Onboarding({ onComplete }: { onComplete: () => void }) {
     annualOmzetLabel: "",
   });
 
-  const createBiz = trpc.business.create.useMutation();
+  const createBiz = trpc.business.create.useMutation({
+    onSuccess: () => utils.business.mine.invalidate(),
+    onError: (err) => toast.error(err.message),
+  });
   const utils = trpc.useUtils();
 
   const steps = appMode === "personal" ? PERSONAL_STEPS : STEPS;

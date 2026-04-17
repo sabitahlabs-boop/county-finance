@@ -11,6 +11,7 @@ import { Badge } from '@/components/ui/badge';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { formatRupiah } from '../../../shared/finance';
 import { trpc } from '@/lib/trpc';
+import { toast } from 'sonner';
 
 interface POItem {
   productName: string;
@@ -55,6 +56,7 @@ const ReceiptStatusBadge = ({ status }: { status: string }) => {
 };
 
 const NewPODialog = () => {
+  const utils = trpc.useUtils();
   const [open, setOpen] = useState(false);
   const [formData, setFormData] = useState<POFormData>({
     supplierId: '',
@@ -64,7 +66,10 @@ const NewPODialog = () => {
   });
 
   const { data: suppliers } = trpc.supplier.list.useQuery();
-  const createPO = trpc.purchaseOrder.create.useMutation();
+  const createPO = trpc.purchaseOrder.create.useMutation({
+    onSuccess: () => { utils.purchaseOrder.list.invalidate(); toast.success("PO berhasil dibuat"); },
+    onError: (err) => toast.error(err.message),
+  });
 
   const handleAddItem = () => {
     setFormData({
@@ -235,6 +240,7 @@ const NewPODialog = () => {
 };
 
 const NewSupplierDialog = () => {
+  const utils = trpc.useUtils();
   const [open, setOpen] = useState(false);
   const [formData, setFormData] = useState<SupplierFormData>({
     name: '',
@@ -244,7 +250,10 @@ const NewSupplierDialog = () => {
     address: '',
   });
 
-  const createSupplier = trpc.supplier.create.useMutation();
+  const createSupplier = trpc.supplier.create.useMutation({
+    onSuccess: () => { utils.supplier.list.invalidate(); toast.success("Supplier berhasil ditambahkan"); },
+    onError: (err) => toast.error(err.message),
+  });
 
   const handleSubmit = async () => {
     await createSupplier.mutateAsync(formData);
@@ -329,7 +338,11 @@ const NewSupplierDialog = () => {
 const PurchaseOrdersTab = () => {
   const { data: purchaseOrders, isLoading } = trpc.purchaseOrder.list.useQuery();
   const { data: suppliers } = trpc.supplier.list.useQuery();
-  const deletePO = trpc.purchaseOrder.delete.useMutation();
+  const utils = trpc.useUtils();
+  const deletePO = trpc.purchaseOrder.delete.useMutation({
+    onSuccess: () => { utils.purchaseOrder.list.invalidate(); toast.success("PO berhasil dihapus"); },
+    onError: (err) => toast.error(err.message),
+  });
 
   if (isLoading) {
     return (
@@ -408,7 +421,11 @@ const PurchaseOrdersTab = () => {
 
 const SupplierTab = () => {
   const { data: suppliers, isLoading } = trpc.supplier.list.useQuery();
-  const deleteSupplier = trpc.supplier.delete.useMutation();
+  const utils2 = trpc.useUtils();
+  const deleteSupplier = trpc.supplier.delete.useMutation({
+    onSuccess: () => { utils2.supplier.list.invalidate(); toast.success("Supplier berhasil dihapus"); },
+    onError: (err) => toast.error(err.message),
+  });
 
   if (isLoading) {
     return (
