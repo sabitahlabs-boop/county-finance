@@ -177,7 +177,7 @@ export default function Pengaturan() {
           <TabsTrigger value="qris" className="gap-1.5"><QrCode className="h-3.5 w-3.5" /> QRIS</TabsTrigger>
           <TabsTrigger value="paket" className="gap-1.5"><Crown className="h-3.5 w-3.5" /> Paket</TabsTrigger>
           <TabsTrigger value="kategori" className="gap-1.5"><Tag className="h-3.5 w-3.5" /> Kategori</TabsTrigger>
-          <TabsTrigger value="invoice" className="gap-1.5"><FileSignature className="h-3.5 w-3.5" /> Invoice</TabsTrigger>
+          <TabsTrigger value="fitur" className="gap-1.5"><Settings2 className="h-3.5 w-3.5" /> Fitur</TabsTrigger>
           <TabsTrigger value="team" className="gap-1.5"><Users2 className="h-3.5 w-3.5" /> Pegawai</TabsTrigger>
         </TabsList>
 
@@ -774,9 +774,9 @@ export default function Pengaturan() {
           <KategoriProdukTab />
         </TabsContent>
 
-        {/* ─── Invoice Settings ─── */}
-        <TabsContent value="invoice" className="mt-4">
-          <InvoiceSettingsTab business={business} updateBiz={updateBiz} />
+        {/* ─── Fitur (Calculator etc) ─── */}
+        <TabsContent value="fitur" className="mt-4">
+          <FiturTab business={business} updateBiz={updateBiz} />
         </TabsContent>
 
         {/* ─── Pegawai (Team Management) ─── */}
@@ -956,149 +956,17 @@ function KategoriProdukTab() {
   );
 }
 
-function InvoiceSettingsTab({ business, updateBiz }: { business: any; updateBiz: any }) {
-  const [invoiceFooter, setInvoiceFooter] = useState(business?.invoiceFooter || "");
-  const [signatureUrl, setSignatureUrl] = useState(business?.signatureUrl || "");
+function FiturTab({ business, updateBiz }: { business: any; updateBiz: any }) {
   const [calculatorEnabled, setCalculatorEnabled] = useState(business?.calculatorEnabled ?? true);
-  const [sigUploading, setSigUploading] = useState(false);
 
   useEffect(() => {
     if (business) {
-      setInvoiceFooter(business.invoiceFooter || "");
-      setSignatureUrl(business.signatureUrl || "");
       setCalculatorEnabled(business.calculatorEnabled ?? true);
     }
   }, [business]);
 
-  const handleUploadSignature = async (file: File) => {
-    if (!file.type.startsWith("image/")) {
-      toast.error("File harus berupa gambar");
-      return;
-    }
-    if (file.size > 5 * 1024 * 1024) {
-      toast.error("Ukuran file maksimal 5MB");
-      return;
-    }
-    setSigUploading(true);
-    try {
-      const fd = new FormData();
-      fd.append("image", file);
-      const res = await fetch("/api/upload-image", { method: "POST", body: fd });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error || "Upload gagal");
-      setSignatureUrl(data.url);
-      updateBiz.mutate({ signatureUrl: data.url });
-      toast.success("Tanda tangan berhasil diupload");
-    } catch (err: any) {
-      toast.error(err.message || "Gagal upload");
-    } finally {
-      setSigUploading(false);
-    }
-  };
-
   return (
     <div className="space-y-4">
-      {/* Invoice Footer */}
-      <Card className="border-0 shadow-md shadow-black/5">
-        <CardHeader>
-          <CardTitle className="text-base flex items-center gap-2">
-            <FileSignature className="h-4 w-4" /> Footer Invoice
-          </CardTitle>
-          <CardDescription>Teks yang ditampilkan di bagian bawah invoice/struk</CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <div className="space-y-1.5">
-            <Label>Teks Footer</Label>
-            <textarea
-              value={invoiceFooter}
-              onChange={(e) => setInvoiceFooter(e.target.value)}
-              placeholder="Contoh: Terima kasih atas kepercayaan Anda. Barang yang sudah dibeli tidak dapat dikembalikan."
-              rows={3}
-              className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-            />
-          </div>
-          <Button
-            onClick={() => updateBiz.mutate({ invoiceFooter })}
-            disabled={updateBiz.isPending}
-          >
-            {updateBiz.isPending ? <><Loader2 className="h-4 w-4 animate-spin mr-2" /> Menyimpan...</> : "Simpan Footer"}
-          </Button>
-        </CardContent>
-      </Card>
-
-      {/* Signature Upload */}
-      <Card className="border-0 shadow-md shadow-black/5">
-        <CardHeader>
-          <CardTitle className="text-base flex items-center gap-2">
-            <FileSignature className="h-4 w-4" /> Tanda Tangan Digital
-          </CardTitle>
-          <CardDescription>Upload tanda tangan untuk ditampilkan di invoice</CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          {signatureUrl ? (
-            <div className="space-y-3">
-              <div className="rounded-lg border-2 border-dashed border-primary/30 bg-primary/5 p-4 text-center">
-                <img src={getProxiedImageUrl(signatureUrl) || signatureUrl} alt="Tanda Tangan" className="h-16 mx-auto" />
-              </div>
-              <div className="flex gap-2">
-                <label className="flex-1 cursor-pointer">
-                  <input
-                    type="file"
-                    accept="image/*"
-                    className="hidden"
-                    onChange={(e) => {
-                      const file = e.target.files?.[0];
-                      if (file) handleUploadSignature(file);
-                      e.target.value = "";
-                    }}
-                  />
-                  <Button variant="outline" size="sm" className="w-full gap-2" asChild disabled={sigUploading}>
-                    <span>
-                      {sigUploading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Upload className="h-4 w-4" />}
-                      Ganti Tanda Tangan
-                    </span>
-                  </Button>
-                </label>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  className="gap-2 text-destructive hover:text-destructive"
-                  onClick={() => {
-                    setSignatureUrl("");
-                    updateBiz.mutate({ signatureUrl: "" });
-                    toast.success("Tanda tangan berhasil dihapus");
-                  }}
-                >
-                  <Trash2 className="h-4 w-4" /> Hapus
-                </Button>
-              </div>
-            </div>
-          ) : (
-            <label className="cursor-pointer block">
-              <input
-                type="file"
-                accept="image/*"
-                className="hidden"
-                onChange={(e) => {
-                  const file = e.target.files?.[0];
-                  if (file) handleUploadSignature(file);
-                  e.target.value = "";
-                }}
-              />
-              <div className="flex flex-col items-center justify-center rounded-lg border-2 border-dashed border-muted-foreground/25 p-8 hover:border-primary/50 transition-colors">
-                {sigUploading ? (
-                  <Loader2 className="h-8 w-8 animate-spin text-muted-foreground mb-2" />
-                ) : (
-                  <Upload className="h-8 w-8 text-muted-foreground mb-2" />
-                )}
-                <p className="text-sm font-medium">Klik untuk upload tanda tangan</p>
-                <p className="text-xs text-muted-foreground mt-1">PNG transparan direkomendasikan</p>
-              </div>
-            </label>
-          )}
-        </CardContent>
-      </Card>
-
       {/* Calculator Toggle */}
       <Card className="border-0 shadow-md shadow-black/5">
         <CardHeader>
