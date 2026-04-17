@@ -2,7 +2,8 @@ import { Dialog, DialogContent } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Printer, Download, X } from "lucide-react";
 import { formatRupiah } from "../../../shared/finance";
-import { useRef } from "react";
+import { useRef, useMemo } from "react";
+import { getProxiedImageUrl } from "@/lib/utils";
 
 type Transaction = {
   id: number;
@@ -42,6 +43,7 @@ interface InvoicePrintDialogProps {
 export function InvoicePrintDialog({ open, onClose, transaction, business }: InvoicePrintDialogProps) {
   const printRef = useRef<HTMLDivElement>(null);
   const brandColor = business.brandColor || "#2d9a5a";
+  const proxiedLogoUrl = useMemo(() => getProxiedImageUrl(business.logoUrl), [business.logoUrl]);
 
   const handlePrint = () => {
     const content = printRef.current;
@@ -163,9 +165,9 @@ export function InvoicePrintDialog({ open, onClose, transaction, business }: Inv
             <div style={{ background: brandColor, padding: "28px 32px 24px" }}>
               <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
                 <div style={{ display: "flex", alignItems: "center", gap: "14px" }}>
-                  {business.logoUrl ? (
+                  {proxiedLogoUrl ? (
                     <img
-                      src={business.logoUrl}
+                      src={proxiedLogoUrl}
                       alt="Logo"
                       style={{ height: "48px", width: "auto", borderRadius: "8px", background: "white", padding: "4px" }}
                     />

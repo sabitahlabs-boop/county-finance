@@ -71,10 +71,10 @@ export async function storagePut(options: UploadOptions): Promise<UploadResult> 
     })
   );
 
-  // Construct public URL
+  // Construct public URL — use R2 public URL if configured, otherwise use our proxy
   const url = ENV.r2PublicUrl
     ? `${ENV.r2PublicUrl}/${key}`
-    : `https://${ENV.r2BucketName}.${ENV.r2AccountId}.r2.cloudflarestorage.com/${key}`;
+    : `/api/storage/proxy?key=${encodeURIComponent(key)}`;
 
   return { key, url };
 }
@@ -204,6 +204,40 @@ export function registerStorageRoutes(app: Express) {
     } catch (error) {
       console.error("[Storage] Get URL error:", error);
       res.status(500).json({ error: "Failed to get URL" });
+    }
+  });
+
+  // Proxy R2 images — serves images directly via signed URL stream
+  // This fixes broken images when R2_PUBLIC_URL is not configured
+  app.get("/api/storage/proxy", async (req: Request, res: Response) => {
+    try {
+      const key = req.query.key as string;
+      if (!key) {
+        res.status(400).json({ error: "Key parameter required" });
+        return;
+      }
+
+      const command = new GetObjectCommand({
+        Bucket: ENV.r2BucketName,
+        Key: key,
+      });
+
+      const response = await r2.send(command);
+      if (!response.Body) {
+        res.status(404).json({ error: "File not found" });
+        return;
+      }
+
+      // Set proper content type and cache headers
+      res.setHeader("Content-Type", response.ContentType || "application/octet-stream");
+      res.setHeader("Cache-Control", "public, max-age=86400"); // 24h cache
+
+      // Stream the body
+      const bodyStream = response.Body as NodeJS.ReadableStream;
+      bodyStream.pipe(res);
+    } catch (error) {
+      console.error("[Storage] Proxy error:", error);
+      res.status(500).json({ error: "Failed to proxy file" });
     }
   });
 }

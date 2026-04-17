@@ -15,6 +15,7 @@ import { Building2, Palette, Receipt, CreditCard, Crown, Check, QrCode, Upload, 
 import { BUSINESS_TYPES, PLAN_LIMITS, PRO_PRICE, formatRupiah } from "../../../shared/finance";
 import { toast } from "sonner";
 import { useLocation } from "wouter";
+import { getProxiedImageUrl } from "@/lib/utils";
 
 interface FormState {
   businessName: string;
@@ -440,7 +441,7 @@ export default function Pengaturan() {
                   <div className="space-y-3">
                     <div className="relative mx-auto w-fit">
                       <div className="rounded-lg border-2 border-dashed border-primary/30 bg-primary/5 p-4">
-                        <img src={form.logoUrl} alt="Logo" className="h-20 w-auto" />
+                        <img src={getProxiedImageUrl(form.logoUrl) || form.logoUrl} alt="Logo" className="h-20 w-auto" />
                       </div>
                     </div>
                     <div className="flex gap-2">
@@ -524,7 +525,7 @@ export default function Pengaturan() {
                 <p className="text-xs text-muted-foreground mb-2">Preview</p>
                 <div className="flex items-center gap-3">
                   {form.logoUrl ? (
-                    <img src={form.logoUrl} alt="Logo" className="h-10 w-10 rounded-lg object-contain" />
+                    <img src={getProxiedImageUrl(form.logoUrl) || form.logoUrl} alt="Logo" className="h-10 w-10 rounded-lg object-contain" />
                   ) : (
                     <div className="h-10 w-10 rounded-lg" style={{ backgroundColor: form.brandColor }} />
                   )}
@@ -615,7 +616,7 @@ export default function Pengaturan() {
                   <div className="relative mx-auto w-fit">
                     <div className="rounded-xl border-2 border-dashed border-primary/30 bg-primary/5 p-4">
                       <img
-                        src={form.qrisImageUrl}
+                        src={getProxiedImageUrl(form.qrisImageUrl) || form.qrisImageUrl}
                         alt="QRIS QR Code"
                         className="max-w-[280px] max-h-[280px] rounded-lg mx-auto"
                       />

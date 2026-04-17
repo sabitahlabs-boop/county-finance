@@ -1,13 +1,14 @@
 'use client';
 
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, useMemo } from 'react';
 import { motion } from 'framer-motion';
-import { Check } from 'lucide-react';
+import { Check, ImageOff } from 'lucide-react';
 import { Switch } from '@/components/ui/switch';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { trpc } from '@/lib/trpc';
+import { getProxiedImageUrl } from '@/lib/utils';
 
 interface InvoiceSettingsState {
   showCustomerName: boolean;
@@ -54,11 +55,14 @@ export default function InvoiceSettings() {
   });
 
   const [isSaving, setIsSaving] = useState(false);
+  const [logoError, setLogoError] = useState(false);
   const saveTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
   const { data: invoiceSetting } = trpc.invoiceSettings.get.useQuery();
   const { data: business } = trpc.business.mine.useQuery();
   const updateMutation = trpc.invoiceSettings.update.useMutation();
+
+  const logoUrl = useMemo(() => getProxiedImageUrl(business?.logoUrl), [business?.logoUrl]);
 
   // Load settings from server on mount
   useEffect(() => {
@@ -245,13 +249,19 @@ export default function InvoiceSettings() {
                   <div className="mb-8 pb-8 border-b border-slate-200">
                     <div className="flex items-start justify-between">
                       <div className="flex-1">
-                        {settings.showLogo && business?.logoUrl ? (
+                        {settings.showLogo && logoUrl && !logoError ? (
                           <div className="mb-4">
                             <img
-                              src={business.logoUrl}
+                              src={logoUrl}
                               alt="Logo"
                               className="h-12 w-auto object-contain"
+                              onError={() => setLogoError(true)}
                             />
+                          </div>
+                        ) : settings.showLogo && logoError ? (
+                          <div className="mb-4 flex items-center gap-2 text-slate-400 text-sm">
+                            <ImageOff className="w-5 h-5" />
+                            <span>Logo gagal dimuat — coba upload ulang di Pengaturan</span>
                           </div>
                         ) : null}
                         <h1 className="text-2xl font-bold text-slate-900">
