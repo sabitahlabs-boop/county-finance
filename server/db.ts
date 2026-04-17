@@ -39,15 +39,151 @@ import { ENV } from './_core/env';
 import type { TaxCalcResult, DashboardKPIs, LabaRugiReport, ArusKasReport, NeracaReport, PerubahanModalReport, CALKReport } from "../shared/finance";
 
 let _db: ReturnType<typeof drizzle> | null = null;
+let _migrationDone = false;
+let _migrationPromise: Promise<void> | null = null;
+
+// Auto-migrate: add new columns and tables that don't exist yet
+async function runAutoMigration(db: ReturnType<typeof drizzle>) {
+  if (_migrationDone) return;
+  _migrationDone = true;
+
+  const safeExec = async (query: string) => {
+    try { await db.execute(sql.raw(query)); } catch (e: any) {
+      // Ignore "duplicate column" or "table already exists" errors
+      if (e.errno === 1060 || e.errno === 1050) return;
+      console.warn("[Migration]", e.message);
+    }
+  };
+
+  console.log("[Migration] Running auto-migration...");
+
+  // --- Alter existing tables ---
+  // products: add barcode, imei, motorCode, productCode
+  await safeExec("ALTER TABLE `products` ADD COLUMN `barcode` varchar(100) DEFAULT NULL");
+  await safeExec("ALTER TABLE `products` ADD COLUMN `imei` varchar(50) DEFAULT NULL");
+  await safeExec("ALTER TABLE `products` ADD COLUMN `motorCode` varchar(50) DEFAULT NULL");
+  await safeExec("ALTER TABLE `products` ADD COLUMN `productCode` varchar(50) DEFAULT NULL");
+
+  // warehouses: add waCode, code
+  await safeExec("ALTER TABLE `warehouses` ADD COLUMN `waCode` varchar(20) DEFAULT NULL");
+  await safeExec("ALTER TABLE `warehouses` ADD COLUMN `code` varchar(20) DEFAULT NULL");
+
+  // clients: add customerType, depositAmount, lastTransactionDate, activeDate, expiryDate
+  await safeExec("ALTER TABLE `clients` ADD COLUMN `customerType` enum('regular','vip','wholesale') DEFAULT 'regular'");
+  await safeExec("ALTER TABLE `clients` ADD COLUMN `depositAmount` bigint NOT NULL DEFAULT 0");
+  await safeExec("ALTER TABLE `clients` ADD COLUMN `lastTransactionDate` varchar(10) DEFAULT NULL");
+  await safeExec("ALTER TABLE `clients` ADD COLUMN `activeDate` varchar(10) DEFAULT NULL");
+  await safeExec("ALTER TABLE `clients` ADD COLUMN `expiryDate` varchar(10) DEFAULT NULL");
+
+  // --- Create new tables ---
+  await safeExec(`CREATE TABLE IF NOT EXISTS \`suppliers\` (
+    \`id\` int NOT NULL AUTO_INCREMENT PRIMARY KEY,
+    \`businessId\` int NOT NULL,
+    \`name\` varchar(255) NOT NULL,
+    \`contactPerson\` varchar(255) DEFAULT NULL,
+    \`email\` varchar(320) DEFAULT NULL,
+    \`phone\` varchar(30) DEFAULT NULL,
+    \`address\` text DEFAULT NULL,
+    \`notes\` text DEFAULT NULL,
+    \`isActive\` boolean NOT NULL DEFAULT true,
+    \`createdAt\` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    \`updatedAt\` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+  )`);
+
+  await safeExec(`CREATE TABLE IF NOT EXISTS \`purchase_orders\` (
+    \`id\` int NOT NULL AUTO_INCREMENT PRIMARY KEY,
+    \`businessId\` int NOT NULL,
+    \`poNumber\` varchar(30) NOT NULL,
+    \`supplierId\` int NOT NULL,
+    \`date\` varchar(10) NOT NULL,
+    \`description\` text DEFAULT NULL,
+    \`totalAmount\` bigint NOT NULL DEFAULT 0,
+    \`paymentStatus\` enum('unpaid','partial','paid') NOT NULL DEFAULT 'unpaid',
+    \`receiptStatus\` enum('pending','partial','received') NOT NULL DEFAULT 'pending',
+    \`notes\` text DEFAULT NULL,
+    \`createdAt\` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    \`updatedAt\` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+  )`);
+
+  await safeExec(`CREATE TABLE IF NOT EXISTS \`purchase_order_items\` (
+    \`id\` int NOT NULL AUTO_INCREMENT PRIMARY KEY,
+    \`purchaseOrderId\` int NOT NULL,
+    \`productId\` int DEFAULT NULL,
+    \`productName\` varchar(255) NOT NULL,
+    \`qty\` int NOT NULL,
+    \`unitPrice\` bigint NOT NULL,
+    \`totalPrice\` bigint NOT NULL,
+    \`receivedQty\` int NOT NULL DEFAULT 0,
+    \`createdAt\` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP
+  )`);
+
+  await safeExec(`CREATE TABLE IF NOT EXISTS \`loyalty_points\` (
+    \`id\` int NOT NULL AUTO_INCREMENT PRIMARY KEY,
+    \`businessId\` int NOT NULL,
+    \`clientId\` int NOT NULL,
+    \`points\` int NOT NULL DEFAULT 0,
+    \`totalEarned\` int NOT NULL DEFAULT 0,
+    \`totalRedeemed\` int NOT NULL DEFAULT 0,
+    \`updatedAt\` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+  )`);
+
+  await safeExec(`CREATE TABLE IF NOT EXISTS \`loyalty_transactions\` (
+    \`id\` int NOT NULL AUTO_INCREMENT PRIMARY KEY,
+    \`businessId\` int NOT NULL,
+    \`clientId\` int NOT NULL,
+    \`type\` enum('earn','redeem') NOT NULL,
+    \`points\` int NOT NULL,
+    \`referenceId\` int DEFAULT NULL,
+    \`description\` text DEFAULT NULL,
+    \`createdAt\` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP
+  )`);
+
+  await safeExec(`CREATE TABLE IF NOT EXISTS \`invoice_settings\` (
+    \`id\` int NOT NULL AUTO_INCREMENT PRIMARY KEY,
+    \`businessId\` int NOT NULL UNIQUE,
+    \`showCustomerName\` boolean NOT NULL DEFAULT true,
+    \`showCustomerAddress\` boolean NOT NULL DEFAULT true,
+    \`showCustomerPhone\` boolean NOT NULL DEFAULT true,
+    \`showInvoiceNumber\` boolean NOT NULL DEFAULT true,
+    \`showPurchaseDate\` boolean NOT NULL DEFAULT true,
+    \`showDueDate\` boolean NOT NULL DEFAULT false,
+    \`showPaymentMethod\` boolean NOT NULL DEFAULT true,
+    \`showTotal\` boolean NOT NULL DEFAULT true,
+    \`showSignature\` boolean NOT NULL DEFAULT false,
+    \`showLogo\` boolean NOT NULL DEFAULT true,
+    \`footerText\` text DEFAULT NULL,
+    \`createdAt\` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    \`updatedAt\` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+  )`);
+
+  await safeExec(`CREATE TABLE IF NOT EXISTS \`warehouse_access\` (
+    \`id\` int NOT NULL AUTO_INCREMENT PRIMARY KEY,
+    \`warehouseId\` int NOT NULL,
+    \`userId\` int NOT NULL,
+    \`createdAt\` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP
+  )`);
+
+  console.log("[Migration] Auto-migration complete.");
+}
 
 export async function getDb() {
   if (!_db && process.env.DATABASE_URL) {
     try {
       _db = drizzle(process.env.DATABASE_URL);
+      // Run migration and wait for it — store promise so concurrent callers also wait
+      _migrationPromise = runAutoMigration(_db);
+      await _migrationPromise;
+      _migrationPromise = null;
     } catch (error) {
       console.warn("[Database] Failed to connect:", error);
       _db = null;
+      _migrationDone = false; // Reset so migration retries on next call
+      _migrationPromise = null;
     }
+  }
+  // If migration is still running from another call, wait for it
+  if (_migrationPromise) {
+    await _migrationPromise;
   }
   return _db;
 }
@@ -2448,6 +2584,20 @@ export async function clearBusinessData(businessId: number): Promise<{ success: 
   await db.delete(clients).where(eq(clients.businessId, businessId));
   await db.delete(budgets).where(eq(budgets.businessId, businessId));
   await db.delete(monthlyBills).where(eq(monthlyBills.businessId, businessId));
+
+  // Delete new feature tables
+  await db.delete(purchaseOrderItems).where(
+    sql`${purchaseOrderItems.purchaseOrderId} IN (SELECT id FROM purchase_orders WHERE business_id = ${businessId})`
+  );
+  await db.delete(purchaseOrders).where(eq(purchaseOrders.businessId, businessId));
+  await db.delete(suppliers).where(eq(suppliers.businessId, businessId));
+  await db.delete(loyaltyTransactions).where(eq(loyaltyTransactions.businessId, businessId));
+  await db.delete(loyaltyPoints).where(eq(loyaltyPoints.businessId, businessId));
+  await db.delete(invoiceSettings).where(eq(invoiceSettings.businessId, businessId));
+  await db.delete(warehouseAccess).where(
+    sql`${warehouseAccess.warehouseId} IN (SELECT id FROM warehouses WHERE business_id = ${businessId})`
+  );
+
   // Keep warehouses but delete non-default ones
   await db.delete(warehouses).where(and(eq(warehouses.businessId, businessId), eq(warehouses.isDefault, false)));
 
