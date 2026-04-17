@@ -9,7 +9,7 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import {
   Receipt, TrendingUp, Banknote, CreditCard, QrCode,
   ShoppingBag, ChevronLeft, ChevronRight, Printer, ArrowUpDown,
-  Package, Tag, RotateCcw, Clock, DollarSign,
+  Package, Tag, RotateCcw, Clock, DollarSign, CalendarRange, CalendarDays,
 } from "lucide-react";
 import { formatRupiah } from "../../../shared/finance";
 
@@ -19,6 +19,11 @@ const BULAN = ["Januari", "Februari", "Maret", "April", "Mei", "Juni", "Juli", "
 function formatTanggal(dateStr: string) {
   const d = new Date(dateStr + "T00:00:00");
   return `${HARI[d.getDay()]}, ${d.getDate()} ${BULAN[d.getMonth()]} ${d.getFullYear()}`;
+}
+
+function formatTanggalShort(dateStr: string) {
+  const d = new Date(dateStr + "T00:00:00");
+  return `${d.getDate()} ${BULAN[d.getMonth()].slice(0, 3)} ${d.getFullYear()}`;
 }
 
 function formatTime(dateStr: string | Date) {
@@ -35,13 +40,26 @@ const PAYMENT_ICONS: Record<string, typeof Banknote> = {
 
 export default function LaporanPenjualan() {
   const today = useMemo(() => new Date().toISOString().slice(0, 10), []);
+  const [mode, setMode] = useState<"daily" | "period">("daily");
   const [selectedDate, setSelectedDate] = useState(today);
+  const [startDate, setStartDate] = useState(today);
+  const [endDate, setEndDate] = useState(today);
   const [sortBy, setSortBy] = useState<"time" | "amount">("time");
 
-  const { data: report, isLoading } = trpc.report.dailySales.useQuery(
+  // Daily mode query
+  const { data: dailyReport, isLoading: dailyLoading } = trpc.report.dailySales.useQuery(
     { date: selectedDate },
-    { retry: false }
+    { retry: false, enabled: mode === "daily" }
   );
+
+  // Period mode query
+  const { data: periodReport, isLoading: periodLoading } = trpc.report.periodSales.useQuery(
+    { startDate, endDate },
+    { retry: false, enabled: mode === "period" && startDate <= endDate }
+  );
+
+  const isLoading = mode === "daily" ? dailyLoading : periodLoading;
+  const report = mode === "daily" ? dailyReport : periodReport;
 
   const navigateDate = (delta: number) => {
     const d = new Date(selectedDate + "T00:00:00");
@@ -53,66 +71,111 @@ export default function LaporanPenjualan() {
     if (!report?.receipts) return [];
     const list = [...report.receipts];
     if (sortBy === "amount") {
-      list.sort((a, b) => b.grandTotal - a.grandTotal);
+      list.sort((a: any, b: any) => b.grandTotal - a.grandTotal);
     }
-    // default is time (already sorted desc from server)
     return list;
   }, [report?.receipts, sortBy]);
 
-  // Hourly chart data
+  // Hourly chart data (daily mode only)
   const hourlyData = useMemo(() => {
-    if (!report?.byHour) return [];
+    if (mode !== "daily" || !dailyReport?.byHour) return [];
     const hours = [];
     for (let h = 0; h < 24; h++) {
       const key = `${String(h).padStart(2, "0")}:00`;
-      const value = report.byHour[key] || 0;
+      const value = dailyReport.byHour[key] || 0;
       if (value > 0 || (h >= 7 && h <= 22)) {
         hours.push({ hour: key, value });
       }
     }
     return hours;
-  }, [report?.byHour]);
+  }, [dailyReport?.byHour, mode]);
+
+  // Daily chart data (period mode only)
+  const dailyChartData = useMemo(() => {
+    if (mode !== "period" || !periodReport?.byDate) return [];
+    const entries = Object.entries(periodReport.byDate).sort(([a], [b]) => a.localeCompare(b));
+    return entries.map(([date, value]) => ({ date, label: formatTanggalShort(date), value }));
+  }, [periodReport?.byDate, mode]);
 
   const maxHourlyValue = useMemo(() => Math.max(1, ...hourlyData.map(h => h.value)), [hourlyData]);
+  const maxDailyValue = useMemo(() => Math.max(1, ...dailyChartData.map(d => d.value)), [dailyChartData]);
+
+  const periodLabel = mode === "daily"
+    ? formatTanggal(selectedDate)
+    : `${formatTanggalShort(startDate)} — ${formatTanggalShort(endDate)}`;
 
   return (
     <div className="space-y-6">
-      {/* Header with date navigation */}
+      {/* Header */}
       <div className="flex items-center justify-between flex-wrap gap-3">
         <div>
           <h1 className="text-xl font-bold flex items-center gap-2">
             <Receipt className="h-5 w-5 text-primary" />
-            Laporan Penjualan Harian
+            Laporan Penjualan
           </h1>
-          <p className="text-sm text-muted-foreground mt-0.5">Detail transaksi POS per hari</p>
+          <p className="text-sm text-muted-foreground mt-0.5">Detail transaksi POS per hari atau periode</p>
         </div>
-        <div className="flex items-center gap-2">
-          <Button variant="outline" size="icon" className="h-9 w-9" onClick={() => navigateDate(-1)}>
-            <ChevronLeft className="h-4 w-4" />
-          </Button>
-          <Input
-            type="date"
-            value={selectedDate}
-            onChange={(e) => setSelectedDate(e.target.value)}
-            className="w-40 h-9 text-sm"
-            max={today}
-          />
-          <Button
-            variant="outline" size="icon" className="h-9 w-9"
-            onClick={() => navigateDate(1)}
-            disabled={selectedDate >= today}
-          >
-            <ChevronRight className="h-4 w-4" />
-          </Button>
-          {selectedDate !== today && (
-            <Button variant="ghost" size="sm" className="text-xs h-9" onClick={() => setSelectedDate(today)}>
-              Hari Ini
-            </Button>
+        <div className="flex items-center gap-2 flex-wrap">
+          {/* Mode toggle */}
+          <div className="flex border rounded-lg overflow-hidden">
+            <button
+              className={`px-3 py-1.5 text-xs font-medium flex items-center gap-1 transition-colors ${mode === "daily" ? "bg-primary text-primary-foreground" : "bg-muted/30 hover:bg-muted"}`}
+              onClick={() => setMode("daily")}
+            >
+              <CalendarDays className="h-3.5 w-3.5" /> Harian
+            </button>
+            <button
+              className={`px-3 py-1.5 text-xs font-medium flex items-center gap-1 transition-colors ${mode === "period" ? "bg-primary text-primary-foreground" : "bg-muted/30 hover:bg-muted"}`}
+              onClick={() => setMode("period")}
+            >
+              <CalendarRange className="h-3.5 w-3.5" /> Periode
+            </button>
+          </div>
+
+          {mode === "daily" ? (
+            <>
+              <Button variant="outline" size="icon" className="h-9 w-9" onClick={() => navigateDate(-1)}>
+                <ChevronLeft className="h-4 w-4" />
+              </Button>
+              <Input
+                type="date"
+                value={selectedDate}
+                onChange={(e) => setSelectedDate(e.target.value)}
+                className="w-40 h-9 text-sm"
+              />
+              <Button
+                variant="outline" size="icon" className="h-9 w-9"
+                onClick={() => navigateDate(1)}
+              >
+                <ChevronRight className="h-4 w-4" />
+              </Button>
+              {selectedDate !== today && (
+                <Button variant="ghost" size="sm" className="text-xs h-9" onClick={() => setSelectedDate(today)}>
+                  Hari Ini
+                </Button>
+              )}
+            </>
+          ) : (
+            <>
+              <Input
+                type="date"
+                value={startDate}
+                onChange={(e) => setStartDate(e.target.value)}
+                className="w-40 h-9 text-sm"
+              />
+              <span className="text-xs text-muted-foreground">s/d</span>
+              <Input
+                type="date"
+                value={endDate}
+                onChange={(e) => setEndDate(e.target.value)}
+                className="w-40 h-9 text-sm"
+              />
+            </>
           )}
         </div>
       </div>
 
-      <p className="text-sm font-medium text-muted-foreground -mt-3">{formatTanggal(selectedDate)}</p>
+      <p className="text-sm font-medium text-muted-foreground -mt-3">{periodLabel}</p>
 
       {isLoading ? (
         <div className="space-y-4">
@@ -167,7 +230,7 @@ export default function LaporanPenjualan() {
                 <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                   {Object.entries(report.byPaymentMethod).map(([method, amount]) => {
                     const Icon = PAYMENT_ICONS[method] || Banknote;
-                    const pct = report.totalSales > 0 ? Math.round((amount / report.totalSales) * 100) : 0;
+                    const pct = report.totalSales > 0 ? Math.round(((amount as number) / report.totalSales) * 100) : 0;
                     return (
                       <div key={method} className="flex items-center gap-3 p-3 rounded-lg bg-muted/30">
                         <div className="h-10 w-10 rounded-lg bg-primary/10 flex items-center justify-center shrink-0">
@@ -175,7 +238,7 @@ export default function LaporanPenjualan() {
                         </div>
                         <div className="flex-1 min-w-0">
                           <p className="text-xs text-muted-foreground">{method}</p>
-                          <p className="text-sm font-bold">{formatRupiah(amount)}</p>
+                          <p className="text-sm font-bold">{formatRupiah(amount as number)}</p>
                         </div>
                         <Badge variant="secondary" className="text-xs shrink-0">{pct}%</Badge>
                       </div>
@@ -186,8 +249,8 @@ export default function LaporanPenjualan() {
             </Card>
           )}
 
-          {/* ─── Hourly Sales Chart (simple bar chart) ─── */}
-          {hourlyData.length > 0 && (
+          {/* ─── Hourly Sales Chart (daily mode) ─── */}
+          {mode === "daily" && hourlyData.length > 0 && (
             <Card className="border shadow-sm">
               <CardContent className="p-4">
                 <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-3 flex items-center gap-1.5">
@@ -211,6 +274,31 @@ export default function LaporanPenjualan() {
             </Card>
           )}
 
+          {/* ─── Daily Sales Chart (period mode) ─── */}
+          {mode === "period" && dailyChartData.length > 0 && (
+            <Card className="border shadow-sm">
+              <CardContent className="p-4">
+                <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-3 flex items-center gap-1.5">
+                  <CalendarDays className="h-3 w-3" /> Penjualan Per Hari
+                </p>
+                <div className="flex items-end gap-1 h-32">
+                  {dailyChartData.map(({ date, label, value }) => (
+                    <div key={date} className="flex-1 flex flex-col items-center gap-1 min-w-0">
+                      <div
+                        className="w-full rounded-t bg-primary/70 hover:bg-primary transition-colors min-h-[2px]"
+                        style={{ height: `${Math.max(2, (value / maxDailyValue) * 100)}%` }}
+                        title={`${label}: ${formatRupiah(value)}`}
+                      />
+                      <span className="text-[9px] text-muted-foreground truncate w-full text-center">
+                        {label.split(" ")[0]}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              </CardContent>
+            </Card>
+          )}
+
           {/* ─── Product Breakdown ─── */}
           {report.byProduct && report.byProduct.length > 0 && (
             <Card className="border shadow-sm">
@@ -219,7 +307,7 @@ export default function LaporanPenjualan() {
                   <Package className="h-3 w-3" /> Penjualan Per Produk
                 </p>
                 <div className="space-y-2">
-                  {report.byProduct.map((prod, idx) => {
+                  {report.byProduct.map((prod: any, idx: number) => {
                     const margin = prod.revenue - prod.hpp;
                     const marginPct = prod.revenue > 0 ? Math.round((margin / prod.revenue) * 100) : 0;
                     return (
@@ -268,12 +356,12 @@ export default function LaporanPenjualan() {
               {sortedReceipts.length === 0 ? (
                 <div className="py-12 text-center">
                   <Receipt className="h-10 w-10 text-muted-foreground/20 mx-auto mb-3" />
-                  <p className="text-sm text-muted-foreground">Belum ada transaksi POS pada tanggal ini</p>
+                  <p className="text-sm text-muted-foreground">Belum ada transaksi POS pada {mode === "daily" ? "tanggal" : "periode"} ini</p>
                 </div>
               ) : (
                 <ScrollArea className="max-h-[500px]">
                   <div className="space-y-2">
-                    {sortedReceipts.map((receipt) => {
+                    {sortedReceipts.map((receipt: any) => {
                       const payments = (typeof receipt.payments === "string"
                         ? JSON.parse(receipt.payments)
                         : receipt.payments) as Array<{ method: string; amount: number }>;
@@ -297,9 +385,14 @@ export default function LaporanPenjualan() {
                                   <Badge variant="outline" className="text-[10px] px-1.5 py-0">Split</Badge>
                                 )}
                               </div>
-                              {receipt.createdAt && (
-                                <p className="text-[11px] text-muted-foreground mt-0.5">{formatTime(receipt.createdAt)}</p>
-                              )}
+                              <div className="flex items-center gap-2 mt-0.5">
+                                {mode === "period" && (
+                                  <p className="text-[11px] text-muted-foreground">{formatTanggalShort(receipt.date)}</p>
+                                )}
+                                {receipt.createdAt && (
+                                  <p className="text-[11px] text-muted-foreground">{formatTime(receipt.createdAt)}</p>
+                                )}
+                              </div>
                               {receipt.notes && (
                                 <p className="text-xs text-muted-foreground mt-1 truncate max-w-[200px]">{receipt.notes}</p>
                               )}
@@ -355,8 +448,7 @@ export default function LaporanPenjualan() {
             <Button variant="outline" size="sm" className="gap-1.5" onClick={() => {
               const w = window.open("", "_blank");
               if (!w) return;
-              const dateLabel = formatTanggal(selectedDate);
-              w.document.write(`<html><head><title>Laporan Penjualan ${dateLabel}</title>
+              w.document.write(`<html><head><title>Laporan Penjualan ${periodLabel}</title>
                 <style>
                   body{font-family:system-ui,-apple-system,sans-serif;padding:24px;max-width:800px;margin:auto;font-size:13px}
                   h1{font-size:16px;margin:0}
@@ -371,8 +463,8 @@ export default function LaporanPenjualan() {
                   .refund{color:#dc2626;text-decoration:line-through}
                   @media print{body{padding:0}}
                 </style></head><body>
-                <h1>Laporan Penjualan Harian</h1>
-                <p class="date">${dateLabel}</p>
+                <h1>Laporan Penjualan ${mode === "daily" ? "Harian" : "Periode"}</h1>
+                <p class="date">${periodLabel}</p>
                 <div class="summary">
                   <div class="summary-row"><span>Total Penjualan</span><span class="bold">${formatRupiah(report.totalSales)}</span></div>
                   <div class="summary-row"><span>Total Transaksi</span><span class="bold">${report.totalTransactions}</span></div>
@@ -384,16 +476,16 @@ export default function LaporanPenjualan() {
                 <h2 style="font-size:14px;margin-top:20px">Produk Terjual</h2>
                 <table>
                   <tr><th>Produk</th><th class="right">Qty</th><th class="right">Revenue</th></tr>
-                  ${report.byProduct.map(p => `<tr><td>${p.name}</td><td class="right">${p.qty}</td><td class="right">${formatRupiah(p.revenue)}</td></tr>`).join("")}
+                  ${report.byProduct.map((p: any) => `<tr><td>${p.name}</td><td class="right">${p.qty}</td><td class="right">${formatRupiah(p.revenue)}</td></tr>`).join("")}
                 </table>` : ""}
                 <h2 style="font-size:14px;margin-top:20px">Daftar Struk</h2>
                 <table>
-                  <tr><th>Kode</th><th>Waktu</th><th class="right">Total</th><th>Metode</th></tr>
-                  ${sortedReceipts.map(r => {
+                  <tr><th>Kode</th><th>${mode === "period" ? "Tanggal" : "Waktu"}</th><th class="right">Total</th><th>Metode</th></tr>
+                  ${sortedReceipts.map((r: any) => {
                     const ps = (typeof r.payments === "string" ? JSON.parse(r.payments) : r.payments) as Array<{ method: string; amount: number }>;
                     return `<tr${r.isRefunded ? ' class="refund"' : ""}>
                       <td>${r.receiptCode}</td>
-                      <td>${r.createdAt ? formatTime(r.createdAt) : "-"}</td>
+                      <td>${mode === "period" ? formatTanggalShort(r.date) + " " : ""}${r.createdAt ? formatTime(r.createdAt) : "-"}</td>
                       <td class="right">${formatRupiah(r.grandTotal)}</td>
                       <td>${ps.map(p => p.method).join(" + ")}</td>
                     </tr>`;
