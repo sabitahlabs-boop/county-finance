@@ -24,6 +24,7 @@ import {
 } from "@/components/ui/sidebar";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { getLoginUrl } from "@/const";
+import { getProxiedImageUrl } from "@/lib/utils";
 import { useIsMobile } from "@/hooks/useMobile";
 import {
   LayoutDashboard,
@@ -239,6 +240,7 @@ function DashboardLayoutContent({
   // Get business data for mode
   const { data: business } = trpc.business.mine.useQuery();
   const appMode = business?.appMode ?? "umkm";
+  const businessLogoUrl = useMemo(() => getProxiedImageUrl(business?.logoUrl), [business?.logoUrl]);
   const posEnabled = business?.posEnabled ?? false;
   const debtEnabled = business?.debtEnabled ?? true;
   const isAdmin = user?.role === "admin";
@@ -532,13 +534,21 @@ function DashboardLayoutContent({
               </button>
               {!isCollapsed && (
                 <div className="flex items-center gap-2 min-w-0">
-                  <img
-                    src="https://d2xsxph8kpxj0f.cloudfront.net/310519663380060214/BWbi9ugLsQu4nq5jm7TSFB/county-logo-new_8e4282c5.png"
-                    alt="County"
-                    className="h-7 w-7 object-contain shrink-0"
-                  />
+                  {businessLogoUrl ? (
+                    <img
+                      src={businessLogoUrl}
+                      alt={business?.businessName || "Logo"}
+                      className="h-7 w-7 object-contain shrink-0 rounded"
+                    />
+                  ) : (
+                    <img
+                      src="https://d2xsxph8kpxj0f.cloudfront.net/310519663380060214/BWbi9ugLsQu4nq5jm7TSFB/county-logo-new_8e4282c5.png"
+                      alt="County"
+                      className="h-7 w-7 object-contain shrink-0"
+                    />
+                  )}
                   <span className="font-bold tracking-tight truncate text-sidebar-foreground">
-                    County
+                    {business?.businessName || "County"}
                   </span>
                   <span
                     className={`text-[10px] font-medium px-1.5 py-0.5 rounded-full shrink-0 ${
@@ -750,13 +760,17 @@ function DashboardLayoutContent({
               <DropdownMenuTrigger asChild>
                 <button className="flex items-center gap-3 rounded-xl px-1 py-1 hover:bg-sidebar-accent/50 transition-colors w-full text-left group-data-[collapsible=icon]:justify-center focus:outline-none">
                   <Avatar className="h-9 w-9 border border-sidebar-border shrink-0">
-                    <AvatarFallback
-                      className={`text-xs font-medium text-white ${
-                        isPersonal ? "bg-county-violet" : "bg-primary"
-                      }`}
-                    >
-                      {user?.name?.charAt(0).toUpperCase()}
-                    </AvatarFallback>
+                    {businessLogoUrl ? (
+                      <img src={businessLogoUrl} alt={business?.businessName || "Logo"} className="h-full w-full object-cover rounded-full" />
+                    ) : (
+                      <AvatarFallback
+                        className={`text-xs font-medium text-white ${
+                          isPersonal ? "bg-county-violet" : "bg-primary"
+                        }`}
+                      >
+                        {user?.name?.charAt(0).toUpperCase()}
+                      </AvatarFallback>
+                    )}
                   </Avatar>
                   <div className="flex-1 min-w-0 group-data-[collapsible=icon]:hidden">
                     <p className="text-sm font-medium truncate leading-none text-sidebar-foreground">
