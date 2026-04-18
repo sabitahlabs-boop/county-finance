@@ -54,6 +54,28 @@ let _db: ReturnType<typeof drizzle> | null = null;
 let _migrationDone = false;
 let _migrationPromise: Promise<void> | null = null;
 
+// ─── Safe INSERT Utility ───
+// Strip undefined values from objects before INSERT to prevent Drizzle from
+// sending NULL for NOT NULL columns. When a key is undefined, we remove it
+// entirely so Drizzle uses the schema default instead.
+function stripUndefined<T extends Record<string, any>>(obj: T): T {
+  const cleaned = {} as any;
+  for (const [key, value] of Object.entries(obj)) {
+    if (value !== undefined) {
+      cleaned[key] = value;
+    }
+  }
+  return cleaned as T;
+}
+
+// Validate required fields before INSERT — throws descriptive error instead of raw MySQL error
+function requireFields(data: Record<string, any>, fields: string[], tableName: string): void {
+  const missing = fields.filter(f => data[f] === undefined || data[f] === null);
+  if (missing.length > 0) {
+    throw new Error(`[${tableName}] Missing required fields: ${missing.join(", ")}. Got: ${JSON.stringify(data, null, 2).substring(0, 500)}`);
+  }
+}
+
 // Auto-migrate: add new columns and tables that don't exist yet
 async function runAutoMigration(db: ReturnType<typeof drizzle>) {
   if (_migrationDone) return;
@@ -581,7 +603,8 @@ export async function getBusinessBySlug(slug: string): Promise<Business | undefi
 export async function createBusiness(data: InsertBusiness): Promise<number> {
   const db = await getDb();
   if (!db) throw new Error("Database not available");
-  const result = await db.insert(businesses).values(data);
+  requireFields(data, ["ownerId", "businessName"], "businesses");
+  const result = await db.insert(businesses).values(stripUndefined(data));
   return result[0].insertId;
 }
 
@@ -666,8 +689,14 @@ export async function getProductById(id: number): Promise<Product | undefined> {
 export async function createProduct(data: InsertProduct): Promise<number> {
   const db = await getDb();
   if (!db) throw new Error("Database not available");
-  const result = await db.insert(products).values(data);
-  return result[0].insertId;
+  requireFields(data, ["businessId", "name", "hpp", "sellingPrice"], "products");
+  const cleaned = stripUndefined(data);
+  try {
+    const result = await db.insert(products).values(cleaned);
+    return result[0].insertId;
+  } catch (e: any) {
+    throw new Error(`[products] INSERT failed: ${e.message}. Data: ${JSON.stringify(cleaned, null, 2).substring(0, 500)}`);
+  }
 }
 
 export async function updateProduct(id: number, data: Partial<InsertProduct>) {
@@ -700,8 +729,14 @@ export async function getLowStockProducts(businessId: number): Promise<Product[]
 export async function createTransaction(data: InsertTransaction): Promise<number> {
   const db = await getDb();
   if (!db) throw new Error("Database not available");
-  const result = await db.insert(transactions).values(data);
-  return result[0].insertId;
+  requireFields(data, ["businessId", "txCode", "date", "type", "category", "amount"], "transactions");
+  const cleaned = stripUndefined(data);
+  try {
+    const result = await db.insert(transactions).values(cleaned);
+    return result[0].insertId;
+  } catch (e: any) {
+    throw new Error(`[transactions] INSERT failed: ${e.message}. Data: ${JSON.stringify(cleaned, null, 2).substring(0, 500)}`);
+  }
 }
 
 export async function getTransactionsByBusiness(businessId: number, filters?: {
@@ -756,8 +791,14 @@ export async function updateTransaction(id: number, data: Partial<Pick<Transacti
 export async function createStockLog(data: InsertStockLog): Promise<number> {
   const db = await getDb();
   if (!db) throw new Error("Database not available");
-  const result = await db.insert(stockLogs).values(data);
-  return result[0].insertId;
+  requireFields(data, ["businessId", "productId", "date", "movementType", "qty", "direction", "stockBefore", "stockAfter"], "stock_logs");
+  const cleaned = stripUndefined(data);
+  try {
+    const result = await db.insert(stockLogs).values(cleaned);
+    return result[0].insertId;
+  } catch (e: any) {
+    throw new Error(`[stock_logs] INSERT failed: ${e.message}. Data: ${JSON.stringify(cleaned, null, 2).substring(0, 500)}`);
+  }
 }
 
 export async function getStockLogsByProduct(productId: number, limit = 50) {
@@ -794,7 +835,8 @@ export async function getStockLogsByBusiness(businessId: number, limit = 200) {
 export async function createTaxPayment(data: InsertTaxPayment): Promise<number> {
   const db = await getDb();
   if (!db) throw new Error("Database not available");
-  const result = await db.insert(taxPayments).values(data);
+  requireFields(data, ["businessId", "periodMonth", "taxCode", "taxAmount"], "tax_payments");
+  const result = await db.insert(taxPayments).values(stripUndefined(data));
   return result[0].insertId;
 }
 
@@ -1271,7 +1313,8 @@ export async function getCompositionsByProduct(productId: number): Promise<Produ
 export async function createComposition(data: InsertProductComposition): Promise<number> {
   const db = await getDb();
   if (!db) throw new Error("Database not available");
-  const result = await db.insert(productCompositions).values(data);
+  requireFields(data, ["productId", "materialName", "qty", "unit", "costPerUnit"], "product_compositions");
+  const result = await db.insert(productCompositions).values(stripUndefined(data));
   return result[0].insertId;
 }
 
@@ -1327,7 +1370,8 @@ export async function getProductCategories(businessId: number): Promise<ProductC
 export async function createProductCategory(data: Omit<InsertProductCategory, "id" | "createdAt" | "updatedAt">): Promise<ProductCategory | undefined> {
   const db = await getDb();
   if (!db) return undefined;
-  const result = await db.insert(productCategories).values(data);
+  requireFields(data, ["businessId", "name"], "product_categories");
+  const result = await db.insert(productCategories).values(stripUndefined(data));
   const id = (result[0] as any).insertId;
   const rows = await db.select().from(productCategories).where(eq(productCategories.id, id)).limit(1);
   return rows[0];
@@ -1484,9 +1528,15 @@ export async function getBankAccountById(id: number): Promise<BankAccount | unde
 
 export async function createBankAccount(data: InsertBankAccount): Promise<number> {
   const db = await getDb();
-  if (!db) return 0;
-  const result = await db.insert(bankAccounts).values(data);
-  return result[0].insertId;
+  if (!db) throw new Error("Database not available");
+  requireFields(data, ["businessId", "accountName"], "bank_accounts");
+  const cleaned = stripUndefined(data);
+  try {
+    const result = await db.insert(bankAccounts).values(cleaned);
+    return result[0].insertId;
+  } catch (e: any) {
+    throw new Error(`[bank_accounts] INSERT failed: ${e.message}. Data: ${JSON.stringify(cleaned, null, 2).substring(0, 500)}`);
+  }
 }
 
 export async function updateBankAccount(id: number, data: Partial<InsertBankAccount>): Promise<void> {
@@ -1806,8 +1856,14 @@ export async function getClientById(id: number): Promise<Client | undefined> {
 export async function createClient(data: InsertClient): Promise<number> {
   const db = await getDb();
   if (!db) throw new Error("Database not available");
-  const result = await db.insert(clients).values(data);
-  return result[0].insertId;
+  requireFields(data, ["businessId", "name"], "clients");
+  const cleaned = stripUndefined(data);
+  try {
+    const result = await db.insert(clients).values(cleaned);
+    return result[0].insertId;
+  } catch (e: any) {
+    throw new Error(`[clients] INSERT failed: ${e.message}`);
+  }
 }
 
 export async function updateClient(id: number, data: Partial<InsertClient>): Promise<void> {
@@ -1841,8 +1897,14 @@ export async function getDebtById(id: number): Promise<Debt | undefined> {
 export async function createDebt(data: InsertDebt): Promise<number> {
   const db = await getDb();
   if (!db) throw new Error("Database not available");
-  const result = await db.insert(debts).values(data);
-  return result[0].insertId;
+  requireFields(data, ["businessId", "type", "counterpartyName", "totalAmount"], "debts");
+  const cleaned = stripUndefined(data);
+  try {
+    const result = await db.insert(debts).values(cleaned);
+    return result[0].insertId;
+  } catch (e: any) {
+    throw new Error(`[debts] INSERT failed: ${e.message}`);
+  }
 }
 
 export async function updateDebt(id: number, data: Partial<InsertDebt>): Promise<void> {
@@ -1867,7 +1929,8 @@ export async function getDebtPayments(debtId: number): Promise<DebtPayment[]> {
 export async function createDebtPayment(data: InsertDebtPayment): Promise<number> {
   const db = await getDb();
   if (!db) throw new Error("Database not available");
-  const result = await db.insert(debtPayments).values(data);
+  requireFields(data, ["debtId", "amount", "date"], "debt_payments");
+  const result = await db.insert(debtPayments).values(stripUndefined(data));
   // Update the parent debt's paidAmount
   const debt = await getDebtById(data.debtId);
   if (debt) {
@@ -1914,7 +1977,8 @@ export async function getBudgetById(id: number): Promise<Budget | undefined> {
 export async function createBudget(data: InsertBudget): Promise<number> {
   const db = await getDb();
   if (!db) throw new Error("Database not available");
-  const result = await db.insert(budgets).values(data);
+  requireFields(data, ["businessId", "category", "period", "budgetAmount"], "budgets");
+  const result = await db.insert(budgets).values(stripUndefined(data));
   return result[0].insertId;
 }
 
@@ -2194,7 +2258,8 @@ export async function getDefaultWarehouse(businessId: number): Promise<Warehouse
 export async function createWarehouse(data: InsertWarehouse): Promise<number> {
   const db = await getDb();
   if (!db) throw new Error("Database not available");
-  const result = await db.insert(warehouses).values(data);
+  requireFields(data, ["businessId", "name"], "warehouses");
+  const result = await db.insert(warehouses).values(stripUndefined(data));
   return result[0].insertId;
 }
 
@@ -2295,7 +2360,8 @@ export async function recalcProductStockFromWarehouses(productId: number): Promi
 export async function createStockTransfer(data: InsertStockTransfer): Promise<number> {
   const db = await getDb();
   if (!db) throw new Error("Database not available");
-  const result = await db.insert(stockTransfers).values(data);
+  requireFields(data, ["businessId", "fromWarehouseId", "toWarehouseId", "productId", "quantity"], "stock_transfers");
+  const result = await db.insert(stockTransfers).values(stripUndefined(data));
   return result[0].insertId;
 }
 
@@ -2508,7 +2574,8 @@ export async function getTeamMembershipsByUser(userId: number): Promise<(TeamMem
 export async function createTeamMember(data: InsertTeamMember): Promise<number> {
   const db = await getDb();
   if (!db) throw new Error("Database not available");
-  const result = await db.insert(teamMembers).values(data);
+  requireFields(data, ["businessId", "userId", "role"], "team_members");
+  const result = await db.insert(teamMembers).values(stripUndefined(data));
   return Number(result[0].insertId);
 }
 
@@ -2535,7 +2602,8 @@ export async function getTeamMemberById(id: number): Promise<TeamMember | undefi
 export async function createTeamInvite(data: InsertTeamInvite): Promise<number> {
   const db = await getDb();
   if (!db) throw new Error("Database not available");
-  const result = await db.insert(teamInvites).values(data);
+  requireFields(data, ["businessId", "email", "role", "token"], "team_invites");
+  const result = await db.insert(teamInvites).values(stripUndefined(data));
   return Number(result[0].insertId);
 }
 
@@ -2637,7 +2705,8 @@ export async function getSavingsGoalsByBusiness(businessId: number) {
 export async function createSavingsGoal(data: InsertSavingsGoal) {
   const db = await getDb();
   if (!db) return 0;
-  const [result] = await db.insert(savingsGoals).values(data);
+  requireFields(data, ["businessId", "name", "targetAmount"], "savings_goals");
+  const [result] = await db.insert(savingsGoals).values(stripUndefined(data));
   return result.insertId;
 }
 
@@ -2674,7 +2743,8 @@ export async function getMonthlyBillsByBusiness(businessId: number) {
 export async function createMonthlyBill(data: InsertMonthlyBill) {
   const db = await getDb();
   if (!db) return 0;
-  const [result] = await db.insert(monthlyBills).values(data);
+  requireFields(data, ["businessId", "name", "amount", "dueDay"], "monthly_bills");
+  const [result] = await db.insert(monthlyBills).values(stripUndefined(data));
   return result.insertId;
 }
 
@@ -2709,7 +2779,8 @@ export async function updateBusinessPersonalSetupDone(businessId: number) {
 export async function createPosShift(data: InsertPosShift): Promise<number> {
   const db = await getDb();
   if (!db) return 0;
-  const [result] = await db.insert(posShifts).values(data).$returningId();
+  requireFields(data, ["businessId", "userId", "openingCash"], "pos_shifts");
+  const [result] = await db.insert(posShifts).values(stripUndefined(data)).$returningId();
   return result.id;
 }
 
@@ -2758,7 +2829,8 @@ export async function getPosShiftById(id: number): Promise<PosShift | undefined>
 export async function createDiscountCode(data: InsertDiscountCode): Promise<number> {
   const db = await getDb();
   if (!db) return 0;
-  const [result] = await db.insert(discountCodes).values(data).$returningId();
+  requireFields(data, ["businessId", "code", "discountType", "discountValue"], "discount_codes");
+  const [result] = await db.insert(discountCodes).values(stripUndefined(data)).$returningId();
   return result.id;
 }
 
@@ -2831,14 +2903,19 @@ export async function generateReceiptCode(businessId: number): Promise<string> {
 export async function createPosReceipt(data: InsertPosReceipt): Promise<number> {
   const db = await getDb();
   if (!db) return 0;
-  const [result] = await db.insert(posReceipts).values(data).$returningId();
+  requireFields(data, ["businessId", "receiptCode", "totalAmount"], "pos_receipts");
+  const [result] = await db.insert(posReceipts).values(stripUndefined(data)).$returningId();
   return result.id;
 }
 
 export async function createPosReceiptItems(items: InsertPosReceiptItem[]): Promise<void> {
   const db = await getDb();
   if (!db || items.length === 0) return;
-  await db.insert(posReceiptItems).values(items);
+  const cleanedItems = items.map(item => {
+    requireFields(item, ["receiptId", "productId", "productName", "quantity", "unitPrice", "subtotal"], "pos_receipt_items");
+    return stripUndefined(item);
+  });
+  await db.insert(posReceiptItems).values(cleanedItems);
 }
 
 export async function getPosReceiptItemsByReceipt(receiptId: number): Promise<PosReceiptItem[]> {
@@ -3299,7 +3376,8 @@ export async function getSupplierById(id: number): Promise<Supplier | undefined>
 export async function createSupplier(data: InsertSupplier): Promise<{ id: number }> {
   const db = await getDb();
   if (!db) throw new Error("Database not available");
-  const result = await db.insert(suppliers).values(data);
+  requireFields(data, ["businessId", "name"], "suppliers");
+  const result = await db.insert(suppliers).values(stripUndefined(data));
   return { id: result[0].insertId };
 }
 
@@ -3342,7 +3420,8 @@ export async function getPurchaseOrderById(id: number): Promise<PurchaseOrder | 
 export async function createPurchaseOrder(data: InsertPurchaseOrder): Promise<{ id: number }> {
   const db = await getDb();
   if (!db) throw new Error("Database not available");
-  const result = await db.insert(purchaseOrders).values(data);
+  requireFields(data, ["businessId", "poNumber", "supplierId"], "purchase_orders");
+  const result = await db.insert(purchaseOrders).values(stripUndefined(data));
   return { id: result[0].insertId };
 }
 
@@ -3369,7 +3448,8 @@ export async function getPurchaseOrderItems(poId: number): Promise<PurchaseOrder
 export async function createPurchaseOrderItem(data: InsertPurchaseOrderItem): Promise<{ id: number }> {
   const db = await getDb();
   if (!db) throw new Error("Database not available");
-  const result = await db.insert(purchaseOrderItems).values(data);
+  requireFields(data, ["purchaseOrderId", "productId", "quantity", "unitPrice"], "purchase_order_items");
+  const result = await db.insert(purchaseOrderItems).values(stripUndefined(data));
   return { id: result[0].insertId };
 }
 
@@ -3891,7 +3971,8 @@ export async function getSalesByDate(businessId: number, startDate: string, endD
 export async function createCreditSale(data: InsertCreditSale) {
   const db = await getDb();
   if (!db) throw new Error("Database not available");
-  const [result] = await db.insert(creditSales).values(data);
+  requireFields(data, ["businessId", "clientId", "totalAmount"], "credit_sales");
+  const [result] = await db.insert(creditSales).values(stripUndefined(data));
   return result.insertId;
 }
 
@@ -3900,7 +3981,8 @@ export async function addCreditPayment(creditSaleId: number, payment: InsertCred
   if (!db) throw new Error("Database not available");
 
   // Insert payment
-  const [result] = await db.insert(creditPayments).values({ ...payment, creditSaleId });
+  const cleanedPayment = stripUndefined({ ...payment, creditSaleId });
+  const [result] = await db.insert(creditPayments).values(cleanedPayment);
 
   // Update credit_sales totals
   const [credit] = await db.select().from(creditSales).where(eq(creditSales.id, creditSaleId));
@@ -4343,7 +4425,8 @@ export async function upsertCommissionConfig(businessId: number, data: Partial<I
 export async function createStaffCommission(data: InsertStaffCommission): Promise<number> {
   const db = await getDb();
   if (!db) return 0;
-  const [result] = await db.insert(staffCommissions).values(data).$returningId();
+  requireFields(data, ["businessId", "userId", "receiptId", "saleAmount", "commissionAmount", "date"], "staff_commissions");
+  const [result] = await db.insert(staffCommissions).values(stripUndefined(data)).$returningId();
   return result.id;
 }
 
@@ -4438,7 +4521,8 @@ export async function markCommissionsPaidBulk(commissionIds: number[]): Promise<
 export async function createStockBatch(data: InsertStockBatch): Promise<number> {
   const db = await getDb();
   if (!db) throw new Error("Database not available");
-  const result = await db.insert(stockBatches).values(data);
+  requireFields(data, ["businessId", "productId", "initialQty", "remainingQty", "costPrice"], "stock_batches");
+  const result = await db.insert(stockBatches).values(stripUndefined(data));
   return result[0].insertId;
 }
 
@@ -4784,7 +4868,8 @@ export async function getLowStockAlerts(businessId: number) {
 export async function createProductionLog(data: InsertProductionLog): Promise<number> {
   const db = await getDb();
   if (!db) throw new Error("Database not available");
-  const result = await db.insert(productionLogs).values(data);
+  requireFields(data, ["businessId", "productId", "qtyProduced", "totalCost"], "production_logs");
+  const result = await db.insert(productionLogs).values(stripUndefined(data));
   return result[0].insertId;
 }
 
@@ -5169,7 +5254,8 @@ export async function getOutletsByBusiness(businessId: number) {
 export async function createOutlet(data: InsertOutlet) {
   const db = await getDb();
   if (!db) throw new Error("Database not available");
-  const result = await db.insert(outlets).values(data);
+  requireFields(data, ["businessId", "name"], "outlets");
+  const result = await db.insert(outlets).values(stripUndefined(data));
   return result;
 }
 
