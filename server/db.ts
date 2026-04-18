@@ -416,6 +416,16 @@ async function runAutoMigration(db: ReturnType<typeof drizzle>) {
   // Add deviceInfo column to pos_receipts
   await safeExec("ALTER TABLE \`pos_receipts\` ADD COLUMN \`deviceInfo\` varchar(200) DEFAULT NULL");
 
+  // ─── Performance indexes ───
+  await safeExec("CREATE INDEX IF NOT EXISTS `idx_transactions_biz_date` ON `transactions` (`businessId`, `date`)");
+  await safeExec("CREATE INDEX IF NOT EXISTS `idx_transactions_biz_receipt` ON `transactions` (`businessId`, `receiptId`)");
+  await safeExec("CREATE INDEX IF NOT EXISTS `idx_transactions_biz_deleted` ON `transactions` (`businessId`, `isDeleted`)");
+  await safeExec("CREATE INDEX IF NOT EXISTS `idx_pos_receipts_biz_date` ON `pos_receipts` (`businessId`, `date`)");
+  await safeExec("CREATE INDEX IF NOT EXISTS `idx_pos_receipts_biz_refunded` ON `pos_receipts` (`businessId`, `isRefunded`)");
+  await safeExec("CREATE INDEX IF NOT EXISTS `idx_stock_batches_product_remaining` ON `stock_batches` (`productId`, `remainingQty`)");
+  await safeExec("CREATE INDEX IF NOT EXISTS `idx_stock_logs_biz_date` ON `stock_logs` (`businessId`, `date`)");
+  await safeExec("CREATE INDEX IF NOT EXISTS `idx_receipt_items_receipt` ON `pos_receipt_items` (`receiptId`)");
+
   console.log("[Migration] Auto-migration complete.");
 }
 
@@ -818,15 +828,21 @@ export async function getYearlyOmzet(businessId: number, year: number): Promise<
   const db = await getDb();
   if (!db) return new Array(12).fill(0);
   const monthly = new Array(12).fill(0);
-  // Manual transactions
+  // Manual transactions only (exclude POS-linked ones to avoid double-counting with posReceipts below)
   const txs = await db.select().from(transactions).where(
-    and(eq(transactions.businessId, businessId), eq(transactions.isDeleted, false), eq(transactions.type, "pemasukan"), sql`${transactions.date} LIKE ${year + "%"}`)
+    and(
+      eq(transactions.businessId, businessId),
+      eq(transactions.isDeleted, false),
+      eq(transactions.type, "pemasukan"),
+      sql`${transactions.date} LIKE ${year + "%"}`,
+      sql`${transactions.receiptId} IS NULL`
+    )
   );
   for (const tx of txs) {
     const m = parseInt(tx.date.substring(5, 7), 10) - 1;
     if (m >= 0 && m < 12) monthly[m] += tx.amount;
   }
-  // POS revenue (standalone)
+  // POS revenue from receipts (single source of truth for POS sales)
   const posRecs = await db.select().from(posReceipts).where(
     and(eq(posReceipts.businessId, businessId), eq(posReceipts.isRefunded, false), sql`${posReceipts.date} LIKE ${year + "%"}`)
   );
@@ -4486,6 +4502,43 @@ export async function consumeStockFIFO(
   return consumed;
 }
 
+export async function restoreStockFIFO(
+  productId: number,
+  qty: number,
+  warehouseId?: number
+): Promise<void> {
+  const db = await getDb();
+  if (!db) return;
+
+  // Restore qty to the most recently consumed batches (reverse FIFO order)
+  const conditions: any[] = [
+    eq(stockBatches.productId, productId),
+  ];
+  if (warehouseId) {
+    conditions.push(eq(stockBatches.warehouseId, warehouseId));
+  }
+
+  const batches = await db
+    .select()
+    .from(stockBatches)
+    .where(and(...conditions))
+    .orderBy(desc(stockBatches.purchaseDate)); // newest first — reverse of consume
+
+  let remainingQty = qty;
+  for (const batch of batches) {
+    if (remainingQty <= 0) break;
+    // Restore up to the batch's original qty (remainingQty + restored should not exceed qty)
+    const restoreQty = Math.min(remainingQty, batch.initialQty - batch.remainingQty);
+    if (restoreQty > 0) {
+      await db
+        .update(stockBatches)
+        .set({ remainingQty: batch.remainingQty + restoreQty })
+        .where(eq(stockBatches.id, batch.id));
+      remainingQty -= restoreQty;
+    }
+  }
+}
+
 export async function getFIFOValuation(businessId: number) {
   const db = await getDb();
   if (!db) throw new Error("Database not available");
@@ -4831,9 +4884,9 @@ export async function runProduction(
   const totalCost = calculateCOGS(compositions) * qty;
   const costPerUnit = Math.round(totalCost / qty);
 
-  // Run transaction: deduct materials, add produced stock, create logs
+  // Run FULLY ATOMIC transaction: all reads + writes use tx connection
   await db.transaction(async (tx) => {
-    // Create production log INSIDE the transaction (not via createProductionLog which opens a new connection)
+    // Create production log
     const [logResult] = await tx.insert(productionLogs).values({
       businessId,
       productId,
@@ -4846,22 +4899,24 @@ export async function runProduction(
     });
     const logId = logResult.insertId;
 
-    // Deduct material stock for each composition
+    // Deduct material stock for each composition — all via tx
     for (const comp of compositions) {
       if (!comp.materialProductId) continue;
 
       const deductQty = parseFloat(comp.qty) * qty;
-      const material = await getProductById(comp.materialProductId);
+
+      // Read material inside tx
+      const [material] = await tx.select().from(products).where(eq(products.id, comp.materialProductId)).limit(1);
       if (!material) continue;
 
-      // Update material stock
-      await updateProduct(comp.materialProductId, {
-        stockCurrent: (material.stockCurrent || 0) - deductQty,
-      });
+      const currentStock = material.stockCurrent || 0;
+      const newStock = currentStock - deductQty;
 
-      // Create stock log for material deduction
-      const currentStock = (material.stockCurrent || 0);
-      await createStockLog({
+      // Update material stock via tx
+      await tx.update(products).set({ stockCurrent: newStock }).where(eq(products.id, comp.materialProductId));
+
+      // Create stock log via tx
+      await tx.insert(stockLogs).values({
         businessId,
         productId: comp.materialProductId,
         date: date,
@@ -4870,18 +4925,20 @@ export async function runProduction(
         direction: -1,
         referenceTxId: logId,
         stockBefore: currentStock,
-        stockAfter: currentStock - deductQty,
+        stockAfter: newStock,
       });
     }
 
-    // Add produced stock to main product
-    const currentProdStock = (product.stockCurrent || 0);
-    await updateProduct(productId, {
-      stockCurrent: currentProdStock + qty,
-    });
+    // Read current product stock inside tx for accuracy
+    const [currentProduct] = await tx.select().from(products).where(eq(products.id, productId)).limit(1);
+    const currentProdStock = currentProduct?.stockCurrent || 0;
+    const newProdStock = currentProdStock + qty;
 
-    // Create stock log for production
-    await createStockLog({
+    // Add produced stock via tx
+    await tx.update(products).set({ stockCurrent: newProdStock }).where(eq(products.id, productId));
+
+    // Create stock log for production output via tx
+    await tx.insert(stockLogs).values({
       businessId,
       productId,
       date: date,
@@ -4890,7 +4947,7 @@ export async function runProduction(
       direction: 1,
       referenceTxId: logId,
       stockBefore: currentProdStock,
-      stockAfter: currentProdStock + qty,
+      stockAfter: newProdStock,
     });
   });
 
@@ -5303,8 +5360,13 @@ export async function topUpDeposit(businessId: number, clientId: number, amount:
   const deposit = await getOrCreateDeposit(businessId, clientId);
 
   await db.transaction(async (tx) => {
-    // Atomic: update balance + insert history in one transaction
-    const newBalance = (deposit.balance || 0) + amount;
+    // Re-read inside tx for consistency under concurrent access
+    const [current] = await tx
+      .select()
+      .from(customerDeposits)
+      .where(eq(customerDeposits.id, deposit.id));
+
+    const newBalance = (current.balance || 0) + amount;
     await tx
       .update(customerDeposits)
       .set({ balance: newBalance })
@@ -5359,7 +5421,13 @@ export async function refundDeposit(businessId: number, clientId: number, amount
   const deposit = await getOrCreateDeposit(businessId, clientId);
 
   await db.transaction(async (tx) => {
-    const newBalance = (deposit.balance || 0) + amount;
+    // Re-read inside tx for consistency under concurrent access
+    const [current] = await tx
+      .select()
+      .from(customerDeposits)
+      .where(eq(customerDeposits.id, deposit.id));
+
+    const newBalance = (current.balance || 0) + amount;
     await tx
       .update(customerDeposits)
       .set({ balance: newBalance })
