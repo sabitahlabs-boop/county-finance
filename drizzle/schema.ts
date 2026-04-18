@@ -541,6 +541,7 @@ export const posReceipts = mysqlTable("pos_receipts", {
   refundAmount: bigint("refundAmount", { mode: "number" }),
   clientId: int("clientId"),
   notes: text("notes"),
+  deviceInfo: varchar("deviceInfo", { length: 200 }),
   date: varchar("date", { length: 10 }).notNull(), // yyyy-mm-dd
   createdAt: timestamp("createdAt").defaultNow().notNull(),
 });
@@ -783,3 +784,79 @@ export const stockBatches = mysqlTable("stock_batches", {
 
 export type StockBatch = typeof stockBatches.$inferSelect;
 export type InsertStockBatch = typeof stockBatches.$inferInsert;
+
+// ─── Production Logs ───
+export const productionLogs = mysqlTable("production_logs", {
+  id: int("id").autoincrement().primaryKey(),
+  businessId: int("businessId").notNull(),
+  productId: int("productId").notNull(),
+  batchCode: varchar("batchCode", { length: 50 }),
+  qtyProduced: int("qtyProduced").notNull(),
+  totalCost: bigint("totalCost", { mode: "number" }).notNull(),
+  costPerUnit: bigint("costPerUnit", { mode: "number" }).notNull(),
+  date: varchar("date", { length: 10 }).notNull(), // yyyy-mm-dd
+  notes: text("notes"),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+});
+
+export type ProductionLog = typeof productionLogs.$inferSelect;
+export type InsertProductionLog = typeof productionLogs.$inferInsert;
+
+// ─── Outlets ───
+export const outlets = mysqlTable("outlets", {
+  id: int("id").autoincrement().primaryKey(),
+  businessId: int("businessId").notNull(),
+  name: varchar("name", { length: 100 }).notNull(),
+  code: varchar("code", { length: 20 }),
+  address: varchar("address", { length: 500 }),
+  phone: varchar("phone", { length: 20 }),
+  waCode: varchar("waCode", { length: 20 }),
+  isDefault: boolean("isDefault").default(false).notNull(),
+  isActive: boolean("isActive").default(true).notNull(),
+  notes: text("notes"),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().notNull(),
+});
+export type Outlet = typeof outlets.$inferSelect;
+export type InsertOutlet = typeof outlets.$inferInsert;
+
+// ─── Staff Attendance ───
+export const staffAttendance = mysqlTable("staff_attendance", {
+  id: int("id").autoincrement().primaryKey(),
+  businessId: int("businessId").notNull(),
+  userId: varchar("userId", { length: 50 }).notNull(),
+  userName: varchar("userName", { length: 100 }).notNull(),
+  date: varchar("date", { length: 10 }).notNull(),
+  clockIn: timestamp("clockIn"),
+  clockOut: timestamp("clockOut"),
+  hoursWorked: decimal("hoursWorked", { precision: 5, scale: 2 }),
+  notes: text("notes"),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+});
+export type StaffAttendanceRecord = typeof staffAttendance.$inferSelect;
+export type InsertStaffAttendance = typeof staffAttendance.$inferInsert;
+
+// ─── Customer Deposits ───
+export const customerDeposits = mysqlTable("customer_deposits", {
+  id: int("id").autoincrement().primaryKey(),
+  businessId: int("businessId").notNull(),
+  clientId: int("clientId").notNull(),
+  balance: bigint("balance", { mode: "number" }).default(0).notNull(),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().notNull(),
+});
+export type CustomerDeposit = typeof customerDeposits.$inferSelect;
+export type InsertCustomerDeposit = typeof customerDeposits.$inferInsert;
+
+// ─── Deposit Transactions ───
+export const depositTransactions = mysqlTable("deposit_transactions", {
+  id: int("id").autoincrement().primaryKey(),
+  businessId: int("businessId").notNull(),
+  depositId: int("depositId").notNull(),
+  type: varchar("type", { length: 20 }).notNull(), // topup, use, refund
+  amount: bigint("amount", { mode: "number" }).notNull(),
+  notes: text("notes"),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+});
+export type DepositTransaction = typeof depositTransactions.$inferSelect;
+export type InsertDepositTransaction = typeof depositTransactions.$inferInsert;

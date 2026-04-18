@@ -41,6 +41,11 @@ import {
   commissionConfig, InsertCommissionConfig, CommissionConfig,
   staffCommissions, InsertStaffCommission, StaffCommission,
   stockBatches, InsertStockBatch, StockBatch,
+  productionLogs, InsertProductionLog, ProductionLog,
+  outlets, InsertOutlet, Outlet,
+  staffAttendance, InsertStaffAttendance, StaffAttendanceRecord,
+  customerDeposits, InsertCustomerDeposit, CustomerDeposit,
+  depositTransactions, InsertDepositTransaction, DepositTransaction,
 } from "../drizzle/schema";
 import { ENV } from './_core/env';
 import type { TaxCalcResult, DashboardKPIs, LabaRugiReport, ArusKasReport, NeracaReport, PerubahanModalReport, CALKReport } from "../shared/finance";
@@ -359,6 +364,57 @@ async function runAutoMigration(db: ReturnType<typeof drizzle>) {
     \`paidAt\` timestamp,
     \`createdAt\` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP
   )`);
+
+  // Wave 4: Outlets, Attendance, Deposits tables
+  await safeExec(`CREATE TABLE IF NOT EXISTS \`outlets\` (
+    \`id\` int NOT NULL AUTO_INCREMENT PRIMARY KEY,
+    \`businessId\` int NOT NULL,
+    \`name\` varchar(100) NOT NULL,
+    \`code\` varchar(20) DEFAULT NULL,
+    \`address\` varchar(500) DEFAULT NULL,
+    \`phone\` varchar(20) DEFAULT NULL,
+    \`waCode\` varchar(20) DEFAULT NULL,
+    \`isDefault\` boolean NOT NULL DEFAULT false,
+    \`isActive\` boolean NOT NULL DEFAULT true,
+    \`notes\` text DEFAULT NULL,
+    \`createdAt\` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    \`updatedAt\` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+  )`);
+
+  await safeExec(`CREATE TABLE IF NOT EXISTS \`staff_attendance\` (
+    \`id\` int NOT NULL AUTO_INCREMENT PRIMARY KEY,
+    \`businessId\` int NOT NULL,
+    \`userId\` varchar(50) NOT NULL,
+    \`userName\` varchar(100) NOT NULL,
+    \`date\` varchar(10) NOT NULL,
+    \`clockIn\` timestamp,
+    \`clockOut\` timestamp,
+    \`hoursWorked\` decimal(5,2),
+    \`notes\` text DEFAULT NULL,
+    \`createdAt\` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP
+  )`);
+
+  await safeExec(`CREATE TABLE IF NOT EXISTS \`customer_deposits\` (
+    \`id\` int NOT NULL AUTO_INCREMENT PRIMARY KEY,
+    \`businessId\` int NOT NULL,
+    \`clientId\` int NOT NULL,
+    \`balance\` bigint NOT NULL DEFAULT 0,
+    \`createdAt\` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    \`updatedAt\` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+  )`);
+
+  await safeExec(`CREATE TABLE IF NOT EXISTS \`deposit_transactions\` (
+    \`id\` int NOT NULL AUTO_INCREMENT PRIMARY KEY,
+    \`businessId\` int NOT NULL,
+    \`depositId\` int NOT NULL,
+    \`type\` varchar(20) NOT NULL,
+    \`amount\` bigint NOT NULL,
+    \`notes\` text DEFAULT NULL,
+    \`createdAt\` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP
+  )`);
+
+  // Add deviceInfo column to pos_receipts
+  await safeExec("ALTER TABLE \`pos_receipts\` ADD COLUMN \`deviceInfo\` varchar(200) DEFAULT NULL");
 
   console.log("[Migration] Auto-migration complete.");
 }
@@ -4669,4 +4725,764 @@ export async function getLowStockAlerts(businessId: number) {
   return result.filter(
     (a) => a.currentStock <= a.reorderPoint || a.currentStock <= a.safetyStock
   );
+}
+
+// ─── Production Management ───
+export async function createProductionLog(data: InsertProductionLog): Promise<number> {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  const result = await db.insert(productionLogs).values(data);
+  return result[0].insertId;
+}
+
+export async function getProductionLogs(
+  businessId: number,
+  productId?: number,
+  startDate?: string,
+  endDate?: string
+) {
+  const db = await getDb();
+  if (!db) return [];
+
+  const conditions: Array<any> = [eq(productionLogs.businessId, businessId)];
+  if (productId) conditions.push(eq(productionLogs.productId, productId));
+  if (startDate) conditions.push(gte(productionLogs.date, startDate));
+  if (endDate) conditions.push(lte(productionLogs.date, endDate));
+
+  return db
+    .select({
+      id: productionLogs.id,
+      productId: productionLogs.productId,
+      productName: products.name,
+      batchCode: productionLogs.batchCode,
+      qtyProduced: productionLogs.qtyProduced,
+      totalCost: productionLogs.totalCost,
+      costPerUnit: productionLogs.costPerUnit,
+      date: productionLogs.date,
+      notes: productionLogs.notes,
+      createdAt: productionLogs.createdAt,
+    })
+    .from(productionLogs)
+    .leftJoin(products, eq(productionLogs.productId, products.id))
+    .where(and(...conditions))
+    .orderBy(desc(productionLogs.date));
+}
+
+export async function getProductionCostReport(
+  businessId: number,
+  startDate: string,
+  endDate: string
+) {
+  const db = await getDb();
+  if (!db) return { totalProduced: 0, totalCost: 0, avgCostPerUnit: 0, byProduct: [] };
+  const logs = await db
+    .select({
+      productId: productionLogs.productId,
+      productName: products.name,
+      qtyProduced: sql<number>`SUM(${productionLogs.qtyProduced})`,
+      totalCost: sql<number>`SUM(${productionLogs.totalCost})`,
+    })
+    .from(productionLogs)
+    .leftJoin(products, eq(productionLogs.productId, products.id))
+    .where(
+      and(
+        eq(productionLogs.businessId, businessId),
+        gte(productionLogs.date, startDate),
+        lte(productionLogs.date, endDate)
+      )
+    )
+    .groupBy(productionLogs.productId, products.name);
+
+  const totalQty = logs.reduce((sum, log) => sum + (log.qtyProduced || 0), 0);
+  const totalCostAmount = logs.reduce((sum, log) => sum + (log.totalCost || 0), 0);
+  const avgCostPerUnit = totalQty > 0 ? totalCostAmount / totalQty : 0;
+
+  return {
+    totalProduced: totalQty,
+    totalCost: totalCostAmount,
+    avgCostPerUnit: Math.round(avgCostPerUnit),
+    byProduct: logs.map((log) => ({
+      productId: log.productId,
+      productName: log.productName || "Unknown",
+      qtyProduced: log.qtyProduced || 0,
+      totalCost: log.totalCost || 0,
+      avgCostPerUnit: log.qtyProduced ? Math.round((log.totalCost || 0) / log.qtyProduced) : 0,
+    })),
+  };
+}
+
+export async function runProduction(
+  businessId: number,
+  productId: number,
+  qty: number,
+  date: string,
+  notes?: string
+) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+
+  // Get product and its compositions
+  const product = await getProductById(productId);
+  if (!product || product.businessId !== businessId) {
+    throw new Error("Produk tidak ditemukan");
+  }
+
+  const compositions = await getCompositionsByProduct(productId);
+  const totalCost = calculateCOGS(compositions) * qty;
+  const costPerUnit = Math.round(totalCost / qty);
+
+  // Run transaction: deduct materials, add produced stock, create logs
+  await db.transaction(async (tx) => {
+    // Create production log
+    const logId = await createProductionLog({
+      businessId,
+      productId,
+      batchCode: null,
+      qtyProduced: qty,
+      totalCost: Math.round(totalCost),
+      costPerUnit,
+      date,
+      notes,
+    });
+
+    // Deduct material stock for each composition
+    for (const comp of compositions) {
+      if (!comp.materialProductId) continue;
+
+      const deductQty = parseInt(comp.qty) * qty;
+      const material = await getProductById(comp.materialProductId);
+      if (!material) continue;
+
+      // Update material stock
+      await updateProduct(comp.materialProductId, {
+        stockCurrent: (material.stockCurrent || 0) - deductQty,
+      });
+
+      // Create stock log for material deduction
+      const currentStock = (material.stockCurrent || 0);
+      await createStockLog({
+        businessId,
+        productId: comp.materialProductId,
+        date: date,
+        movementType: "out",
+        qty: deductQty,
+        direction: -1,
+        referenceTxId: logId,
+        stockBefore: currentStock,
+        stockAfter: currentStock - deductQty,
+      });
+    }
+
+    // Add produced stock to main product
+    const currentProdStock = (product.stockCurrent || 0);
+    await updateProduct(productId, {
+      stockCurrent: currentProdStock + qty,
+    });
+
+    // Create stock log for production
+    await createStockLog({
+      businessId,
+      productId,
+      date: date,
+      movementType: "in",
+      qty,
+      direction: 1,
+      referenceTxId: logId,
+      stockBefore: currentProdStock,
+      stockAfter: currentProdStock + qty,
+    });
+  });
+
+  return {
+    logId: (
+      await db
+        .select({ id: productionLogs.id })
+        .from(productionLogs)
+        .where(eq(productionLogs.businessId, businessId))
+        .orderBy(desc(productionLogs.id))
+        .limit(1)
+    )[0]?.id,
+    costPerUnit,
+    totalCost: Math.round(totalCost),
+  };
+}
+
+export async function generateLabaRugiDetail(
+  businessId: number,
+  month: number,
+  year: number
+) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  const startDate = `${year}-${String(month).padStart(2, "0")}-01`;
+  const endDate = `${year}-${String(month).padStart(2, "0")}-31`;
+
+  // Revenue: POS sales + manual transactions
+  const posSales = await db
+    .select({
+      total: sql<number>`SUM(${posReceipts.grandTotal})`,
+    })
+    .from(posReceipts)
+    .where(
+      and(
+        eq(posReceipts.businessId, businessId),
+        eq(posReceipts.isRefunded, false),
+        gte(sql`DATE(${posReceipts.date})`, startDate),
+        lte(sql`DATE(${posReceipts.date})`, endDate)
+      )
+    );
+
+  const penjualanPOS = posSales[0]?.total || 0;
+
+  // Manual transactions (sales category)
+  const manualSales = await db
+    .select({
+      total: sql<number>`SUM(${transactions.amount})`,
+    })
+    .from(transactions)
+    .where(
+      and(
+        eq(transactions.businessId, businessId),
+        eq(transactions.category, "penjualan"),
+        gte(transactions.date, startDate),
+        lte(transactions.date, endDate)
+      )
+    );
+
+  const penjualanManual = manualSales[0]?.total || 0;
+  const totalPendapatan = penjualanPOS + penjualanManual;
+
+  // HPP: from COGS calculations
+  const hppData = await db
+    .select({
+      total: sql<number>`SUM(${stockLogs.qty} * ${products.hpp})`,
+    })
+    .from(stockLogs)
+    .leftJoin(products, eq(stockLogs.productId, products.id))
+    .where(
+      and(
+        eq(stockLogs.businessId, businessId),
+        eq(stockLogs.direction, -1), // outgoing stock
+        gte(stockLogs.createdAt, sql`STR_TO_DATE('${startDate}', '%Y-%m-%d')`),
+        lte(stockLogs.createdAt, sql`STR_TO_DATE('${endDate}', '%Y-%m-%d')`)
+      )
+    );
+
+  const hppPenjualan = hppData[0]?.total || 0;
+
+  // Production cost (from production logs)
+  const prodCostData = await db
+    .select({
+      total: sql<number>`SUM(${productionLogs.totalCost})`,
+    })
+    .from(productionLogs)
+    .where(
+      and(
+        eq(productionLogs.businessId, businessId),
+        gte(productionLogs.date, startDate),
+        lte(productionLogs.date, endDate)
+      )
+    );
+
+  const biayaProduksi = prodCostData[0]?.total || 0;
+  const totalHPP = hppPenjualan + biayaProduksi;
+  const labaKotor = totalPendapatan - totalHPP;
+  const marginKotor = totalPendapatan > 0 ? (labaKotor / totalPendapatan) * 100 : 0;
+
+  // Operating expenses
+  const expenseCategories = [
+    "gaji",
+    "sewa",
+    "utilitas",
+    "transportasi",
+    "operasionalLain",
+  ];
+  const expenses: Record<string, number> = {
+    gaji: 0,
+    sewa: 0,
+    utilitas: 0,
+    transportasi: 0,
+    operasionalLain: 0,
+    refund: 0,
+    komisiStaff: 0,
+  };
+
+  for (const cat of expenseCategories) {
+    const data = await db
+      .select({ total: sql<number>`SUM(${transactions.amount})` })
+      .from(transactions)
+      .where(
+        and(
+          eq(transactions.businessId, businessId),
+          eq(transactions.category, cat),
+          gte(transactions.date, startDate),
+          lte(transactions.date, endDate)
+        )
+      );
+    expenses[cat] = data[0]?.total || 0;
+  }
+
+  // Refunds from POS
+  const refundData = await db
+    .select({
+      total: sql<number>`SUM(${posReceipts.refundAmount})`,
+    })
+    .from(posReceipts)
+    .where(
+      and(
+        eq(posReceipts.businessId, businessId),
+        eq(posReceipts.isRefunded, true),
+        gte(sql`DATE(${posReceipts.date})`, startDate),
+        lte(sql`DATE(${posReceipts.date})`, endDate)
+      )
+    );
+  expenses.refund = refundData[0]?.total || 0;
+
+  // Staff commissions
+  const commData = await db
+    .select({
+      total: sql<number>`SUM(${staffCommissions.commissionAmount})`,
+    })
+    .from(staffCommissions)
+    .where(
+      and(
+        eq(staffCommissions.businessId, businessId),
+        gte(staffCommissions.date, startDate),
+        lte(staffCommissions.date, endDate)
+      )
+    );
+  expenses.komisiStaff = commData[0]?.total || 0;
+
+  const totalPengeluaran = Object.values(expenses).reduce((a, b) => a + b, 0);
+  const labaBersih = labaKotor - totalPengeluaran;
+  const marginBersih = totalPendapatan > 0 ? (labaBersih / totalPendapatan) * 100 : 0;
+
+  return {
+    period: `${month}/${year}`,
+    pendapatan: {
+      penjualanPOS,
+      penjualanManual,
+      pendapatanJasa: 0,
+      pendapatanLain: 0,
+      totalPendapatan,
+    },
+    hpp: {
+      hppPenjualan,
+      pembelianBarang: 0,
+      biayaProduksi,
+      stokOpname: 0,
+      totalHPP,
+    },
+    labaKotor,
+    marginKotor: Math.round(marginKotor * 100) / 100,
+    pengeluaran: {
+      gaji: expenses.gaji,
+      sewa: expenses.sewa,
+      utilitas: expenses.utilitas,
+      transportasi: expenses.transportasi,
+      operasionalLain: expenses.operasionalLain,
+      refund: expenses.refund,
+      komisiStaff: expenses.komisiStaff,
+      totalPengeluaran,
+    },
+    labaBersih,
+    marginBersih: Math.round(marginBersih * 100) / 100,
+  };
+}
+
+// ═══════════════════════════════════════════════════════════════
+// ═══════════════════ WAVE 4: OUTLETS & ATTENDANCE & DEPOSITS ═══
+// ═══════════════════════════════════════════════════════════════
+
+// ─── OUTLETS ───
+export async function getOutletsByBusiness(businessId: number) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  return db
+    .select()
+    .from(outlets)
+    .where(eq(outlets.businessId, businessId))
+    .orderBy(desc(outlets.isDefault));
+}
+
+export async function createOutlet(data: InsertOutlet) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  const result = await db.insert(outlets).values(data);
+  return result;
+}
+
+export async function updateOutlet(id: number, businessId: number, data: Partial<InsertOutlet>) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  return db
+    .update(outlets)
+    .set(data)
+    .where(and(eq(outlets.id, id), eq(outlets.businessId, businessId)));
+}
+
+export async function deleteOutlet(id: number, businessId: number) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  return db
+    .delete(outlets)
+    .where(and(eq(outlets.id, id), eq(outlets.businessId, businessId)));
+}
+
+export async function ensureDefaultOutlet(businessId: number) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  const existing = await db
+    .select()
+    .from(outlets)
+    .where(eq(outlets.businessId, businessId));
+
+  if (existing.length === 0) {
+    await db.insert(outlets).values({
+      businessId,
+      name: "Outlet Utama",
+      isDefault: true,
+      isActive: true,
+    });
+  }
+}
+
+export async function getOutletSalesReport(
+  businessId: number,
+  outletId?: number,
+  startDate?: string,
+  endDate?: string
+) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+
+  const conditions: any[] = [eq(posReceipts.businessId, businessId)];
+  if (outletId) {
+    conditions.push(eq(outlets.id, outletId));
+  }
+  if (startDate && endDate) {
+    conditions.push(gte(sql`DATE(${posReceipts.date})`, startDate));
+    conditions.push(lte(sql`DATE(${posReceipts.date})`, endDate));
+  }
+
+  return db
+    .select({
+      outletId: outlets.id,
+      outletName: outlets.name,
+      totalSales: sql<number>`SUM(${posReceipts.grandTotal})`,
+      transactionCount: sql<number>`COUNT(${posReceipts.id})`,
+      avgTransaction: sql<number>`AVG(${posReceipts.grandTotal})`,
+    })
+    .from(posReceipts)
+    .leftJoin(outlets, eq(posReceipts.businessId, outlets.businessId))
+    .where(and(...conditions))
+    .groupBy(outlets.id);
+}
+
+// ─── STAFF ATTENDANCE ───
+export async function clockIn(businessId: number, userId: string, userName: string, date: string) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  const result = await db.insert(staffAttendance).values({
+    businessId,
+    userId,
+    userName,
+    date,
+    clockIn: new Date(),
+  });
+  return result;
+}
+
+export async function clockOut(businessId: number, attendanceId: number) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  const record = await db
+    .select()
+    .from(staffAttendance)
+    .where(eq(staffAttendance.id, attendanceId));
+
+  if (record.length === 0) throw new Error("Attendance record not found");
+
+  const now = new Date();
+  const clockInTime = record[0].clockIn;
+  if (!clockInTime) throw new Error("No clock-in time found");
+
+  const hoursWorked = (now.getTime() - clockInTime.getTime()) / (1000 * 60 * 60);
+
+  await db
+    .update(staffAttendance)
+    .set({
+      clockOut: now,
+      hoursWorked: hoursWorked.toFixed(2),
+    })
+    .where(eq(staffAttendance.id, attendanceId));
+}
+
+export async function getAttendanceByDate(businessId: number, date: string) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  return db
+    .select()
+    .from(staffAttendance)
+    .where(and(
+      eq(staffAttendance.businessId, businessId),
+      eq(staffAttendance.date, date)
+    ));
+}
+
+export async function getAttendanceReport(businessId: number, startDate: string, endDate: string) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  return db
+    .select()
+    .from(staffAttendance)
+    .where(
+      and(
+        eq(staffAttendance.businessId, businessId),
+        gte(staffAttendance.date, startDate),
+        lte(staffAttendance.date, endDate)
+      )
+    );
+}
+
+export async function getMyAttendance(businessId: number, userId: string, startDate: string, endDate: string) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  return db
+    .select()
+    .from(staffAttendance)
+    .where(
+      and(
+        eq(staffAttendance.businessId, businessId),
+        eq(staffAttendance.userId, userId),
+        gte(staffAttendance.date, startDate),
+        lte(staffAttendance.date, endDate)
+      )
+    );
+}
+
+// ─── CUSTOMER DEPOSITS ───
+export async function getOrCreateDeposit(businessId: number, clientId: number) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+
+  const existing = await db
+    .select()
+    .from(customerDeposits)
+    .where(
+      and(
+        eq(customerDeposits.businessId, businessId),
+        eq(customerDeposits.clientId, clientId)
+      )
+    );
+
+  if (existing.length > 0) return existing[0];
+
+  const result = await db.insert(customerDeposits).values({
+    businessId,
+    clientId,
+    balance: 0,
+  });
+
+  const insertedId = (result as any).insertId || (result as any)[0]?.id;
+  return db
+    .select()
+    .from(customerDeposits)
+    .where(eq(customerDeposits.id, insertedId as number))
+    .then(rows => rows[0]);
+}
+
+export async function topUpDeposit(businessId: number, clientId: number, amount: number, notes?: string) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+
+  let deposit = await getOrCreateDeposit(businessId, clientId);
+  const newBalance = (deposit.balance || 0) + amount;
+
+  await db
+    .update(customerDeposits)
+    .set({ balance: newBalance })
+    .where(eq(customerDeposits.id, deposit.id));
+
+  await db.insert(depositTransactions).values({
+    businessId,
+    depositId: deposit.id,
+    type: "topup",
+    amount,
+    notes,
+  });
+}
+
+export async function useDeposit(businessId: number, clientId: number, amount: number, notes?: string) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+
+  let deposit = await getOrCreateDeposit(businessId, clientId);
+  if ((deposit.balance || 0) < amount) throw new Error("Insufficient deposit balance");
+
+  const newBalance = (deposit.balance || 0) - amount;
+
+  await db
+    .update(customerDeposits)
+    .set({ balance: newBalance })
+    .where(eq(customerDeposits.id, deposit.id));
+
+  await db.insert(depositTransactions).values({
+    businessId,
+    depositId: deposit.id,
+    type: "use",
+    amount,
+    notes,
+  });
+}
+
+export async function refundDeposit(businessId: number, clientId: number, amount: number, notes?: string) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+
+  let deposit = await getOrCreateDeposit(businessId, clientId);
+  const newBalance = (deposit.balance || 0) + amount;
+
+  await db
+    .update(customerDeposits)
+    .set({ balance: newBalance })
+    .where(eq(customerDeposits.id, deposit.id));
+
+  await db.insert(depositTransactions).values({
+    businessId,
+    depositId: deposit.id,
+    type: "refund",
+    amount,
+    notes,
+  });
+}
+
+export async function getDepositHistory(businessId: number, clientId: number) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+
+  const deposit = await db
+    .select()
+    .from(customerDeposits)
+    .where(
+      and(
+        eq(customerDeposits.businessId, businessId),
+        eq(customerDeposits.clientId, clientId)
+      )
+    );
+
+  if (deposit.length === 0) return [];
+
+  return db
+    .select()
+    .from(depositTransactions)
+    .where(eq(depositTransactions.depositId, deposit[0].id));
+}
+
+export async function getAllDeposits(businessId: number) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+
+  return db
+    .select({
+      id: customerDeposits.id,
+      clientId: customerDeposits.clientId,
+      clientName: clients.name,
+      balance: customerDeposits.balance,
+      createdAt: customerDeposits.createdAt,
+      updatedAt: customerDeposits.updatedAt,
+    })
+    .from(customerDeposits)
+    .leftJoin(clients, eq(customerDeposits.clientId, clients.id))
+    .where(eq(customerDeposits.businessId, businessId));
+}
+
+export async function getDepositReport(businessId: number, startDate?: string, endDate?: string) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+
+  const conditions: any[] = [eq(depositTransactions.businessId, businessId)];
+
+  if (startDate && endDate) {
+    conditions.push(gte(depositTransactions.createdAt, sql`STR_TO_DATE(${startDate}, '%Y-%m-%d')`));
+    conditions.push(lte(depositTransactions.createdAt, sql`STR_TO_DATE(${endDate}, '%Y-%m-%d')`));
+  }
+
+  return db
+    .select({
+      totalTopUps: sql<number>`SUM(CASE WHEN ${depositTransactions.type} = 'topup' THEN ${depositTransactions.amount} ELSE 0 END)`,
+      totalUsed: sql<number>`SUM(CASE WHEN ${depositTransactions.type} = 'use' THEN ${depositTransactions.amount} ELSE 0 END)`,
+      totalRefunds: sql<number>`SUM(CASE WHEN ${depositTransactions.type} = 'refund' THEN ${depositTransactions.amount} ELSE 0 END)`,
+      transactionCount: sql<number>`COUNT(${depositTransactions.id})`,
+    })
+    .from(depositTransactions)
+    .where(and(...conditions));
+}
+
+// ─── SALES BY STAFF ───
+export async function getSalesByStaff(businessId: number, startDate: string, endDate: string) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+
+  return db
+    .select({
+      staffName: staffCommissions.receiptCode,
+      totalSales: sql<number>`SUM(${staffCommissions.saleAmount})`,
+      commissionEarned: sql<number>`SUM(${staffCommissions.commissionAmount})`,
+      transactionCount: sql<number>`COUNT(DISTINCT ${staffCommissions.receiptId})`,
+    })
+    .from(staffCommissions)
+    .where(
+      and(
+        eq(staffCommissions.businessId, businessId),
+        gte(staffCommissions.date, startDate),
+        lte(staffCommissions.date, endDate)
+      )
+    )
+    .groupBy(staffCommissions.receiptCode);
+}
+
+export async function getStaffSalesDetail(businessId: number, staffName: string, startDate: string, endDate: string) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+
+  return db
+    .select({
+      receiptCode: staffCommissions.receiptCode,
+      saleAmount: staffCommissions.saleAmount,
+      commissionAmount: staffCommissions.commissionAmount,
+      date: staffCommissions.date,
+      status: staffCommissions.status,
+    })
+    .from(staffCommissions)
+    .where(
+      and(
+        eq(staffCommissions.businessId, businessId),
+        eq(staffCommissions.receiptCode, staffName),
+        gte(staffCommissions.date, startDate),
+        lte(staffCommissions.date, endDate)
+      )
+    );
+}
+
+export async function getSalesByDevice(businessId: number, startDate: string, endDate: string) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+
+  return db
+    .select({
+      deviceInfo: posReceipts.deviceInfo,
+      totalSales: sql<number>`SUM(${posReceipts.grandTotal})`,
+      transactionCount: sql<number>`COUNT(${posReceipts.id})`,
+      avgTransaction: sql<number>`AVG(${posReceipts.grandTotal})`,
+    })
+    .from(posReceipts)
+    .where(
+      and(
+        eq(posReceipts.businessId, businessId),
+        gte(sql`DATE(${posReceipts.date})`, startDate),
+        lte(sql`DATE(${posReceipts.date})`, endDate)
+      )
+    )
+    .groupBy(posReceipts.deviceInfo);
 }

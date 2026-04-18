@@ -62,9 +62,14 @@ import {
   getInvoiceSettings, upsertInvoiceSettings,
   getWarehouseAccessByUser, getWarehouseAccessByWarehouse, setWarehouseAccess, getAccessibleWarehouses,
   getSalesByCustomer, getSalesByHour, getSalesByDate,
+  getSalesByStaff, getStaffSalesDetail, getSalesByDevice,
+  getOutletsByBusiness, createOutlet, updateOutlet, deleteOutlet, ensureDefaultOutlet, getOutletSalesReport,
+  clockIn, clockOut, getAttendanceByDate, getAttendanceReport, getMyAttendance,
+  getOrCreateDeposit, topUpDeposit, useDeposit, refundDeposit, getDepositHistory, getAllDeposits, getDepositReport,
   createCreditSale, addCreditPayment, getCreditSalesReport, getCreditPaymentsForSale,
   getDiscountSummary, getVoidRefundAnalysis, getKasReconciliation, getShiftReport,
   getCommissionConfig, createStaffCommission, upsertCommissionConfig,
+  createProductionLog, getProductionLogs, getProductionCostReport, runProduction, generateLabaRugiDetail,
   getDb,
 } from "./db";
 import { PLAN_LIMITS, BULAN_INDONESIA, formatRupiah } from "../shared/finance";
@@ -1000,6 +1005,204 @@ export const appRouter = router({
       const { getLowStockAlerts } = await import("./db");
       return getLowStockAlerts(biz.id);
     }),
+
+    // ─── Laba Rugi Detail (Olsera Format) ───
+    labaRugiDetail: protectedProcedure.input(z.object({
+      month: z.number().min(1).max(12),
+      year: z.number().min(2000),
+    })).query(async ({ ctx, input }) => {
+      const biz = (await resolveBusinessForUser(ctx.user.id, ctx.requestedBusinessId))?.business;
+      if (!biz) throw new TRPCError({ code: "NOT_FOUND" });
+      return generateLabaRugiDetail(biz.id, input.month, input.year);
+    }),
+    // ─── Wave 4: Sales by Staff ───
+    salesByStaff: protectedProcedure.input(z.object({
+      startDate: z.string(),
+      endDate: z.string(),
+    })).query(async ({ ctx, input }) => {
+      const biz = (await resolveBusinessForUser(ctx.user.id, ctx.requestedBusinessId))?.business;
+      if (!biz) throw new TRPCError({ code: "NOT_FOUND" });
+      return getSalesByStaff(biz.id, input.startDate, input.endDate);
+    }),
+    // ─── Wave 4: Staff Sales Detail ───
+    staffSalesDetail: protectedProcedure.input(z.object({
+      staffName: z.string(),
+      startDate: z.string(),
+      endDate: z.string(),
+    })).query(async ({ ctx, input }) => {
+      const biz = (await resolveBusinessForUser(ctx.user.id, ctx.requestedBusinessId))?.business;
+      if (!biz) throw new TRPCError({ code: "NOT_FOUND" });
+      return getStaffSalesDetail(biz.id, input.staffName, input.startDate, input.endDate);
+    }),
+    // ─── Wave 4: Sales by Device ───
+    salesByDevice: protectedProcedure.input(z.object({
+      startDate: z.string(),
+      endDate: z.string(),
+    })).query(async ({ ctx, input }) => {
+      const biz = (await resolveBusinessForUser(ctx.user.id, ctx.requestedBusinessId))?.business;
+      if (!biz) throw new TRPCError({ code: "NOT_FOUND" });
+      return getSalesByDevice(biz.id, input.startDate, input.endDate);
+    }),
+  }),
+
+  // ═══ Wave 4: Outlets ═══
+  outlet: router({
+    list: protectedProcedure.query(async ({ ctx }) => {
+      const biz = (await resolveBusinessForUser(ctx.user.id, ctx.requestedBusinessId))?.business;
+      if (!biz) throw new TRPCError({ code: "NOT_FOUND" });
+      return getOutletsByBusiness(biz.id);
+    }),
+    create: protectedProcedure.input(z.object({
+      name: z.string().min(1),
+      code: z.string().optional(),
+      address: z.string().optional(),
+      phone: z.string().optional(),
+    })).mutation(async ({ ctx, input }) => {
+      const biz = (await resolveBusinessForUser(ctx.user.id, ctx.requestedBusinessId))?.business;
+      if (!biz) throw new TRPCError({ code: "NOT_FOUND" });
+      return createOutlet({ ...input, businessId: biz.id, isActive: true });
+    }),
+    update: protectedProcedure.input(z.object({
+      id: z.number(),
+      name: z.string().optional(),
+      code: z.string().optional(),
+      address: z.string().optional(),
+      phone: z.string().optional(),
+      isActive: z.boolean().optional(),
+    })).mutation(async ({ ctx, input }) => {
+      const biz = (await resolveBusinessForUser(ctx.user.id, ctx.requestedBusinessId))?.business;
+      if (!biz) throw new TRPCError({ code: "NOT_FOUND" });
+      const { id, ...rest } = input;
+      await updateOutlet(id, biz.id, rest);
+      return { success: true };
+    }),
+    delete: protectedProcedure.input(z.object({
+      id: z.number(),
+    })).mutation(async ({ ctx, input }) => {
+      const biz = (await resolveBusinessForUser(ctx.user.id, ctx.requestedBusinessId))?.business;
+      if (!biz) throw new TRPCError({ code: "NOT_FOUND" });
+      await deleteOutlet(input.id, biz.id);
+      return { success: true };
+    }),
+    salesReport: protectedProcedure.input(z.object({
+      startDate: z.string(),
+      endDate: z.string(),
+      outletId: z.number().optional(),
+    })).query(async ({ ctx, input }) => {
+      const biz = (await resolveBusinessForUser(ctx.user.id, ctx.requestedBusinessId))?.business;
+      if (!biz) throw new TRPCError({ code: "NOT_FOUND" });
+      return getOutletSalesReport(biz.id, input.outletId, input.startDate, input.endDate);
+    }),
+  }),
+
+  // ═══ Wave 4: Staff Attendance ═══
+  attendance: router({
+    clockIn: protectedProcedure.mutation(async ({ ctx }) => {
+      const biz = (await resolveBusinessForUser(ctx.user.id, ctx.requestedBusinessId))?.business;
+      if (!biz) throw new TRPCError({ code: "NOT_FOUND" });
+      const today = new Date().toISOString().split('T')[0];
+      const userName = ctx.user.name || "User";
+      return clockIn(biz.id, ctx.user.id.toString(), userName, today);
+    }),
+    clockOut: protectedProcedure.input(z.object({
+      id: z.number(),
+    })).mutation(async ({ ctx, input }) => {
+      const biz = (await resolveBusinessForUser(ctx.user.id, ctx.requestedBusinessId))?.business;
+      if (!biz) throw new TRPCError({ code: "NOT_FOUND" });
+      await clockOut(biz.id, input.id);
+      return { success: true };
+    }),
+    today: protectedProcedure.query(async ({ ctx }) => {
+      const biz = (await resolveBusinessForUser(ctx.user.id, ctx.requestedBusinessId))?.business;
+      if (!biz) throw new TRPCError({ code: "NOT_FOUND" });
+      const today = new Date().toISOString().split('T')[0];
+      return getAttendanceByDate(biz.id, today);
+    }),
+    list: protectedProcedure.input(z.object({
+      startDate: z.string(),
+      endDate: z.string(),
+    })).query(async ({ ctx, input }) => {
+      const biz = (await resolveBusinessForUser(ctx.user.id, ctx.requestedBusinessId))?.business;
+      if (!biz) throw new TRPCError({ code: "NOT_FOUND" });
+      return getAttendanceReport(biz.id, input.startDate, input.endDate);
+    }),
+    report: protectedProcedure.input(z.object({
+      startDate: z.string(),
+      endDate: z.string(),
+    })).query(async ({ ctx, input }) => {
+      const biz = (await resolveBusinessForUser(ctx.user.id, ctx.requestedBusinessId))?.business;
+      if (!biz) throw new TRPCError({ code: "NOT_FOUND" });
+      return getAttendanceReport(biz.id, input.startDate, input.endDate);
+    }),
+    myReport: protectedProcedure.input(z.object({
+      startDate: z.string(),
+      endDate: z.string(),
+    })).query(async ({ ctx, input }) => {
+      const biz = (await resolveBusinessForUser(ctx.user.id, ctx.requestedBusinessId))?.business;
+      if (!biz) throw new TRPCError({ code: "NOT_FOUND" });
+      return getMyAttendance(biz.id, ctx.user.id.toString(), input.startDate, input.endDate);
+    }),
+  }),
+
+  // ═══ Wave 4: Customer Deposits ═══
+  deposit: router({
+    balance: protectedProcedure.input(z.object({
+      clientId: z.number(),
+    })).query(async ({ ctx, input }) => {
+      const biz = (await resolveBusinessForUser(ctx.user.id, ctx.requestedBusinessId))?.business;
+      if (!biz) throw new TRPCError({ code: "NOT_FOUND" });
+      return getOrCreateDeposit(biz.id, input.clientId);
+    }),
+    topUp: protectedProcedure.input(z.object({
+      clientId: z.number(),
+      amount: z.number().positive(),
+      notes: z.string().optional(),
+    })).mutation(async ({ ctx, input }) => {
+      const biz = (await resolveBusinessForUser(ctx.user.id, ctx.requestedBusinessId))?.business;
+      if (!biz) throw new TRPCError({ code: "NOT_FOUND" });
+      await topUpDeposit(biz.id, input.clientId, input.amount, input.notes);
+      return { success: true };
+    }),
+    use: protectedProcedure.input(z.object({
+      clientId: z.number(),
+      amount: z.number().positive(),
+      notes: z.string().optional(),
+    })).mutation(async ({ ctx, input }) => {
+      const biz = (await resolveBusinessForUser(ctx.user.id, ctx.requestedBusinessId))?.business;
+      if (!biz) throw new TRPCError({ code: "NOT_FOUND" });
+      await useDeposit(biz.id, input.clientId, input.amount, input.notes);
+      return { success: true };
+    }),
+    refund: protectedProcedure.input(z.object({
+      clientId: z.number(),
+      amount: z.number().positive(),
+      notes: z.string().optional(),
+    })).mutation(async ({ ctx, input }) => {
+      const biz = (await resolveBusinessForUser(ctx.user.id, ctx.requestedBusinessId))?.business;
+      if (!biz) throw new TRPCError({ code: "NOT_FOUND" });
+      await refundDeposit(biz.id, input.clientId, input.amount, input.notes);
+      return { success: true };
+    }),
+    history: protectedProcedure.input(z.object({
+      clientId: z.number(),
+    })).query(async ({ ctx, input }) => {
+      const biz = (await resolveBusinessForUser(ctx.user.id, ctx.requestedBusinessId))?.business;
+      if (!biz) throw new TRPCError({ code: "NOT_FOUND" });
+      return getDepositHistory(biz.id, input.clientId);
+    }),
+    list: protectedProcedure.query(async ({ ctx }) => {
+      const biz = (await resolveBusinessForUser(ctx.user.id, ctx.requestedBusinessId))?.business;
+      if (!biz) throw new TRPCError({ code: "NOT_FOUND" });
+      return getAllDeposits(biz.id);
+    }),
+    report: protectedProcedure.input(z.object({
+      startDate: z.string().optional(),
+      endDate: z.string().optional(),
+    })).query(async ({ ctx, input }) => {
+      const biz = (await resolveBusinessForUser(ctx.user.id, ctx.requestedBusinessId))?.business;
+      if (!biz) throw new TRPCError({ code: "NOT_FOUND" });
+      return getDepositReport(biz.id, input.startDate, input.endDate);
+    }),
   }),
 
   // ─── Credit Sales (Penjualan Kredit) ───
@@ -1264,6 +1467,39 @@ Penting: Kembalikan HANYA JSON valid, tidak ada teks penjelasan.`,
       const totalCogs = calculateCOGS(compositions);
       await updateProduct(comp.productId, { hpp: Math.round(totalCogs) });
       return { success: true, totalCogs: Math.round(totalCogs) };
+    }),
+  }),
+
+  // ─── Production Management ───
+  production: router({
+    run: protectedProcedure.input(z.object({
+      productId: z.number(),
+      qty: z.number().min(1),
+      date: z.string(),
+      notes: z.string().optional(),
+    })).mutation(async ({ ctx, input }) => {
+      const biz = (await resolveBusinessForUser(ctx.user.id, ctx.requestedBusinessId))?.business;
+      if (!biz) throw new TRPCError({ code: "NOT_FOUND" });
+      return runProduction(biz.id, input.productId, input.qty, input.date, input.notes);
+    }),
+
+    logs: protectedProcedure.input(z.object({
+      productId: z.number().optional(),
+      startDate: z.string().optional(),
+      endDate: z.string().optional(),
+    })).query(async ({ ctx, input }) => {
+      const biz = (await resolveBusinessForUser(ctx.user.id, ctx.requestedBusinessId))?.business;
+      if (!biz) return [];
+      return getProductionLogs(biz.id, input.productId, input.startDate, input.endDate);
+    }),
+
+    costReport: protectedProcedure.input(z.object({
+      startDate: z.string(),
+      endDate: z.string(),
+    })).query(async ({ ctx, input }) => {
+      const biz = (await resolveBusinessForUser(ctx.user.id, ctx.requestedBusinessId))?.business;
+      if (!biz) throw new TRPCError({ code: "NOT_FOUND" });
+      return getProductionCostReport(biz.id, input.startDate, input.endDate);
     }),
   }),
 

@@ -503,7 +503,7 @@ export default function StokProduk() {
                 {/* Product Image */}
                 <div className="relative h-36 bg-gradient-to-br from-muted/30 to-muted/10 overflow-hidden">
                   {p.imageUrl ? (
-                    <img src={getProxiedImageUrl(p.imageUrl)} alt={p.name} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300" />
+                    <img src={getProxiedImageUrl(p.imageUrl) ?? undefined} alt={p.name} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300" />
                   ) : (
                     <div className="w-full h-full flex items-center justify-center">
                       <Package className="h-12 w-12 text-muted-foreground/20" />

@@ -26,6 +26,7 @@ import {
   Star,
   Coins,
   AlertTriangle,
+  Factory,
 } from "lucide-react";
 
 interface ReportEntry {
@@ -78,6 +79,14 @@ const REPORTS: ReportEntry[] = [
     icon: BookOpen,
     category: "Laporan Keuangan",
     keywords: ["calk", "catatan", "notes", "penjelasan"],
+  },
+  {
+    name: "Laba Rugi Detail (Olsera Format)",
+    description: "Laporan P&L terperinci dengan pendapatan, HPP, dan pengeluaran operasional",
+    path: "/laba-rugi-detail",
+    icon: BarChart3,
+    category: "Laporan Keuangan",
+    keywords: ["laba", "rugi", "profit", "loss", "detail", "olsera", "pnl"],
   },
 
   // ── Laporan Penjualan ──
@@ -274,6 +283,16 @@ const REPORTS: ReportEntry[] = [
     icon: Star,
     category: "Program Loyalitas",
     keywords: ["loyalty", "poin", "reward", "tier", "member", "bronze", "silver", "gold", "platinum"],
+  },
+
+  // ── Manajemen Produksi ──
+  {
+    name: "Manajemen Produksi",
+    description: "Logging produksi batch, tracking biaya material, dan pelaporan biaya produksi",
+    path: "/produksi",
+    icon: Factory,
+    category: "Manajemen Produksi",
+    keywords: ["produksi", "production", "batch", "biaya", "cost", "bahan baku", "material"],
   },
 ];
 
