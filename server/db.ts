@@ -148,8 +148,17 @@ async function runAutoMigration(db: ReturnType<typeof drizzle>) {
   await safeExec("ALTER TABLE `clients` ADD COLUMN `activeDate` varchar(10) DEFAULT NULL");
   await safeExec("ALTER TABLE `clients` ADD COLUMN `expiryDate` varchar(10) DEFAULT NULL");
 
-  // transactions: add bankAccountId for FK tracking
-  await safeExec("ALTER TABLE `transactions` ADD COLUMN IF NOT EXISTS `bankAccountId` int AFTER `receiptId`");
+  // transactions: add all potentially missing columns
+  await ensureColumn("transactions", "clientId", "int DEFAULT NULL");
+  await ensureColumn("transactions", "productId", "int DEFAULT NULL");
+  await ensureColumn("transactions", "productQty", "int DEFAULT NULL");
+  await ensureColumn("transactions", "productHppSnapshot", "bigint DEFAULT NULL");
+  await ensureColumn("transactions", "taxRelated", "boolean NOT NULL DEFAULT true");
+  await ensureColumn("transactions", "isDeleted", "boolean NOT NULL DEFAULT false");
+  await ensureColumn("transactions", "notes", "text DEFAULT NULL");
+  await ensureColumn("transactions", "shiftId", "int DEFAULT NULL");
+  await ensureColumn("transactions", "receiptId", "int DEFAULT NULL");
+  await ensureColumn("transactions", "bankAccountId", "int DEFAULT NULL");
 
   // Populate bankAccountId from existing name matches
   await safeExec(`
@@ -546,6 +555,40 @@ async function runAutoMigration(db: ReturnType<typeof drizzle>) {
     }
   } catch (e: any) {
     console.error("[Migration] bank_accounts verification failed:", e.message);
+  }
+
+  // Verify transactions columns
+  try {
+    const [txCols] = await db.execute(sql.raw("SHOW COLUMNS FROM `transactions`")) as any;
+    const colNames = Array.isArray(txCols) ? txCols.map((c: any) => c.Field || c.field) : [];
+    const txRequired: Record<string, string> = {
+      clientId: "int DEFAULT NULL",
+      productId: "int DEFAULT NULL",
+      productQty: "int DEFAULT NULL",
+      productHppSnapshot: "bigint DEFAULT NULL",
+      taxRelated: "boolean NOT NULL DEFAULT true",
+      isDeleted: "boolean NOT NULL DEFAULT false",
+      notes: "text DEFAULT NULL",
+      shiftId: "int DEFAULT NULL",
+      receiptId: "int DEFAULT NULL",
+      bankAccountId: "int DEFAULT NULL",
+    };
+    const missing = Object.keys(txRequired).filter(c => !colNames.includes(c));
+    if (missing.length > 0) {
+      console.error("[Migration] CRITICAL: transactions table missing columns:", missing.join(", "));
+      for (const col of missing) {
+        try {
+          await db.execute(sql.raw(`ALTER TABLE \`transactions\` ADD COLUMN \`${col}\` ${txRequired[col]}`));
+          console.log(`[Migration] Force-added transactions.${col}`);
+        } catch (e: any) {
+          if (e.errno !== 1060) console.error(`[Migration] Cannot add transactions.${col}:`, e.errno, e.message);
+        }
+      }
+    } else {
+      console.log("[Migration] Verified: transactions table has all required columns");
+    }
+  } catch (e: any) {
+    console.error("[Migration] transactions verification failed:", e.message);
   }
 
   console.log("[Migration] Auto-migration complete.");
@@ -3551,36 +3594,74 @@ export async function clearBusinessData(businessId: number): Promise<{ success: 
   const db = await getDb();
   if (!db) throw new Error("Database not available");
 
-  // Delete in order of dependencies
+  // Delete in order of dependencies (child tables first)
+
+  // Credit system
+  await db.delete(creditPayments).where(
+    sql`${creditPayments.creditSaleId} IN (SELECT id FROM credit_sales WHERE businessId = ${businessId})`
+  );
+  await db.delete(creditSales).where(eq(creditSales.businessId, businessId));
+
+  // Debt system
   await db.delete(debtPayments).where(
-    sql`${debtPayments.debtId} IN (SELECT id FROM debts WHERE business_id = ${businessId})`
+    sql`${debtPayments.debtId} IN (SELECT id FROM debts WHERE businessId = ${businessId})`
   );
   await db.delete(debts).where(eq(debts.businessId, businessId));
+
+  // Deposits
+  await db.delete(depositTransactions).where(eq(depositTransactions.businessId, businessId));
+  await db.delete(customerDeposits).where(eq(customerDeposits.businessId, businessId));
+
+  // Commissions
+  await db.delete(staffCommissions).where(eq(staffCommissions.businessId, businessId));
+  await db.delete(commissionConfig).where(eq(commissionConfig.businessId, businessId));
+
+  // POS receipt items (before receipts)
+  await db.delete(posReceiptItems).where(
+    sql`${posReceiptItems.receiptId} IN (SELECT id FROM pos_receipts WHERE businessId = ${businessId})`
+  );
   await db.delete(posReceipts).where(eq(posReceipts.businessId, businessId));
   await db.delete(posShifts).where(eq(posShifts.businessId, businessId));
   await db.delete(discountCodes).where(eq(discountCodes.businessId, businessId));
+
+  // Attendance & Outlets
+  await db.delete(staffAttendance).where(eq(staffAttendance.businessId, businessId));
+  await db.delete(outlets).where(eq(outlets.businessId, businessId));
+
+  // Stock & inventory
+  await db.delete(stockBatches).where(eq(stockBatches.businessId, businessId));
+  await db.delete(productionLogs).where(eq(productionLogs.businessId, businessId));
   await db.delete(stockTransfers).where(eq(stockTransfers.businessId, businessId));
   await db.delete(warehouseStock).where(
-    sql`${warehouseStock.warehouseId} IN (SELECT id FROM warehouses WHERE business_id = ${businessId})`
+    sql`${warehouseStock.warehouseId} IN (SELECT id FROM warehouses WHERE businessId = ${businessId})`
   );
   await db.delete(stockLogs).where(eq(stockLogs.businessId, businessId));
+
+  // Core data
   await db.delete(transactions).where(eq(transactions.businessId, businessId));
   await db.delete(products).where(eq(products.businessId, businessId));
   await db.delete(clients).where(eq(clients.businessId, businessId));
   await db.delete(budgets).where(eq(budgets.businessId, businessId));
   await db.delete(monthlyBills).where(eq(monthlyBills.businessId, businessId));
+  await db.delete(savingsGoals).where(eq(savingsGoals.businessId, businessId));
+  await db.delete(monthlyCache).where(eq(monthlyCache.businessId, businessId));
 
-  // Delete new feature tables
+  // Purchase orders
   await db.delete(purchaseOrderItems).where(
-    sql`${purchaseOrderItems.purchaseOrderId} IN (SELECT id FROM purchase_orders WHERE business_id = ${businessId})`
+    sql`${purchaseOrderItems.purchaseOrderId} IN (SELECT id FROM purchase_orders WHERE businessId = ${businessId})`
   );
   await db.delete(purchaseOrders).where(eq(purchaseOrders.businessId, businessId));
   await db.delete(suppliers).where(eq(suppliers.businessId, businessId));
+
+  // Loyalty
   await db.delete(loyaltyTransactions).where(eq(loyaltyTransactions.businessId, businessId));
   await db.delete(loyaltyPoints).where(eq(loyaltyPoints.businessId, businessId));
+  await db.delete(loyaltyConfig).where(eq(loyaltyConfig.businessId, businessId));
   await db.delete(invoiceSettings).where(eq(invoiceSettings.businessId, businessId));
+
+  // Warehouse access
   await db.delete(warehouseAccess).where(
-    sql`${warehouseAccess.warehouseId} IN (SELECT id FROM warehouses WHERE business_id = ${businessId})`
+    sql`${warehouseAccess.warehouseId} IN (SELECT id FROM warehouses WHERE businessId = ${businessId})`
   );
 
   // Keep warehouses but delete non-default ones
