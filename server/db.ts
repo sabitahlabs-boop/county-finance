@@ -85,7 +85,21 @@ async function runAutoMigration(db: ReturnType<typeof drizzle>) {
     try { await db.execute(sql.raw(query)); } catch (e: any) {
       // Ignore "duplicate column" or "table already exists" errors
       if (e.errno === 1060 || e.errno === 1050) return;
-      console.warn("[Migration]", e.message);
+      console.warn("[Migration] errno:", e.errno, "query:", query.substring(0, 120), "msg:", e.message);
+    }
+  };
+
+  // Helper: ensure column exists using SHOW COLUMNS check + ALTER TABLE
+  const ensureColumn = async (table: string, column: string, colDef: string) => {
+    try {
+      const [rows] = await db.execute(sql.raw(`SHOW COLUMNS FROM \`${table}\` LIKE '${column}'`)) as any;
+      if (!rows || (Array.isArray(rows) && rows.length === 0)) {
+        await db.execute(sql.raw(`ALTER TABLE \`${table}\` ADD COLUMN \`${column}\` ${colDef}`));
+        console.log(`[Migration] Added column ${table}.${column}`);
+      }
+    } catch (e: any) {
+      if (e.errno === 1060) return; // duplicate column — already exists
+      console.warn(`[Migration] Failed to add ${table}.${column}:`, e.errno, e.message);
     }
   };
 
@@ -118,9 +132,10 @@ async function runAutoMigration(db: ReturnType<typeof drizzle>) {
   await safeExec("ALTER TABLE `products` ADD COLUMN `imei` varchar(50) DEFAULT NULL");
   await safeExec("ALTER TABLE `products` ADD COLUMN `motorCode` varchar(50) DEFAULT NULL");
   await safeExec("ALTER TABLE `products` ADD COLUMN `productCode` varchar(50) DEFAULT NULL");
-  await safeExec("ALTER TABLE `products` ADD COLUMN `reorderPoint` int DEFAULT NULL");
-  await safeExec("ALTER TABLE `products` ADD COLUMN `safetyStock` int DEFAULT NULL");
-  await safeExec("ALTER TABLE `products` ADD COLUMN `leadTimeDays` int DEFAULT NULL");
+  // Critical: these 3 columns were missing and causing INSERT failures
+  await ensureColumn("products", "reorderPoint", "int DEFAULT NULL");
+  await ensureColumn("products", "safetyStock", "int DEFAULT NULL");
+  await ensureColumn("products", "leadTimeDays", "int DEFAULT NULL");
 
   // warehouses: add waCode, code
   await safeExec("ALTER TABLE `warehouses` ADD COLUMN `waCode` varchar(20) DEFAULT NULL");
@@ -484,6 +499,54 @@ async function runAutoMigration(db: ReturnType<typeof drizzle>) {
   await safeExec("CREATE INDEX IF NOT EXISTS `idx_stock_batches_product_remaining` ON `stock_batches` (`productId`, `remainingQty`)");
   await safeExec("CREATE INDEX IF NOT EXISTS `idx_stock_logs_biz_date` ON `stock_logs` (`businessId`, `date`)");
   await safeExec("CREATE INDEX IF NOT EXISTS `idx_receipt_items_receipt` ON `pos_receipt_items` (`receiptId`)");
+
+  // ─── Verification: confirm critical columns exist ───
+  try {
+    const [productCols] = await db.execute(sql.raw("SHOW COLUMNS FROM `products`")) as any;
+    const colNames = Array.isArray(productCols) ? productCols.map((c: any) => c.Field || c.field) : [];
+    const required = ["reorderPoint", "safetyStock", "leadTimeDays", "barcode", "imei", "motorCode", "productCode"];
+    const missing = required.filter(c => !colNames.includes(c));
+    if (missing.length > 0) {
+      console.error("[Migration] CRITICAL: products table still missing columns:", missing.join(", "));
+      // Force-add missing columns with direct execute
+      for (const col of missing) {
+        try {
+          await db.execute(sql.raw(`ALTER TABLE \`products\` ADD COLUMN \`${col}\` ${col === "barcode" ? "varchar(100)" : col === "imei" || col === "motorCode" || col === "productCode" ? "varchar(50)" : "int"} DEFAULT NULL`));
+          console.log(`[Migration] Force-added products.${col}`);
+        } catch (e: any) {
+          if (e.errno !== 1060) console.error(`[Migration] Cannot add products.${col}:`, e.errno, e.message);
+        }
+      }
+    } else {
+      console.log("[Migration] Verified: products table has all required columns");
+    }
+  } catch (e: any) {
+    console.error("[Migration] Verification failed:", e.message);
+  }
+
+  // Verify bank_accounts columns
+  try {
+    const [bankCols] = await db.execute(sql.raw("SHOW COLUMNS FROM `bank_accounts`")) as any;
+    const colNames = Array.isArray(bankCols) ? bankCols.map((c: any) => c.Field || c.field) : [];
+    const required = ["description", "sortOrder", "initialBalance"];
+    const missing = required.filter(c => !colNames.includes(c));
+    if (missing.length > 0) {
+      console.error("[Migration] bank_accounts missing columns:", missing.join(", "));
+      for (const col of missing) {
+        try {
+          const def = col === "description" ? "text DEFAULT NULL" : col === "sortOrder" ? "int NOT NULL DEFAULT 0" : "bigint NOT NULL DEFAULT 0";
+          await db.execute(sql.raw(`ALTER TABLE \`bank_accounts\` ADD COLUMN \`${col}\` ${def}`));
+          console.log(`[Migration] Force-added bank_accounts.${col}`);
+        } catch (e: any) {
+          if (e.errno !== 1060) console.error(`[Migration] Cannot add bank_accounts.${col}:`, e.errno, e.message);
+        }
+      }
+    } else {
+      console.log("[Migration] Verified: bank_accounts table has all required columns");
+    }
+  } catch (e: any) {
+    console.error("[Migration] bank_accounts verification failed:", e.message);
+  }
 
   console.log("[Migration] Auto-migration complete.");
 }
