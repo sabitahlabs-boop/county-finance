@@ -49,8 +49,15 @@ import PenjualanTanggal from "./pages/PenjualanTanggal";
 import PenjualanKredit from "./pages/PenjualanKredit";
 import RingkasanDiskon from "./pages/RingkasanDiskon";
 import VoidRefundAnalysis from "./pages/VoidRefundAnalysis";
+import KomisiStaff from "./pages/KomisiStaff";
+import LaporanShift from "./pages/LaporanShift";
 import TransaksiTunai from "./pages/TransaksiTunai";
 import ManajemenRekening from "./pages/ManajemenRekening";
+import LoyaltyManagement from "./pages/LoyaltyManagement";
+import ValuasiFIFO from "./pages/ValuasiFIFO";
+import StokKedaluwarsa from "./pages/StokKedaluwarsa";
+import UsiaStok from "./pages/UsiaStok";
+import PeringatanStok from "./pages/PeringatanStok";
 import { BusinessProvider } from "./contexts/BusinessContext";
 
 function AuthenticatedRoute({ component: Component }: { component: React.ComponentType }) {
@@ -126,8 +133,15 @@ function Router() {
       <Route path="/penjualan-kredit">{() => <AuthenticatedRoute component={PenjualanKredit} />}</Route>
       <Route path="/ringkasan-diskon">{() => <AuthenticatedRoute component={RingkasanDiskon} />}</Route>
       <Route path="/void-refund">{() => <AuthenticatedRoute component={VoidRefundAnalysis} />}</Route>
+      <Route path="/komisi">{() => <AuthenticatedRoute component={KomisiStaff} />}</Route>
+      <Route path="/laporan-shift">{() => <AuthenticatedRoute component={LaporanShift} />}</Route>
       <Route path="/transaksi-tunai">{() => <AuthenticatedRoute component={TransaksiTunai} />}</Route>
       <Route path="/manajemen-rekening">{() => <AuthenticatedRoute component={ManajemenRekening} />}</Route>
+      <Route path="/loyalty">{() => <AuthenticatedRoute component={LoyaltyManagement} />}</Route>
+      <Route path="/valuasi-fifo">{() => <AuthenticatedRoute component={ValuasiFIFO} />}</Route>
+      <Route path="/stok-kedaluwarsa">{() => <AuthenticatedRoute component={StokKedaluwarsa} />}</Route>
+      <Route path="/usia-stok">{() => <AuthenticatedRoute component={UsiaStok} />}</Route>
+      <Route path="/peringatan-stok">{() => <AuthenticatedRoute component={PeringatanStok} />}</Route>
       <Route path="/landing" component={LandingPage} />
       <Route path="/accept-invite" component={AcceptInvite} />
       <Route path="/panduan" component={Panduan} />

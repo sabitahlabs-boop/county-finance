@@ -1,4 +1,4 @@
-import { eq, and, sql, desc, gte, lte, ne, inArray, isNotNull, isNull } from "drizzle-orm";
+import { eq, and, sql, desc, gte, lte, ne, inArray, isNotNull, isNull, asc } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/mysql2";
 import {
   InsertUser, users,
@@ -33,10 +33,14 @@ import {
   purchaseOrderItems, InsertPurchaseOrderItem, PurchaseOrderItem,
   loyaltyPoints, InsertLoyaltyPoint, LoyaltyPoint,
   loyaltyTransactions, InsertLoyaltyTransaction, LoyaltyTransaction,
+  loyaltyConfig, InsertLoyaltyConfig, LoyaltyConfig,
   invoiceSettings, InsertInvoiceSetting, InvoiceSetting,
   warehouseAccess, InsertWarehouseAccess, WarehouseAccess,
   creditSales, InsertCreditSale, CreditSale,
   creditPayments, InsertCreditPayment, CreditPayment,
+  commissionConfig, InsertCommissionConfig, CommissionConfig,
+  staffCommissions, InsertStaffCommission, StaffCommission,
+  stockBatches, InsertStockBatch, StockBatch,
 } from "../drizzle/schema";
 import { ENV } from './_core/env';
 import type { TaxCalcResult, DashboardKPIs, LabaRugiReport, ArusKasReport, NeracaReport, PerubahanModalReport, CALKReport } from "../shared/finance";
@@ -154,6 +158,24 @@ async function runAutoMigration(db: ReturnType<typeof drizzle>) {
     \`description\` text DEFAULT NULL,
     \`createdAt\` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP
   )`);
+
+  await safeExec(`CREATE TABLE IF NOT EXISTS \`loyalty_config\` (
+    \`id\` int NOT NULL AUTO_INCREMENT PRIMARY KEY,
+    \`businessId\` int NOT NULL UNIQUE,
+    \`isEnabled\` boolean NOT NULL DEFAULT false,
+    \`pointsPerAmount\` int NOT NULL DEFAULT 1,
+    \`amountPerPoint\` int NOT NULL DEFAULT 10000,
+    \`redemptionRate\` int NOT NULL DEFAULT 100,
+    \`minRedeemPoints\` int NOT NULL DEFAULT 100,
+    \`silverThreshold\` int NOT NULL DEFAULT 500,
+    \`goldThreshold\` int NOT NULL DEFAULT 2000,
+    \`platinumThreshold\` int NOT NULL DEFAULT 5000,
+    \`createdAt\` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    \`updatedAt\` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+  )`);
+
+  // Add tierLevel column to loyalty_points if missing
+  await safeExec(`ALTER TABLE \`loyalty_points\` ADD COLUMN \`tierLevel\` varchar(20) NOT NULL DEFAULT 'Bronze' AFTER \`totalRedeemed\``);
 
   await safeExec(`CREATE TABLE IF NOT EXISTS \`invoice_settings\` (
     \`id\` int NOT NULL AUTO_INCREMENT PRIMARY KEY,
@@ -311,6 +333,30 @@ async function runAutoMigration(db: ReturnType<typeof drizzle>) {
     \`paymentMethod\` varchar(30) NOT NULL DEFAULT 'tunai',
     \`notes\` text,
     \`date\` varchar(10) NOT NULL,
+    \`createdAt\` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP
+  )`);
+
+  await safeExec(`CREATE TABLE IF NOT EXISTS \`commission_config\` (
+    \`id\` int NOT NULL AUTO_INCREMENT PRIMARY KEY,
+    \`businessId\` int NOT NULL UNIQUE,
+    \`isEnabled\` boolean NOT NULL DEFAULT false,
+    \`commissionType\` enum('percentage', 'flat') NOT NULL DEFAULT 'percentage',
+    \`commissionRate\` int NOT NULL DEFAULT 0,
+    \`createdAt\` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    \`updatedAt\` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+  )`);
+
+  await safeExec(`CREATE TABLE IF NOT EXISTS \`staff_commissions\` (
+    \`id\` int NOT NULL AUTO_INCREMENT PRIMARY KEY,
+    \`businessId\` int NOT NULL,
+    \`userId\` int NOT NULL,
+    \`receiptId\` int NOT NULL,
+    \`receiptCode\` varchar(30) NOT NULL,
+    \`saleAmount\` bigint NOT NULL,
+    \`commissionAmount\` bigint NOT NULL,
+    \`date\` varchar(10) NOT NULL,
+    \`status\` enum('pending', 'paid') NOT NULL DEFAULT 'pending',
+    \`paidAt\` timestamp,
     \`createdAt\` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP
   )`);
 
@@ -3311,6 +3357,76 @@ export async function getLoyaltyTransactionsByClient(businessId: number, clientI
   return db.select().from(loyaltyTransactions).where(and(eq(loyaltyTransactions.businessId, businessId), eq(loyaltyTransactions.clientId, clientId))).orderBy(desc(loyaltyTransactions.createdAt));
 }
 
+// ─── Loyalty Config Helpers ───
+export async function getLoyaltyConfig(businessId: number): Promise<LoyaltyConfig> {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  const existing = await db.select().from(loyaltyConfig).where(eq(loyaltyConfig.businessId, businessId)).limit(1);
+  if (existing[0]) return existing[0];
+
+  // Return default config if not found
+  return {
+    id: 0,
+    businessId,
+    isEnabled: false,
+    pointsPerAmount: 1,
+    amountPerPoint: 10000,
+    redemptionRate: 100,
+    minRedeemPoints: 100,
+    silverThreshold: 500,
+    goldThreshold: 2000,
+    platinumThreshold: 5000,
+    createdAt: new Date(),
+    updatedAt: new Date(),
+  };
+}
+
+export async function upsertLoyaltyConfig(businessId: number, config: Partial<InsertLoyaltyConfig>): Promise<void> {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  const existing = await db.select().from(loyaltyConfig).where(eq(loyaltyConfig.businessId, businessId)).limit(1);
+  if (existing[0]) {
+    await db.update(loyaltyConfig).set(config).where(eq(loyaltyConfig.businessId, businessId));
+  } else {
+    await db.insert(loyaltyConfig).values({ businessId, ...config } as InsertLoyaltyConfig);
+  }
+}
+
+// Determine tier level based on total points
+function calculateTierLevel(totalPoints: number, config: LoyaltyConfig): string {
+  if (totalPoints >= config.platinumThreshold) return "Platinum";
+  if (totalPoints >= config.goldThreshold) return "Gold";
+  if (totalPoints >= config.silverThreshold) return "Silver";
+  return "Bronze";
+}
+
+export async function updateLoyaltyTier(businessId: number, clientId: number): Promise<void> {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  const config = await getLoyaltyConfig(businessId);
+  const loyalty = await getLoyaltyPoints(businessId, clientId);
+  if (!loyalty) return;
+
+  const newTier = calculateTierLevel(loyalty.totalEarned, config);
+  if (loyalty.tierLevel !== newTier) {
+    await db.update(loyaltyPoints).set({ tierLevel: newTier }).where(eq(loyaltyPoints.id, loyalty.id));
+  }
+}
+
+export async function autoAwardLoyaltyPoints(businessId: number, clientId: number, purchaseAmount: number): Promise<void> {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  const config = await getLoyaltyConfig(businessId);
+  if (!config.isEnabled) return;
+
+  // Calculate points: amount / amountPerPoint * pointsPerAmount
+  const pointsToAward = Math.floor((purchaseAmount / config.amountPerPoint) * config.pointsPerAmount);
+  if (pointsToAward > 0) {
+    await addLoyaltyPoints(businessId, clientId, pointsToAward, `Poin dari pembelian Rp ${purchaseAmount.toLocaleString('id-ID')}`);
+    await updateLoyaltyTier(businessId, clientId);
+  }
+}
+
 // ─── Invoice Settings Helpers ───
 export async function getInvoiceSettings(businessId: number): Promise<InvoiceSetting | undefined> {
   const db = await getDb();
@@ -4004,4 +4120,553 @@ export async function getKasReconciliation(businessId: number, startDate: string
     manualInCount: txCashIn[0]?.count ?? 0,
     manualOutCount: txCashOut[0]?.count ?? 0,
   };
+}
+
+// ─── W3.1: Shift Report (Laporan Shift) ───
+export async function getShiftReport(businessId: number, startDate?: string, endDate?: string) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+
+  // Query shifts for the business in the date range
+  const shifts = await db
+    .select({
+      id: posShifts.id,
+      userId: posShifts.userId,
+      openedAt: posShifts.openedAt,
+      closedAt: posShifts.closedAt,
+      openingCash: posShifts.openingCash,
+      closingCash: posShifts.closingCash,
+      cashDifference: posShifts.cashDifference,
+      totalSales: posShifts.totalSales,
+      totalRefunds: posShifts.totalRefunds,
+      userName: users.name,
+    })
+    .from(posShifts)
+    .leftJoin(users, eq(posShifts.userId, users.id))
+    .where(
+      and(
+        eq(posShifts.businessId, businessId),
+        startDate ? sql`DATE(${posShifts.openedAt}) >= ${startDate}` : undefined,
+        endDate ? sql`DATE(${posShifts.closedAt}) <= ${endDate}` : undefined,
+      )
+    )
+    .orderBy(desc(posShifts.closedAt));
+
+  // For each shift, get receipts and payment breakdown
+  const shiftReports = await Promise.all(
+    shifts.map(async (shift) => {
+      // Get receipts in this shift
+      const receipts = await db
+        .select({
+          grandTotal: posReceipts.grandTotal,
+          isRefunded: posReceipts.isRefunded,
+          refundAmount: posReceipts.refundAmount,
+          payments: posReceipts.payments,
+          date: posReceipts.date,
+        })
+        .from(posReceipts)
+        .where(eq(posReceipts.shiftId, shift.id));
+
+      // Calculate metrics
+      const totalPenjualan = receipts
+        .filter((r) => !r.isRefunded)
+        .reduce((sum, r) => sum + r.grandTotal, 0);
+
+      const totalRefund = receipts
+        .filter((r) => r.isRefunded)
+        .reduce((sum, r) => sum + (r.refundAmount ?? 0), 0);
+
+      // Parse payment methods
+      const paymentBreakdown: Record<string, number> = {};
+      for (const receipt of receipts.filter((r) => !r.isRefunded)) {
+        const payments = receipt.payments as Array<{ method: string; amount: number }>;
+        if (Array.isArray(payments)) {
+          for (const p of payments) {
+            paymentBreakdown[p.method] = (paymentBreakdown[p.method] ?? 0) + p.amount;
+          }
+        }
+      }
+
+      // Calculate duration
+      const startTime = shift.openedAt ? new Date(shift.openedAt) : null;
+      const endTime = shift.closedAt ? new Date(shift.closedAt) : null;
+      let durationMinutes = 0;
+      if (startTime && endTime) {
+        durationMinutes = Math.round((endTime.getTime() - startTime.getTime()) / 60000);
+      }
+
+      // Determine status: surplus (positive), deficit (negative), balanced (0)
+      const cashDiff = shift.cashDifference ?? 0;
+      const status = cashDiff > 0 ? "surplus" : cashDiff < 0 ? "deficit" : "seimbang";
+
+      return {
+        id: shift.id,
+        openedAt: shift.openedAt,
+        closedAt: shift.closedAt,
+        date: shift.closedAt ? new Date(shift.closedAt).toISOString().slice(0, 10) : "",
+        cashierName: shift.userName ?? "Unknown",
+        openingCash: shift.openingCash ?? 0,
+        closingCash: shift.closingCash ?? 0,
+        totalPenjualan,
+        totalRefund,
+        cashDifference: cashDiff,
+        durationMinutes,
+        status,
+        paymentBreakdown,
+        transactionCount: receipts.length,
+      };
+    })
+  );
+
+  // Calculate summary metrics
+  const totalShifts = shiftReports.length;
+  const totalPenjualanAll = shiftReports.reduce((sum, s) => sum + s.totalPenjualan, 0);
+  const totalRefundAll = shiftReports.reduce((sum, s) => sum + s.totalRefund, 0);
+  const avgCashDiff =
+    totalShifts > 0
+      ? shiftReports.reduce((sum, s) => sum + s.cashDifference, 0) / totalShifts
+      : 0;
+
+  return {
+    shifts: shiftReports,
+    summary: {
+      totalShifts,
+      totalPenjualan: totalPenjualanAll,
+      totalRefund: totalRefundAll,
+      avgCashDifference: avgCashDiff,
+    },
+  };
+}
+
+// ─── Commission Functions ───
+
+export async function getCommissionConfig(businessId: number): Promise<CommissionConfig | undefined> {
+  const db = await getDb();
+  if (!db) return undefined;
+  return db.select().from(commissionConfig).where(eq(commissionConfig.businessId, businessId)).then(r => r[0]);
+}
+
+export async function upsertCommissionConfig(businessId: number, data: Partial<InsertCommissionConfig>): Promise<CommissionConfig> {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  
+  const existing = await getCommissionConfig(businessId);
+  if (existing) {
+    await db.update(commissionConfig).set({
+      ...data,
+      updatedAt: new Date(),
+    }).where(eq(commissionConfig.businessId, businessId));
+    return getCommissionConfig(businessId) as Promise<CommissionConfig>;
+  } else {
+    await db.insert(commissionConfig).values({
+      businessId,
+      isEnabled: data.isEnabled ?? false,
+      commissionType: data.commissionType ?? "percentage",
+      commissionRate: data.commissionRate ?? 0,
+    });
+    return getCommissionConfig(businessId) as Promise<CommissionConfig>;
+  }
+}
+
+export async function createStaffCommission(data: InsertStaffCommission): Promise<number> {
+  const db = await getDb();
+  if (!db) return 0;
+  const [result] = await db.insert(staffCommissions).values(data).$returningId();
+  return result.id;
+}
+
+export async function getCommissionReport(
+  businessId: number,
+  startDate?: string,
+  endDate?: string,
+  userId?: number
+) {
+  const db = await getDb();
+  if (!db) return [];
+
+  const conditions = [eq(staffCommissions.businessId, businessId)];
+  if (startDate) {
+    conditions.push(gte(staffCommissions.date, startDate));
+  }
+  if (endDate) {
+    conditions.push(lte(staffCommissions.date, endDate));
+  }
+  if (userId) {
+    conditions.push(eq(staffCommissions.userId, userId));
+  }
+
+  return db.select({
+    id: staffCommissions.id,
+    userId: staffCommissions.userId,
+    userName: users.name,
+    receiptId: staffCommissions.receiptId,
+    receiptCode: staffCommissions.receiptCode,
+    saleAmount: staffCommissions.saleAmount,
+    commissionAmount: staffCommissions.commissionAmount,
+    date: staffCommissions.date,
+    status: staffCommissions.status,
+    paidAt: staffCommissions.paidAt,
+    createdAt: staffCommissions.createdAt,
+  }).from(staffCommissions)
+    .innerJoin(users, eq(staffCommissions.userId, users.id))
+    .where(and(...conditions))
+    .orderBy(desc(staffCommissions.date));
+}
+
+export async function getCommissionSummaryByStaff(
+  businessId: number,
+  startDate: string,
+  endDate: string
+) {
+  const db = await getDb();
+  if (!db) return [];
+
+  const results = await db.select({
+    userId: staffCommissions.userId,
+    userName: users.name,
+    totalSalesAmount: sql<number>`CAST(SUM(${staffCommissions.saleAmount}) AS SIGNED)`,
+    totalCommissionAmount: sql<number>`CAST(SUM(${staffCommissions.commissionAmount}) AS SIGNED)`,
+    commissionPending: sql<number>`CAST(SUM(CASE WHEN ${staffCommissions.status} = 'pending' THEN ${staffCommissions.commissionAmount} ELSE 0 END) AS SIGNED)`,
+    commissionPaid: sql<number>`CAST(SUM(CASE WHEN ${staffCommissions.status} = 'paid' THEN ${staffCommissions.commissionAmount} ELSE 0 END) AS SIGNED)`,
+    transactionCount: sql<number>`COUNT(*)`,
+  }).from(staffCommissions)
+    .innerJoin(users, eq(staffCommissions.userId, users.id))
+    .where(
+      and(
+        eq(staffCommissions.businessId, businessId),
+        gte(staffCommissions.date, startDate),
+        lte(staffCommissions.date, endDate)
+      )
+    )
+    .groupBy(staffCommissions.userId, users.id, users.name);
+
+  return results;
+}
+
+export async function markCommissionPaid(commissionId: number): Promise<void> {
+  const db = await getDb();
+  if (!db) return;
+  await db.update(staffCommissions).set({
+    status: "paid",
+    paidAt: new Date(),
+  }).where(eq(staffCommissions.id, commissionId));
+}
+
+export async function markCommissionsPaidBulk(commissionIds: number[]): Promise<void> {
+  const db = await getDb();
+  if (!db || commissionIds.length === 0) return;
+  await db.update(staffCommissions).set({
+    status: "paid",
+    paidAt: new Date(),
+  }).where(inArray(staffCommissions.id, commissionIds));
+}
+
+// ─── Stock Batch Functions (FIFO, Expiry, Stock Aging, Advanced Alerts) ───
+
+export async function createStockBatch(data: InsertStockBatch): Promise<number> {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  const result = await db.insert(stockBatches).values(data);
+  return result[0].insertId;
+}
+
+export async function getStockBatchesByProduct(
+  productId: number,
+  warehouseId?: number
+): Promise<StockBatch[]> {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+
+  const conditions = [
+    eq(stockBatches.productId, productId),
+    eq(stockBatches.isActive, true),
+  ];
+  if (warehouseId) {
+    conditions.push(eq(stockBatches.warehouseId, warehouseId));
+  }
+
+  const result = await db
+    .select()
+    .from(stockBatches)
+    .where(and(...conditions))
+    .orderBy(asc(stockBatches.purchaseDate)); // FIFO: oldest first
+  return result;
+}
+
+export async function consumeStockFIFO(
+  productId: number,
+  qty: number,
+  warehouseId?: number
+): Promise<Array<{ batchId: number; qty: number; costPrice: number }>> {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  const batches = await getStockBatchesByProduct(productId, warehouseId);
+
+  const consumed: Array<{ batchId: number; qty: number; costPrice: number }> = [];
+  let remainingQty = qty;
+
+  for (const batch of batches) {
+    if (remainingQty <= 0) break;
+
+    const consumeQty = Math.min(remainingQty, batch.remainingQty);
+    if (consumeQty > 0) {
+      consumed.push({
+        batchId: batch.id,
+        qty: consumeQty,
+        costPrice: batch.costPrice,
+      });
+
+      // Update batch
+      const newRemaining = batch.remainingQty - consumeQty;
+      await db
+        .update(stockBatches)
+        .set({ remainingQty: newRemaining })
+        .where(eq(stockBatches.id, batch.id));
+
+      remainingQty -= consumeQty;
+    }
+  }
+
+  return consumed;
+}
+
+export async function getFIFOValuation(businessId: number) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+
+  // Get all products for this business
+  const allProducts = await db
+    .select()
+    .from(products)
+    .where(eq(products.businessId, businessId));
+
+  const result = [];
+  for (const product of allProducts) {
+    const batches = await getStockBatchesByProduct(product.id);
+
+    const batchDetails = batches.map((b) => ({
+      batchCode: b.batchCode,
+      purchaseDate: b.purchaseDate,
+      costPrice: b.costPrice,
+      remainingQty: b.remainingQty,
+      totalValue: b.costPrice * b.remainingQty,
+    }));
+
+    const totalQty = batchDetails.reduce((sum, b) => sum + b.remainingQty, 0);
+    const totalValue = batchDetails.reduce((sum, b) => sum + b.totalValue, 0);
+    const weightedAvgCost = totalQty > 0 ? totalValue / totalQty : 0;
+
+    result.push({
+      productId: product.id,
+      productName: product.name,
+      sku: product.sku,
+      batches: batchDetails,
+      totalQty,
+      totalValue,
+      weightedAvgCost,
+    });
+  }
+
+  return result;
+}
+
+export async function getExpiringStock(businessId: number, daysAhead: number = 30) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+
+  // Get all batches with expiry dates
+  const allBatches = await db
+    .select({
+      id: stockBatches.id,
+      productId: stockBatches.productId,
+      productName: products.name,
+      batchCode: stockBatches.batchCode,
+      expiryDate: stockBatches.expiryDate,
+      remainingQty: stockBatches.remainingQty,
+      costPrice: stockBatches.costPrice,
+    })
+    .from(stockBatches)
+    .leftJoin(products, eq(stockBatches.productId, products.id))
+    .where(and(eq(products.businessId, businessId), eq(stockBatches.isActive, true)));
+
+  // Filter and calculate days remaining
+  const expiring = allBatches
+    .filter((b) => b.expiryDate)
+    .map((b) => {
+      const expiryDate = new Date(b.expiryDate as string);
+      const today = new Date();
+      const daysRemaining = Math.ceil(
+        (expiryDate.getTime() - today.getTime()) / (1000 * 60 * 60 * 24)
+      );
+      return {
+        ...b,
+        daysRemaining,
+        totalValue: b.costPrice * b.remainingQty,
+      };
+    })
+    .filter((b) => b.daysRemaining <= daysAhead);
+
+  return expiring;
+}
+
+export async function getExpiredStock(businessId: number) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+
+  const allBatches = await db
+    .select({
+      id: stockBatches.id,
+      productId: stockBatches.productId,
+      productName: products.name,
+      batchCode: stockBatches.batchCode,
+      expiryDate: stockBatches.expiryDate,
+      remainingQty: stockBatches.remainingQty,
+      costPrice: stockBatches.costPrice,
+    })
+    .from(stockBatches)
+    .leftJoin(products, eq(stockBatches.productId, products.id))
+    .where(and(eq(products.businessId, businessId), eq(stockBatches.isActive, true)));
+
+  const today = new Date().toISOString().slice(0, 10);
+  const expired = allBatches
+    .filter((b) => b.expiryDate && b.expiryDate < today)
+    .map((b) => ({
+      ...b,
+      totalValue: b.costPrice * b.remainingQty,
+    }));
+
+  return expired;
+}
+
+export async function getStockAging(businessId: number) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+
+  // Get all products with their oldest batch and last sale date
+  const allProducts = await db
+    .select()
+    .from(products)
+    .where(eq(products.businessId, businessId));
+
+  const result = [];
+
+  for (const product of allProducts) {
+    const batches = await getStockBatchesByProduct(product.id);
+
+    if (batches.length === 0) continue;
+
+    const oldestBatch = batches[0]; // Already sorted by purchaseDate ASC (FIFO)
+    const today = new Date();
+    const oldestDate = new Date(oldestBatch.purchaseDate);
+    const ageDays = Math.floor(
+      (today.getTime() - oldestDate.getTime()) / (1000 * 60 * 60 * 24)
+    );
+
+    // Determine age bucket
+    let ageBucket = "0-30";
+    if (ageDays > 90) ageBucket = ">90";
+    else if (ageDays > 60) ageBucket = "61-90";
+    else if (ageDays > 30) ageBucket = "31-60";
+
+    // Get last sale date (from pos_receipt_items for this product)
+    const db2 = await getDb();
+    if (!db2) throw new Error("Database not available");
+    const lastSale = await db2
+      .select({ date: posReceipts.date })
+      .from(posReceiptItems)
+      .leftJoin(posReceipts, eq(posReceiptItems.receiptId, posReceipts.id))
+      .where(eq(posReceiptItems.productId, product.id))
+      .orderBy(desc(posReceipts.date))
+      .limit(1);
+
+    result.push({
+      productId: product.id,
+      productName: product.name,
+      sku: product.sku,
+      currentStock: product.stockCurrent,
+      oldestBatchDate: oldestBatch.purchaseDate,
+      ageDays,
+      ageBucket,
+      lastSaleDate: lastSale[0]?.date || null,
+    });
+  }
+
+  return result;
+}
+
+export async function getLowStockAlerts(businessId: number) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+
+  // Get all products with reorder settings
+  const allProducts = await db
+    .select()
+    .from(products)
+    .where(eq(products.businessId, businessId));
+
+  const result = [];
+
+  for (const product of allProducts) {
+    if (!product.reorderPoint && !product.safetyStock) continue;
+
+    const currentStock = product.stockCurrent;
+    const reorderPoint = product.reorderPoint || 0;
+    const safetyStock = product.safetyStock || 0;
+    const leadTimeDays = product.leadTimeDays || 0;
+
+    // Get average daily sales from last 30 days
+    const thirtyDaysAgo = new Date();
+    thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+    const startDate = thirtyDaysAgo.toISOString().slice(0, 10);
+
+    const salesData = await db
+      .select({
+        totalQty: sql<number>`SUM(${posReceiptItems.qty})`,
+      })
+      .from(posReceiptItems)
+      .leftJoin(posReceipts, eq(posReceiptItems.receiptId, posReceipts.id))
+      .where(
+        and(
+          eq(posReceiptItems.productId, product.id),
+          sql`DATE(${posReceipts.date}) >= ${startDate}`
+        )
+      );
+
+    const totalSold = salesData[0]?.totalQty || 0;
+    const avgDailySales = totalSold / 30;
+
+    // Calculate days until stockout
+    const daysUntilStockout =
+      avgDailySales > 0
+        ? Math.floor((currentStock - safetyStock) / avgDailySales)
+        : 999;
+
+    // Calculate suggested order quantity with 1.2 safety margin
+    const suggestedOrderQty = Math.ceil((reorderPoint + safetyStock - currentStock) * 1.2);
+
+    // Get preferred supplier if available (default: first supplier)
+    const suppliersList = await db
+      .select({ id: suppliers.id, name: suppliers.name })
+      .from(suppliers)
+      .where(eq(suppliers.businessId, businessId))
+      .limit(1);
+
+    result.push({
+      productId: product.id,
+      productName: product.name,
+      sku: product.sku,
+      currentStock,
+      reorderPoint,
+      safetyStock,
+      leadTimeDays,
+      daysUntilStockout,
+      suggestedOrderQty: Math.max(suggestedOrderQty, 0),
+      preferredSupplierId: suppliersList[0]?.id || null,
+    });
+  }
+
+  // Filter to only alerts (below reorder point or safety stock)
+  return result.filter(
+    (a) => a.currentStock <= a.reorderPoint || a.currentStock <= a.safetyStock
+  );
 }

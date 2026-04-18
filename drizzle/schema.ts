@@ -109,6 +109,9 @@ export const products = mysqlTable("products", {
   productCode: varchar("productCode", { length: 50 }),
   priceType: mysqlEnum("priceType", ["fixed", "dynamic"]).notNull().default("fixed"),
   discountPercent: decimal("discountPercent", { precision: 5, scale: 2 }).notNull().default("0"), // 0-100
+  reorderPoint: int("reorderPoint"), // when to reorder
+  safetyStock: int("safetyStock"), // minimum safety buffer
+  leadTimeDays: int("leadTimeDays"), // supplier lead time in days
   isActive: boolean("isActive").notNull().default(true),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
   updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
@@ -647,6 +650,26 @@ export const purchaseOrderItems = mysqlTable("purchase_order_items", {
 export type PurchaseOrderItem = typeof purchaseOrderItems.$inferSelect;
 export type InsertPurchaseOrderItem = typeof purchaseOrderItems.$inferInsert;
 
+// ─── Loyalty Configuration ───
+export const loyaltyConfig = mysqlTable("loyalty_config", {
+  id: int("id").autoincrement().primaryKey(),
+  businessId: int("businessId").notNull().unique(),
+  isEnabled: boolean("isEnabled").notNull().default(false),
+  pointsPerAmount: int("pointsPerAmount").notNull().default(1), // earn X points
+  amountPerPoint: int("amountPerPoint").notNull().default(10000), // per Rp Y spent
+  redemptionRate: int("redemptionRate").notNull().default(100), // 1 point = Rp Z
+  minRedeemPoints: int("minRedeemPoints").notNull().default(100),
+  // Tier thresholds
+  silverThreshold: int("silverThreshold").notNull().default(500),
+  goldThreshold: int("goldThreshold").notNull().default(2000),
+  platinumThreshold: int("platinumThreshold").notNull().default(5000),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+});
+
+export type LoyaltyConfig = typeof loyaltyConfig.$inferSelect;
+export type InsertLoyaltyConfig = typeof loyaltyConfig.$inferInsert;
+
 // ─── Loyalty Points ───
 export const loyaltyPoints = mysqlTable("loyalty_points", {
   id: int("id").autoincrement().primaryKey(),
@@ -655,6 +678,7 @@ export const loyaltyPoints = mysqlTable("loyalty_points", {
   points: int("points").notNull().default(0),
   totalEarned: int("totalEarned").notNull().default(0),
   totalRedeemed: int("totalRedeemed").notNull().default(0),
+  tierLevel: varchar("tierLevel", { length: 20 }).notNull().default("Bronze"), // Bronze, Silver, Gold, Platinum
   updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
 });
 
@@ -708,3 +732,54 @@ export const warehouseAccess = mysqlTable("warehouse_access", {
 
 export type WarehouseAccess = typeof warehouseAccess.$inferSelect;
 export type InsertWarehouseAccess = typeof warehouseAccess.$inferInsert;
+
+// ─── Staff Commission Config ───
+export const commissionConfig = mysqlTable("commission_config", {
+  id: int("id").autoincrement().primaryKey(),
+  businessId: int("businessId").notNull().unique(),
+  isEnabled: boolean("isEnabled").notNull().default(false),
+  commissionType: mysqlEnum("commissionType", ["percentage", "flat"]).notNull().default("percentage"),
+  commissionRate: int("commissionRate").notNull().default(0), // percentage (in basis points, e.g. 500 = 5%) or flat amount in Rupiah
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+});
+
+export type CommissionConfig = typeof commissionConfig.$inferSelect;
+export type InsertCommissionConfig = typeof commissionConfig.$inferInsert;
+
+// ─── Staff Commissions ───
+export const staffCommissions = mysqlTable("staff_commissions", {
+  id: int("id").autoincrement().primaryKey(),
+  businessId: int("businessId").notNull(),
+  userId: int("userId").notNull(), // the staff member
+  receiptId: int("receiptId").notNull(), // linked POS receipt
+  receiptCode: varchar("receiptCode", { length: 30 }).notNull(),
+  saleAmount: bigint("saleAmount", { mode: "number" }).notNull(),
+  commissionAmount: bigint("commissionAmount", { mode: "number" }).notNull(),
+  date: varchar("date", { length: 10 }).notNull(), // yyyy-mm-dd
+  status: mysqlEnum("status", ["pending", "paid"]).notNull().default("pending"),
+  paidAt: timestamp("paidAt"),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+});
+
+export type StaffCommission = typeof staffCommissions.$inferSelect;
+export type InsertStaffCommission = typeof staffCommissions.$inferInsert;
+
+// ─── Stock Batches (FIFO + Expiry Tracking) ───
+export const stockBatches = mysqlTable("stock_batches", {
+  id: int("id").autoincrement().primaryKey(),
+  businessId: int("businessId").notNull(),
+  productId: int("productId").notNull(),
+  warehouseId: int("warehouseId"),
+  batchCode: varchar("batchCode", { length: 50 }),
+  purchaseDate: varchar("purchaseDate", { length: 10 }).notNull(), // when this batch was purchased/received (yyyy-mm-dd)
+  expiryDate: varchar("expiryDate", { length: 10 }), // nullable — not all products expire (yyyy-mm-dd)
+  costPrice: bigint("costPrice", { mode: "number" }).notNull(), // HPP per unit for this batch
+  initialQty: int("initialQty").notNull(),
+  remainingQty: int("remainingQty").notNull(),
+  isActive: boolean("isActive").notNull().default(true),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+});
+
+export type StockBatch = typeof stockBatches.$inferSelect;
+export type InsertStockBatch = typeof stockBatches.$inferInsert;

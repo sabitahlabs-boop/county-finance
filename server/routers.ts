@@ -58,11 +58,13 @@ import {
   generatePONumber, getPurchaseOrdersByBusiness, getPurchaseOrderById, createPurchaseOrder, updatePurchaseOrder, deletePurchaseOrder,
   getPurchaseOrderItems, createPurchaseOrderItem, deletePurchaseOrderItems,
   getLoyaltyPoints, getLoyaltyPointsByBusiness, addLoyaltyPoints, redeemLoyaltyPoints, getLoyaltyTransactionsByClient,
+  getLoyaltyConfig, upsertLoyaltyConfig, updateLoyaltyTier, autoAwardLoyaltyPoints,
   getInvoiceSettings, upsertInvoiceSettings,
   getWarehouseAccessByUser, getWarehouseAccessByWarehouse, setWarehouseAccess, getAccessibleWarehouses,
   getSalesByCustomer, getSalesByHour, getSalesByDate,
   createCreditSale, addCreditPayment, getCreditSalesReport, getCreditPaymentsForSale,
-  getDiscountSummary, getVoidRefundAnalysis, getKasReconciliation,
+  getDiscountSummary, getVoidRefundAnalysis, getKasReconciliation, getShiftReport,
+  getCommissionConfig, createStaffCommission, upsertCommissionConfig,
   getDb,
 } from "./db";
 import { PLAN_LIMITS, BULAN_INDONESIA, formatRupiah } from "../shared/finance";
@@ -530,6 +532,59 @@ export const appRouter = router({
       }
       return { imported: results.length, products: results };
     }),
+    addBatch: protectedProcedure.input(z.object({
+      productId: z.number(),
+      warehouseId: z.number().optional(),
+      batchCode: z.string().optional(),
+      purchaseDate: z.string(), // yyyy-mm-dd
+      expiryDate: z.string().optional(),
+      costPrice: z.number(),
+      initialQty: z.number().min(1),
+    })).mutation(async ({ ctx, input }) => {
+      const biz = (await resolveBusinessForUser(ctx.user.id, ctx.requestedBusinessId))?.business;
+      if (!biz) throw new TRPCError({ code: "NOT_FOUND" });
+      const product = await getProductById(input.productId);
+      if (!product || product.businessId !== biz.id) throw new TRPCError({ code: "NOT_FOUND" });
+      const { createStockBatch } = await import("./db");
+      const batchId = await createStockBatch({
+        businessId: biz.id,
+        productId: input.productId,
+        warehouseId: input.warehouseId,
+        batchCode: input.batchCode || `BATCH-${Date.now()}`,
+        purchaseDate: input.purchaseDate,
+        expiryDate: input.expiryDate || null,
+        costPrice: input.costPrice,
+        initialQty: input.initialQty,
+        remainingQty: input.initialQty,
+        isActive: true,
+      });
+      return { batchId };
+    }),
+    batches: protectedProcedure.input(z.object({
+      productId: z.number(),
+      warehouseId: z.number().optional(),
+    })).query(async ({ ctx, input }) => {
+      const biz = (await resolveBusinessForUser(ctx.user.id, ctx.requestedBusinessId))?.business;
+      if (!biz) return [];
+      const product = await getProductById(input.productId);
+      if (!product || product.businessId !== biz.id) return [];
+      const { getStockBatchesByProduct } = await import("./db");
+      return getStockBatchesByProduct(input.productId, input.warehouseId);
+    }),
+    updateReorderSettings: protectedProcedure.input(z.object({
+      id: z.number(),
+      reorderPoint: z.number().optional(),
+      safetyStock: z.number().optional(),
+      leadTimeDays: z.number().optional(),
+    })).mutation(async ({ ctx, input }) => {
+      const biz = (await resolveBusinessForUser(ctx.user.id, ctx.requestedBusinessId))?.business;
+      if (!biz) throw new TRPCError({ code: "NOT_FOUND" });
+      const product = await getProductById(input.id);
+      if (!product || product.businessId !== biz.id) throw new TRPCError({ code: "NOT_FOUND" });
+      const { id, ...data } = input;
+      await updateProduct(id, data);
+      return { success: true };
+    }),
   }),
 
   // ─── Export Data ───
@@ -892,6 +947,58 @@ export const appRouter = router({
       const biz = (await resolveBusinessForUser(ctx.user.id, ctx.requestedBusinessId))?.business;
       if (!biz) throw new TRPCError({ code: "NOT_FOUND" });
       return getKasReconciliation(biz.id, input.startDate, input.endDate);
+    }),
+
+    // ─── W3.1: Shift Report ───
+    shiftReport: protectedProcedure.input(z.object({
+      startDate: z.string().optional(),
+      endDate: z.string().optional(),
+    })).query(async ({ ctx, input }) => {
+      const resolved = await resolveBusinessForUser(ctx.user.id, ctx.requestedBusinessId);
+      if (!resolved) return { shifts: [], summary: { totalShifts: 0, totalPenjualan: 0, totalRefund: 0, avgCashDifference: 0 } };
+      return getShiftReport(resolved.business.id, input.startDate, input.endDate);
+    }),
+
+    // ─── Inventory: FIFO Valuation ───
+    fifoValuation: protectedProcedure.query(async ({ ctx }) => {
+      const biz = (await resolveBusinessForUser(ctx.user.id, ctx.requestedBusinessId))?.business;
+      if (!biz) throw new TRPCError({ code: "NOT_FOUND" });
+      const { getFIFOValuation } = await import("./db");
+      return getFIFOValuation(biz.id);
+    }),
+
+    // ─── Inventory: Expiring Stock ───
+    expiringStock: protectedProcedure.input(z.object({
+      daysAhead: z.number().default(30),
+    })).query(async ({ ctx, input }) => {
+      const biz = (await resolveBusinessForUser(ctx.user.id, ctx.requestedBusinessId))?.business;
+      if (!biz) throw new TRPCError({ code: "NOT_FOUND" });
+      const { getExpiringStock } = await import("./db");
+      return getExpiringStock(biz.id, input.daysAhead);
+    }),
+
+    // ─── Inventory: Expired Stock ───
+    expiredStock: protectedProcedure.query(async ({ ctx }) => {
+      const biz = (await resolveBusinessForUser(ctx.user.id, ctx.requestedBusinessId))?.business;
+      if (!biz) throw new TRPCError({ code: "NOT_FOUND" });
+      const { getExpiredStock } = await import("./db");
+      return getExpiredStock(biz.id);
+    }),
+
+    // ─── Inventory: Stock Aging ───
+    stockAging: protectedProcedure.query(async ({ ctx }) => {
+      const biz = (await resolveBusinessForUser(ctx.user.id, ctx.requestedBusinessId))?.business;
+      if (!biz) throw new TRPCError({ code: "NOT_FOUND" });
+      const { getStockAging } = await import("./db");
+      return getStockAging(biz.id);
+    }),
+
+    // ─── Inventory: Low Stock Alerts ───
+    lowStockAlerts: protectedProcedure.query(async ({ ctx }) => {
+      const biz = (await resolveBusinessForUser(ctx.user.id, ctx.requestedBusinessId))?.business;
+      if (!biz) throw new TRPCError({ code: "NOT_FOUND" });
+      const { getLowStockAlerts } = await import("./db");
+      return getLowStockAlerts(biz.id);
     }),
   }),
 
@@ -2298,6 +2405,42 @@ Penting: Kembalikan HANYA JSON valid, tidak ada teks penjelasan.`,
         }
       }
 
+      // ─── Auto-create staff commission ───
+      try {
+        const commConfig = await getCommissionConfig(bizId);
+        if (commConfig?.isEnabled) {
+          let commAmount = 0;
+          if (commConfig.commissionType === "percentage") {
+            commAmount = Math.round(input.grandTotal * commConfig.commissionRate / 10000);
+          } else {
+            commAmount = commConfig.commissionRate;
+          }
+          if (commAmount > 0) {
+            await createStaffCommission({
+              businessId: bizId,
+              userId: ctx.user.id,
+              receiptId,
+              receiptCode,
+              saleAmount: input.grandTotal,
+              commissionAmount: commAmount,
+              date: saleDate,
+            });
+          }
+        }
+      } catch (e) {
+        console.error("Commission error:", e);
+      }
+
+      // ─── Auto-award loyalty points if client is attached ───
+      if (input.clientId) {
+        try {
+          await autoAwardLoyaltyPoints(bizId, input.clientId, input.grandTotal);
+        } catch (e) {
+          // Don't fail the checkout if loyalty fails
+          console.error("Loyalty points error:", e);
+        }
+      }
+
       return { receiptId, receiptCode };
     }),
 
@@ -2540,6 +2683,49 @@ Penting: Kembalikan HANYA JSON valid, tidak ada teks penjelasan.`,
       if (!resolved) return [];
       return getLoyaltyTransactionsByClient(resolved.business.id, input.clientId);
     }),
+    getConfig: protectedProcedure.query(async ({ ctx }) => {
+      const resolved = await resolveBusinessForUser(ctx.user.id, ctx.requestedBusinessId);
+      if (!resolved) throw new TRPCError({ code: "NOT_FOUND" });
+      return getLoyaltyConfig(resolved.business.id);
+    }),
+    updateConfig: protectedProcedure.input(z.object({
+      isEnabled: z.boolean().optional(),
+      pointsPerAmount: z.number().min(1).optional(),
+      amountPerPoint: z.number().min(1).optional(),
+      redemptionRate: z.number().min(1).optional(),
+      minRedeemPoints: z.number().min(1).optional(),
+      silverThreshold: z.number().min(0).optional(),
+      goldThreshold: z.number().min(0).optional(),
+      platinumThreshold: z.number().min(0).optional(),
+    })).mutation(async ({ ctx, input }) => {
+      const resolved = await resolveBusinessForUser(ctx.user.id, ctx.requestedBusinessId);
+      if (!resolved) throw new TRPCError({ code: "NOT_FOUND" });
+      await upsertLoyaltyConfig(resolved.business.id, input);
+      return { success: true };
+    }),
+    // Redeem points as discount in POS
+    redeemAsDiscount: protectedProcedure.input(z.object({
+      clientId: z.number(),
+      points: z.number().min(1),
+    })).mutation(async ({ ctx, input }) => {
+      const resolved = await resolveBusinessForUser(ctx.user.id, ctx.requestedBusinessId);
+      if (!resolved) throw new TRPCError({ code: "NOT_FOUND" });
+      const bizId = resolved.business.id;
+      const config = await getLoyaltyConfig(bizId);
+      const loyalty = await getLoyaltyPoints(bizId, input.clientId);
+
+      if (!loyalty || loyalty.points < input.points) {
+        throw new TRPCError({ code: "BAD_REQUEST", message: "Poin tidak cukup" });
+      }
+      if (input.points < config.minRedeemPoints) {
+        throw new TRPCError({ code: "BAD_REQUEST", message: `Minimal poin yang dapat ditukar adalah ${config.minRedeemPoints}` });
+      }
+
+      const discountAmount = input.points * config.redemptionRate;
+      const success = await redeemLoyaltyPoints(bizId, input.clientId, input.points, `Tukar poin menjadi diskon Rp ${discountAmount.toLocaleString('id-ID')}`);
+
+      return { success, discountAmount };
+    }),
   }),
 
   // ─── Invoice Settings ───
@@ -2588,6 +2774,62 @@ Penting: Kembalikan HANYA JSON valid, tidak ada teks penjelasan.`,
       const resolved = await resolveBusinessForUser(ctx.user.id, ctx.requestedBusinessId);
       if (!resolved) return [];
       return getAccessibleWarehouses(resolved.business.id, ctx.user.id, resolved.isOwner);
+    }),
+  }),
+
+  // ─── Staff Commission ───
+  commission: router({
+    config: protectedProcedure.query(async ({ ctx }) => {
+      const resolved = await resolveBusinessForUser(ctx.user.id, ctx.requestedBusinessId);
+      if (!resolved) return null;
+      return getCommissionConfig(resolved.business.id);
+    }),
+
+    updateConfig: protectedProcedure.input(z.object({
+      isEnabled: z.boolean().optional(),
+      commissionType: z.enum(["percentage", "flat"]).optional(),
+      commissionRate: z.number().optional(),
+    })).mutation(async ({ ctx, input }) => {
+      const resolved = await resolveBusinessForUser(ctx.user.id, ctx.requestedBusinessId);
+      if (!resolved) throw new TRPCError({ code: "NOT_FOUND" });
+      return upsertCommissionConfig(resolved.business.id, input);
+    }),
+
+    report: protectedProcedure.input(z.object({
+      startDate: z.string().optional(),
+      endDate: z.string().optional(),
+      userId: z.number().optional(),
+    })).query(async ({ ctx, input }) => {
+      const resolved = await resolveBusinessForUser(ctx.user.id, ctx.requestedBusinessId);
+      if (!resolved) return [];
+      const { getCommissionReport } = await import("./db");
+      return getCommissionReport(resolved.business.id, input.startDate, input.endDate, input.userId);
+    }),
+
+    summary: protectedProcedure.input(z.object({
+      startDate: z.string(),
+      endDate: z.string(),
+    })).query(async ({ ctx, input }) => {
+      const resolved = await resolveBusinessForUser(ctx.user.id, ctx.requestedBusinessId);
+      if (!resolved) return [];
+      const { getCommissionSummaryByStaff } = await import("./db");
+      return getCommissionSummaryByStaff(resolved.business.id, input.startDate, input.endDate);
+    }),
+
+    markPaid: protectedProcedure.input(z.object({
+      id: z.number(),
+    })).mutation(async ({ ctx, input }) => {
+      const { markCommissionPaid } = await import("./db");
+      await markCommissionPaid(input.id);
+      return { success: true };
+    }),
+
+    markBulkPaid: protectedProcedure.input(z.object({
+      ids: z.array(z.number()),
+    })).mutation(async ({ ctx, input }) => {
+      const { markCommissionsPaidBulk } = await import("./db");
+      await markCommissionsPaidBulk(input.ids);
+      return { success: true };
     }),
   }),
 });

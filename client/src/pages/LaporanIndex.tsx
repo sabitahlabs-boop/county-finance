@@ -23,6 +23,9 @@ import {
   Banknote,
   Tag,
   RotateCcw,
+  Star,
+  Coins,
+  AlertTriangle,
 } from "lucide-react";
 
 interface ReportEntry {
@@ -161,12 +164,28 @@ const REPORTS: ReportEntry[] = [
     keywords: ["void", "refund", "batal", "retur", "pengembalian"],
   },
   {
+    name: "Laporan Shift",
+    description: "Analitik per shift: penjualan, refund, durasi, kas awal/akhir, dan selisih kas",
+    path: "/laporan-shift",
+    icon: Clock,
+    category: "Laporan Penjualan",
+    keywords: ["shift", "kasir", "kas", "penjualan shift", "durasi", "selisih kas"],
+  },
+  {
     name: "Transaksi Tunai (Kas Reconciliation)",
     description: "Rekonsiliasi kas: pendapatan tunai, void, pengeluaran, kembalian, saldo bersih",
     path: "/transaksi-tunai",
     icon: Wallet,
     category: "Laporan Penjualan",
     keywords: ["cash", "tunai", "kas", "reconciliation", "saldo", "kembalian"],
+  },
+  {
+    name: "Komisi Staff",
+    description: "Tracking komisi penjualan setiap kasir/staff per transaksi POS",
+    path: "/komisi",
+    icon: Coins,
+    category: "Laporan Penjualan",
+    keywords: ["komisi", "commission", "staff", "kasir", "penjualan", "earnings"],
   },
 
   // ── Laporan Operasional ──
@@ -211,6 +230,50 @@ const REPORTS: ReportEntry[] = [
     icon: Calculator,
     category: "Analitik",
     keywords: ["tax", "pph", "ppn", "umkm", "tarif"],
+  },
+
+  // ── Laporan Inventori ──
+  {
+    name: "Valuasi FIFO",
+    description: "Valuasi persediaan dengan metode FIFO per batch pembelian",
+    path: "/valuasi-fifo",
+    icon: Package,
+    category: "Laporan Inventori",
+    keywords: ["fifo", "valuasi", "hpp", "persediaan", "batch", "cost"],
+  },
+  {
+    name: "Stok Kedaluwarsa",
+    description: "Monitoring produk dengan tanggal kadaluarsa yang mendekat atau sudah expired",
+    path: "/stok-kedaluwarsa",
+    icon: AlertTriangle,
+    category: "Laporan Inventori",
+    keywords: ["expiry", "kadaluarsa", "expired", "expire date", "barang rusak"],
+  },
+  {
+    name: "Usia Stok",
+    description: "Analisis umur stok untuk identifikasi slow-moving dan dead stock",
+    path: "/usia-stok",
+    icon: CalendarDays,
+    category: "Laporan Inventori",
+    keywords: ["stock aging", "slow moving", "dead stock", "age", "umur stok"],
+  },
+  {
+    name: "Peringatan Stok Rendah",
+    description: "Dashboard peringatan stok dengan rekomendasi pemesanan otomatis",
+    path: "/peringatan-stok",
+    icon: AlertTriangle,
+    category: "Laporan Inventori",
+    keywords: ["low stock", "reorder point", "safety stock", "purchase order", "po"],
+  },
+
+  // ── Program Loyalitas ──
+  {
+    name: "Program Loyalitas",
+    description: "Kelola poin loyalitas, tier member, dan konfigurasi reward",
+    path: "/loyalty",
+    icon: Star,
+    category: "Program Loyalitas",
+    keywords: ["loyalty", "poin", "reward", "tier", "member", "bronze", "silver", "gold", "platinum"],
   },
 ];
 
