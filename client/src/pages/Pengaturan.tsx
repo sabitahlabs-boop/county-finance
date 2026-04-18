@@ -1033,9 +1033,9 @@ function TeamManagementTab() {
       utils.team.invites.invalidate();
       const inviteUrl = `${window.location.origin}/accept-invite?token=${data.token}`;
       navigator.clipboard.writeText(inviteUrl).then(() => {
-        toast.success("Undangan berhasil dibuat! Link sudah dicopy ke clipboard.");
+        toast.success("Undangan berhasil dibuat! Link invite sudah dicopy — kirim link ini ke anggota tim via WhatsApp/email.");
       }).catch(() => {
-        toast.success("Undangan berhasil dibuat!");
+        toast.success(`Undangan berhasil dibuat! Kirim link ini ke anggota tim: ${inviteUrl}`);
       });
       setInviteOpen(false);
       setInviteEmail("");

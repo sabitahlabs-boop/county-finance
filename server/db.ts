@@ -2917,6 +2917,14 @@ export async function getTeamInviteByToken(token: string): Promise<TeamInvite | 
   return rows[0];
 }
 
+export async function getPendingInvitesByEmail(email: string): Promise<TeamInvite[]> {
+  const db = await getDb();
+  if (!db) return [];
+  return db.select().from(teamInvites)
+    .where(and(eq(teamInvites.email, email), eq(teamInvites.status, "pending")))
+    .orderBy(desc(teamInvites.createdAt));
+}
+
 export async function getTeamInvitesByBusiness(businessId: number): Promise<TeamInvite[]> {
   const db = await getDb();
   if (!db) return [];
@@ -2994,6 +3002,19 @@ export async function resolveBusinessForUser(userId: number, requestedBusinessId
   const ownBiz = await getBusinessByOwnerId(userId);
   if (ownBiz) {
     return { business: ownBiz, isOwner: true, membership: null };
+  }
+  // Fallback: check if user is a team member of ANY business
+  const db = await getDb();
+  if (db) {
+    const memberships = await db.select().from(teamMembers)
+      .where(and(eq(teamMembers.userId, userId), eq(teamMembers.status, "active")))
+      .limit(1);
+    if (memberships.length > 0) {
+      const memberBiz = await getBusinessById(memberships[0].businessId);
+      if (memberBiz) {
+        return { business: memberBiz, isOwner: false, membership: memberships[0] };
+      }
+    }
   }
   return null;
 }

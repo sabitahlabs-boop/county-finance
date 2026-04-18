@@ -40,7 +40,7 @@ import {
   performStockTransfer, getStockTransfersByBusiness, migrateStockToDefaultWarehouse,
   getTeamMembersByBusiness, getTeamMemberByUserAndBusiness, getTeamMembershipsByUser,
   createTeamMember, updateTeamMember, deleteTeamMember, getTeamMemberById,
-  createTeamInvite, getTeamInviteByToken, getTeamInvitesByBusiness, updateTeamInviteStatus, deleteTeamInvite,
+  createTeamInvite, getTeamInviteByToken, getTeamInvitesByBusiness, getPendingInvitesByEmail, updateTeamInviteStatus, deleteTeamInvite,
   getBusinessForTeamMember, getUserById, getUsersByIds,
   ROLE_PERMISSIONS, PERMISSION_LABELS,
   resolveBusinessForUser,
@@ -102,6 +102,32 @@ export const appRouter = router({
   business: router({
     mine: protectedProcedure.query(async ({ ctx }) => {
       await seedDefaultTaxRules();
+      // Auto-accept pending invites for this user's email
+      if (ctx.user.email) {
+        try {
+          const pendingInvites = await getPendingInvitesByEmail(ctx.user.email);
+          for (const invite of pendingInvites) {
+            if (new Date() > invite.expiresAt) {
+              await updateTeamInviteStatus(invite.id, "expired");
+              continue;
+            }
+            const existing = await getTeamMemberByUserAndBusiness(ctx.user.id, invite.businessId);
+            if (!existing) {
+              await createTeamMember({
+                businessId: invite.businessId,
+                userId: ctx.user.id,
+                role: invite.role as any,
+                permissions: invite.permissions as Record<string, boolean>,
+                invitedBy: invite.invitedBy,
+                status: "active",
+              });
+            }
+            await updateTeamInviteStatus(invite.id, "accepted");
+          }
+        } catch (e) {
+          console.warn("[Team] Auto-accept invite failed:", e);
+        }
+      }
       // Use resolveBusinessForUser to support multi-business switching
       const resolved = await resolveBusinessForUser(ctx.user.id, ctx.requestedBusinessId);
       return resolved?.business ?? null;
