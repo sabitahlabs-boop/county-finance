@@ -9,8 +9,8 @@ import { transactions, posReceipts, posReceiptItems, discountCodes } from "../dr
 import {
   getBusinessByOwnerId, getBusinessesByOwnerId, getBusinessByOwnerAndMode, getBusinessById, getBusinessBySlug, createBusiness, updateBusiness, getAllBusinesses,
   getActiveTaxRules, seedDefaultTaxRules, updateTaxRule,
-  getProductsByBusiness, getProductById, createProduct, updateProduct, countProductsByBusiness, getLowStockProducts,
-  createTransaction, updateTransaction, getTransactionsByBusiness, countTransactionsForMonth, softDeleteTransaction, getTransactionById, generateTxCode,
+  getProductsByBusiness, getProductById, createProduct, safeInsertProduct, updateProduct, countProductsByBusiness, getLowStockProducts,
+  createTransaction, safeInsertTransaction, updateTransaction, getTransactionsByBusiness, countTransactionsForMonth, softDeleteTransaction, getTransactionById, generateTxCode,
   createStockLog, getStockLogsByBusiness,
   createTaxPayment, getTaxPaymentsByBusiness,
   getTransactionSummary, getYearlyOmzet, calcTaxForMonth,
@@ -22,7 +22,7 @@ import {
   upgradeBusinessToProByEmail, getBusinessPlan,
   createProLink, getProLinkByToken, markProLinkUsed, listProLinks, deleteProLink, upgradeBusinessToPro,
   updateBusinessMode, updateBusinessPosEnabled,
-  getBankAccountsByBusiness, getBankAccountById, createBankAccount, updateBankAccount, deleteBankAccount, getBalancesByAccounts,
+  getBankAccountsByBusiness, getBankAccountById, createBankAccount, safeInsertBankAccount, updateBankAccount, deleteBankAccount, getBalancesByAccounts,
   getRekeningKoranReport, getMutasiPersediaanReport,
   getClientsByBusiness, getClientById, createClient, updateClient, deleteClient,
   getDebtsByBusiness, getDebtById, createDebt, updateDebt, deleteDebt,
@@ -306,7 +306,7 @@ export const appRouter = router({
         bankAccountId = matchedAccount.id;
       }
 
-      await createTransaction({
+      await safeInsertTransaction({
         businessId: biz.id,
         txCode,
         date: new Date().toISOString().slice(0, 10),
@@ -388,7 +388,7 @@ export const appRouter = router({
         bankAccountId = matchedAccount.id;
       }
 
-      const txId = await createTransaction({
+      const txId = await safeInsertTransaction({
         businessId: biz.id,
         txCode,
         date: new Date().toISOString().slice(0, 10),
@@ -434,8 +434,8 @@ export const appRouter = router({
       const biz = (await resolveBusinessForUser(ctx.user.id, ctx.requestedBusinessId))?.business;
       if (!biz) throw new TRPCError({ code: "NOT_FOUND", message: "Bisnis tidak ditemukan" });
       // No plan limits — all users are Pro
-      const { discountPercent: discPct, warehouseId, ...restInput } = input;
-      const id = await createProduct({ ...restInput, businessId: biz.id, discountPercent: String(discPct ?? 0) });
+      const { warehouseId, ...restInput } = input;
+      const id = await safeInsertProduct({ ...restInput, businessId: biz.id });
       if (input.stockCurrent > 0) {
         const today = new Date().toISOString().substring(0, 10);
         await createStockLog({ businessId: biz.id, productId: id, date: today, movementType: "opening", qty: input.stockCurrent, direction: 1, stockBefore: 0, stockAfter: input.stockCurrent, notes: "Stok awal" });
@@ -541,7 +541,7 @@ export const appRouter = router({
       const results: { name: string; id: number }[] = [];
       const today = new Date().toISOString().substring(0, 10);
       for (const p of input.products) {
-        const id = await createProduct({ ...p, businessId: biz.id });
+        const id = await safeInsertProduct({ ...p, businessId: biz.id });
         if (p.stockCurrent > 0) {
           await createStockLog({ businessId: biz.id, productId: id, date: today, movementType: "opening", qty: p.stockCurrent, direction: 1, stockBefore: 0, stockAfter: p.stockCurrent, notes: "Stok awal (bulk import)" });
         }
@@ -715,7 +715,7 @@ export const appRouter = router({
         bankAccountId = matchedAccount.id;
       }
 
-      const id = await createTransaction({ ...input, businessId: biz.id, txCode, productHppSnapshot, taxRelated: true, bankAccountId });
+      const id = await safeInsertTransaction({ ...input, businessId: biz.id, txCode, productHppSnapshot, taxRelated: true, bankAccountId });
       return { id, txCode };
     }),
     update: protectedProcedure.input(z.object({
@@ -1278,7 +1278,7 @@ export const appRouter = router({
       const posAccounts = await getBankAccountsByBusiness(bizId);
       const bankAccountId = resolveBankAccountId(posAccounts, paymentMethod);
 
-      await createTransaction({
+      await safeInsertTransaction({
         businessId: bizId,
         txCode,
         date: input.date,
@@ -1722,7 +1722,7 @@ Penting: Kembalikan HANYA JSON valid, tidak ada teks penjelasan.`,
     })).mutation(async ({ ctx, input }) => {
       const biz = (await resolveBusinessForUser(ctx.user.id, ctx.requestedBusinessId))?.business;
       if (!biz) throw new TRPCError({ code: "NOT_FOUND", message: "Bisnis tidak ditemukan" });
-      const id = await createBankAccount({ ...input, businessId: biz.id });
+      const id = await safeInsertBankAccount({ ...input, businessId: biz.id });
       return { id };
     }),
     update: protectedProcedure.input(z.object({
@@ -1913,7 +1913,7 @@ Penting: Kembalikan HANYA JSON valid, tidak ada teks penjelasan.`,
 
       if (debt.type === "hutang") {
         // Hutang: kita bayar hutang → pengeluaran dari rekening kita
-        await createTransaction({
+        await safeInsertTransaction({
           businessId: biz.id,
           txCode,
           date: input.paymentDate,
@@ -1928,7 +1928,7 @@ Penting: Kembalikan HANYA JSON valid, tidak ada teks penjelasan.`,
         });
       } else {
         // Piutang: orang bayar ke kita → pemasukan ke rekening kita
-        await createTransaction({
+        await safeInsertTransaction({
           businessId: biz.id,
           txCode,
           date: input.paymentDate,

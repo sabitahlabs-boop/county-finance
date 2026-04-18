@@ -699,6 +699,59 @@ export async function createProduct(data: InsertProduct): Promise<number> {
   }
 }
 
+/**
+ * Safe product insert — sanitizes, validates, fills ALL defaults, coerces types.
+ * Use this from routers and seed functions instead of raw createProduct().
+ */
+export async function safeInsertProduct(input: {
+  businessId: number;
+  name: string;
+  sku?: string | null;
+  category?: string | null;
+  hpp: number;
+  sellingPrice: number;
+  stockCurrent?: number;
+  stockMinimum?: number;
+  unit?: string;
+  imageUrl?: string | null;
+  barcode?: string | null;
+  imei?: string | null;
+  motorCode?: string | null;
+  productCode?: string | null;
+  priceType?: "fixed" | "dynamic";
+  discountPercent?: number | string;
+  reorderPoint?: number | null;
+  safetyStock?: number | null;
+  leadTimeDays?: number | null;
+  isActive?: boolean;
+}): Promise<number> {
+  // Sanitize & coerce types
+  const sanitized: InsertProduct = {
+    businessId: input.businessId,
+    name: String(input.name).trim(),
+    sku: input.sku || null,
+    category: input.category || null,
+    hpp: Math.max(0, Number(input.hpp) || 0),
+    sellingPrice: Math.max(0, Number(input.sellingPrice) || 0),
+    stockCurrent: Math.max(0, Number(input.stockCurrent) ?? 0),
+    stockMinimum: Math.max(0, Number(input.stockMinimum) ?? 5),
+    unit: input.unit?.trim() || "pcs",
+    imageUrl: input.imageUrl || null,
+    barcode: input.barcode || null,
+    imei: input.imei || null,
+    motorCode: input.motorCode || null,
+    productCode: input.productCode || null,
+    priceType: input.priceType === "dynamic" ? "dynamic" : "fixed",
+    discountPercent: String(Number(input.discountPercent) || 0),
+    reorderPoint: input.reorderPoint != null ? Number(input.reorderPoint) : null,
+    safetyStock: input.safetyStock != null ? Number(input.safetyStock) : null,
+    leadTimeDays: input.leadTimeDays != null ? Number(input.leadTimeDays) : null,
+    isActive: input.isActive !== false, // default true
+  };
+
+  return createProduct(sanitized);
+}
+
 export async function updateProduct(id: number, data: Partial<InsertProduct>) {
   const db = await getDb();
   if (!db) throw new Error("Database not available");
@@ -737,6 +790,53 @@ export async function createTransaction(data: InsertTransaction): Promise<number
   } catch (e: any) {
     throw new Error(`[transactions] INSERT failed: ${e.message}. Data: ${JSON.stringify(cleaned, null, 2).substring(0, 500)}`);
   }
+}
+
+/**
+ * Safe transaction insert — sanitizes, validates, fills defaults, coerces types.
+ * Use from routers and seed functions instead of raw createTransaction().
+ */
+export async function safeInsertTransaction(input: {
+  businessId: number;
+  txCode: string;
+  date: string;
+  type: "pemasukan" | "pengeluaran";
+  category: string;
+  description?: string | null;
+  amount: number;
+  paymentMethod?: string;
+  clientId?: number | null;
+  productId?: number | null;
+  productQty?: number | null;
+  productHppSnapshot?: number | null;
+  taxRelated?: boolean;
+  notes?: string | null;
+  shiftId?: number | null;
+  receiptId?: number | null;
+  bankAccountId?: number | null;
+}): Promise<number> {
+  const sanitized: InsertTransaction = {
+    businessId: input.businessId,
+    txCode: String(input.txCode).trim(),
+    date: String(input.date).trim(),
+    type: input.type,
+    category: String(input.category).trim(),
+    description: input.description || null,
+    amount: Math.max(0, Number(input.amount) || 0),
+    paymentMethod: input.paymentMethod?.trim() || "tunai",
+    clientId: input.clientId ?? null,
+    productId: input.productId ?? null,
+    productQty: input.productQty ?? null,
+    productHppSnapshot: input.productHppSnapshot ?? null,
+    taxRelated: input.taxRelated !== false, // default true
+    isDeleted: false,
+    notes: input.notes || null,
+    shiftId: input.shiftId ?? null,
+    receiptId: input.receiptId ?? null,
+    bankAccountId: input.bankAccountId ?? null,
+  };
+
+  return createTransaction(sanitized);
 }
 
 export async function getTransactionsByBusiness(businessId: number, filters?: {
@@ -1537,6 +1637,36 @@ export async function createBankAccount(data: InsertBankAccount): Promise<number
   } catch (e: any) {
     throw new Error(`[bank_accounts] INSERT failed: ${e.message}. Data: ${JSON.stringify(cleaned, null, 2).substring(0, 500)}`);
   }
+}
+
+/**
+ * Safe bank account insert — sanitizes, validates, fills ALL defaults.
+ * Use this from routers and seed functions instead of raw createBankAccount().
+ */
+export async function safeInsertBankAccount(input: {
+  businessId: number;
+  accountName: string;
+  accountType?: "bank" | "ewallet" | "cash";
+  icon?: string;
+  color?: string;
+  description?: string | null;
+  initialBalance?: number;
+  isActive?: boolean;
+  sortOrder?: number;
+}): Promise<number> {
+  const sanitized: InsertBankAccount = {
+    businessId: input.businessId,
+    accountName: String(input.accountName).trim(),
+    accountType: input.accountType || "bank",
+    icon: input.icon || "🏦",
+    color: input.color || "#3b82f6",
+    description: input.description || null,
+    initialBalance: Math.max(0, Number(input.initialBalance) || 0),
+    isActive: input.isActive !== false,
+    sortOrder: Number(input.sortOrder) || 0,
+  };
+
+  return createBankAccount(sanitized);
 }
 
 export async function updateBankAccount(id: number, data: Partial<InsertBankAccount>): Promise<void> {
@@ -3136,27 +3266,27 @@ export async function seedDummyData(businessId: number): Promise<{ success: bool
   const wh2Id = await createWarehouse({ businessId, name: "Gudang Toko", isDefault: false, isActive: true, address: "Jl. Raya Utama No. 15, Jakarta" });
 
   // ─── 2. Products (Sabitah Skincare & Beauty) ───
-  const productData: InsertProduct[] = [
-    { businessId, name: "Sabitah Glow Serum 30ml", sku: "SAB-SRM-001", category: "Skincare", hpp: 45000, sellingPrice: 129000, stockCurrent: 85, stockMinimum: 20, unit: "pcs", priceType: "fixed", discountPercent: "0", isActive: true },
-    { businessId, name: "Sabitah Moisturizer SPF30", sku: "SAB-MOI-001", category: "Skincare", hpp: 38000, sellingPrice: 99000, stockCurrent: 120, stockMinimum: 25, unit: "pcs", priceType: "fixed", discountPercent: "0", isActive: true },
-    { businessId, name: "Sabitah Facial Wash 100ml", sku: "SAB-FW-001", category: "Skincare", hpp: 22000, sellingPrice: 69000, stockCurrent: 200, stockMinimum: 40, unit: "pcs", priceType: "fixed", discountPercent: "0", isActive: true },
-    { businessId, name: "Sabitah Lip Tint Rose", sku: "SAB-LT-001", category: "Makeup", hpp: 18000, sellingPrice: 59000, stockCurrent: 150, stockMinimum: 30, unit: "pcs", priceType: "fixed", discountPercent: "0", isActive: true },
-    { businessId, name: "Sabitah Lip Tint Peach", sku: "SAB-LT-002", category: "Makeup", hpp: 18000, sellingPrice: 59000, stockCurrent: 140, stockMinimum: 30, unit: "pcs", priceType: "fixed", discountPercent: "0", isActive: true },
-    { businessId, name: "Sabitah Body Lotion 200ml", sku: "SAB-BL-001", category: "Body Care", hpp: 28000, sellingPrice: 79000, stockCurrent: 95, stockMinimum: 20, unit: "pcs", priceType: "fixed", discountPercent: "0", isActive: true },
-    { businessId, name: "Sabitah Hair Serum 50ml", sku: "SAB-HS-001", category: "Hair Care", hpp: 35000, sellingPrice: 89000, stockCurrent: 60, stockMinimum: 15, unit: "pcs", priceType: "fixed", discountPercent: "0", isActive: true },
-    { businessId, name: "Sabitah Toner Brightening", sku: "SAB-TON-001", category: "Skincare", hpp: 30000, sellingPrice: 85000, stockCurrent: 75, stockMinimum: 18, unit: "pcs", priceType: "fixed", discountPercent: "0", isActive: true },
-    { businessId, name: "Sabitah Eye Cream 15ml", sku: "SAB-EC-001", category: "Skincare", hpp: 52000, sellingPrice: 149000, stockCurrent: 45, stockMinimum: 10, unit: "pcs", priceType: "fixed", discountPercent: "0", isActive: true },
-    { businessId, name: "Sabitah Sunscreen SPF50", sku: "SAB-SS-001", category: "Skincare", hpp: 40000, sellingPrice: 119000, stockCurrent: 110, stockMinimum: 25, unit: "pcs", priceType: "fixed", discountPercent: "0", isActive: true },
-    { businessId, name: "Sabitah Micellar Water 200ml", sku: "SAB-MW-001", category: "Skincare", hpp: 25000, sellingPrice: 75000, stockCurrent: 88, stockMinimum: 20, unit: "pcs", priceType: "fixed", discountPercent: "0", isActive: true },
-    { businessId, name: "Sabitah Sheet Mask (5pcs)", sku: "SAB-SM-001", category: "Skincare", hpp: 15000, sellingPrice: 49000, stockCurrent: 200, stockMinimum: 50, unit: "pack", priceType: "fixed", discountPercent: "0", isActive: true },
-    { businessId, name: "Sabitah Blush On Coral", sku: "SAB-BO-001", category: "Makeup", hpp: 22000, sellingPrice: 69000, stockCurrent: 70, stockMinimum: 15, unit: "pcs", priceType: "fixed", discountPercent: "0", isActive: true },
-    { businessId, name: "Sabitah Setting Spray 60ml", sku: "SAB-SP-001", category: "Makeup", hpp: 20000, sellingPrice: 65000, stockCurrent: 55, stockMinimum: 12, unit: "pcs", priceType: "fixed", discountPercent: "0", isActive: true },
-    { businessId, name: "Sabitah Gift Set Premium", sku: "SAB-GS-001", category: "Bundle", hpp: 120000, sellingPrice: 349000, stockCurrent: 25, stockMinimum: 5, unit: "set", priceType: "fixed", discountPercent: "0", isActive: true },
+  const productData = [
+    { businessId, name: "Sabitah Glow Serum 30ml", sku: "SAB-SRM-001", category: "Skincare", hpp: 45000, sellingPrice: 129000, stockCurrent: 85, stockMinimum: 20, unit: "pcs" },
+    { businessId, name: "Sabitah Moisturizer SPF30", sku: "SAB-MOI-001", category: "Skincare", hpp: 38000, sellingPrice: 99000, stockCurrent: 120, stockMinimum: 25, unit: "pcs" },
+    { businessId, name: "Sabitah Facial Wash 100ml", sku: "SAB-FW-001", category: "Skincare", hpp: 22000, sellingPrice: 69000, stockCurrent: 200, stockMinimum: 40, unit: "pcs" },
+    { businessId, name: "Sabitah Lip Tint Rose", sku: "SAB-LT-001", category: "Makeup", hpp: 18000, sellingPrice: 59000, stockCurrent: 150, stockMinimum: 30, unit: "pcs" },
+    { businessId, name: "Sabitah Lip Tint Peach", sku: "SAB-LT-002", category: "Makeup", hpp: 18000, sellingPrice: 59000, stockCurrent: 140, stockMinimum: 30, unit: "pcs" },
+    { businessId, name: "Sabitah Body Lotion 200ml", sku: "SAB-BL-001", category: "Body Care", hpp: 28000, sellingPrice: 79000, stockCurrent: 95, stockMinimum: 20, unit: "pcs" },
+    { businessId, name: "Sabitah Hair Serum 50ml", sku: "SAB-HS-001", category: "Hair Care", hpp: 35000, sellingPrice: 89000, stockCurrent: 60, stockMinimum: 15, unit: "pcs" },
+    { businessId, name: "Sabitah Toner Brightening", sku: "SAB-TON-001", category: "Skincare", hpp: 30000, sellingPrice: 85000, stockCurrent: 75, stockMinimum: 18, unit: "pcs" },
+    { businessId, name: "Sabitah Eye Cream 15ml", sku: "SAB-EC-001", category: "Skincare", hpp: 52000, sellingPrice: 149000, stockCurrent: 45, stockMinimum: 10, unit: "pcs" },
+    { businessId, name: "Sabitah Sunscreen SPF50", sku: "SAB-SS-001", category: "Skincare", hpp: 40000, sellingPrice: 119000, stockCurrent: 110, stockMinimum: 25, unit: "pcs" },
+    { businessId, name: "Sabitah Micellar Water 200ml", sku: "SAB-MW-001", category: "Skincare", hpp: 25000, sellingPrice: 75000, stockCurrent: 88, stockMinimum: 20, unit: "pcs" },
+    { businessId, name: "Sabitah Sheet Mask (5pcs)", sku: "SAB-SM-001", category: "Skincare", hpp: 15000, sellingPrice: 49000, stockCurrent: 200, stockMinimum: 50, unit: "pack" },
+    { businessId, name: "Sabitah Blush On Coral", sku: "SAB-BO-001", category: "Makeup", hpp: 22000, sellingPrice: 69000, stockCurrent: 70, stockMinimum: 15, unit: "pcs" },
+    { businessId, name: "Sabitah Setting Spray 60ml", sku: "SAB-SP-001", category: "Makeup", hpp: 20000, sellingPrice: 65000, stockCurrent: 55, stockMinimum: 12, unit: "pcs" },
+    { businessId, name: "Sabitah Gift Set Premium", sku: "SAB-GS-001", category: "Bundle", hpp: 120000, sellingPrice: 349000, stockCurrent: 25, stockMinimum: 5, unit: "set" },
   ];
 
   const productIds: number[] = [];
   for (const p of productData) {
-    const id = await createProduct(p);
+    const id = await safeInsertProduct(p);
     productIds.push(id);
     // Add stock to default warehouse
     await updateWarehouseStockQty(wh.id, id, Math.floor((p.stockCurrent ?? 0) * 0.7));
@@ -3208,14 +3338,14 @@ export async function seedDummyData(businessId: number): Promise<{ success: bool
       const price = productData[productIdx].sellingPrice ?? 0;
 
       const txCode = await generateTxCode(businessId);
-      await createTransaction({
+      await safeInsertTransaction({
         businessId, txCode, date: dateStr, type: "pemasukan",
         category: cat, description: `${cat} - ${productData[productIdx].name}`,
         amount: price * qty,
         paymentMethod: payMethods[Math.floor(Math.random() * payMethods.length)],
         productId: productIds[productIdx], productQty: qty,
         productHppSnapshot: productData[productIdx].hpp ?? 0,
-        clientId: Math.random() > 0.5 ? clientIds[Math.floor(Math.random() * clientIds.length)] : undefined,
+        clientId: Math.random() > 0.5 ? clientIds[Math.floor(Math.random() * clientIds.length)] : null,
         taxRelated: true,
       });
       txCount++;
@@ -3237,7 +3367,7 @@ export async function seedDummyData(businessId: number): Promise<{ success: bool
       const amount = min + Math.floor(Math.random() * (max - min));
 
       const txCode = await generateTxCode(businessId);
-      await createTransaction({
+      await safeInsertTransaction({
         businessId, txCode, date: dateStr, type: "pengeluaran",
         category: cat, description: `${cat} - ${dateStr}`,
         amount, paymentMethod: payMethods[Math.floor(Math.random() * payMethods.length)],
