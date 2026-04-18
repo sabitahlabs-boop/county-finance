@@ -483,7 +483,37 @@ async function runAutoMigration(db: ReturnType<typeof drizzle>) {
   // Add deviceInfo column to pos_receipts
   await safeExec("ALTER TABLE \`pos_receipts\` ADD COLUMN \`deviceInfo\` varchar(200) DEFAULT NULL");
 
-  // stock_batches: add warehouseId, batchCode (may be missing if table was created before these columns)
+  // stock_batches — CREATE TABLE (was missing entirely from auto-migration)
+  await safeExec(`CREATE TABLE IF NOT EXISTS \`stock_batches\` (
+    \`id\` int NOT NULL AUTO_INCREMENT PRIMARY KEY,
+    \`businessId\` int NOT NULL,
+    \`productId\` int NOT NULL,
+    \`warehouseId\` int DEFAULT NULL,
+    \`batchCode\` varchar(50) DEFAULT NULL,
+    \`purchaseDate\` varchar(10) NOT NULL,
+    \`expiryDate\` varchar(10) DEFAULT NULL,
+    \`costPrice\` bigint NOT NULL,
+    \`initialQty\` int NOT NULL,
+    \`remainingQty\` int NOT NULL,
+    \`isActive\` boolean NOT NULL DEFAULT true,
+    \`createdAt\` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP
+  )`);
+
+  // production_logs — CREATE TABLE (was missing entirely from auto-migration)
+  await safeExec(`CREATE TABLE IF NOT EXISTS \`production_logs\` (
+    \`id\` int NOT NULL AUTO_INCREMENT PRIMARY KEY,
+    \`businessId\` int NOT NULL,
+    \`productId\` int NOT NULL,
+    \`batchCode\` varchar(50) DEFAULT NULL,
+    \`qtyProduced\` int NOT NULL,
+    \`totalCost\` bigint NOT NULL,
+    \`costPerUnit\` bigint NOT NULL,
+    \`date\` varchar(10) NOT NULL,
+    \`notes\` text DEFAULT NULL,
+    \`createdAt\` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP
+  )`);
+
+  // stock_batches: add warehouseId, batchCode if missing from older CREATE
   await safeExec("ALTER TABLE `stock_batches` ADD COLUMN `warehouseId` int DEFAULT NULL");
   await safeExec("ALTER TABLE `stock_batches` ADD COLUMN `batchCode` varchar(50) DEFAULT NULL");
 
@@ -3594,78 +3624,86 @@ export async function clearBusinessData(businessId: number): Promise<{ success: 
   const db = await getDb();
   if (!db) throw new Error("Database not available");
 
+  // Safe delete helper — skips if table doesn't exist (errno 1146)
+  const safeDel = async (fn: () => Promise<any>, label: string) => {
+    try { await fn(); } catch (e: any) {
+      if (e.errno === 1146) { console.warn(`[Reset] Table not found, skipping: ${label}`); return; }
+      console.error(`[Reset] Failed to clear ${label}:`, e.message);
+    }
+  };
+
   // Delete in order of dependencies (child tables first)
 
   // Credit system
-  await db.delete(creditPayments).where(
+  await safeDel(() => db.delete(creditPayments).where(
     sql`${creditPayments.creditSaleId} IN (SELECT id FROM credit_sales WHERE businessId = ${businessId})`
-  );
-  await db.delete(creditSales).where(eq(creditSales.businessId, businessId));
+  ), "credit_payments");
+  await safeDel(() => db.delete(creditSales).where(eq(creditSales.businessId, businessId)), "credit_sales");
 
   // Debt system
-  await db.delete(debtPayments).where(
+  await safeDel(() => db.delete(debtPayments).where(
     sql`${debtPayments.debtId} IN (SELECT id FROM debts WHERE businessId = ${businessId})`
-  );
-  await db.delete(debts).where(eq(debts.businessId, businessId));
+  ), "debt_payments");
+  await safeDel(() => db.delete(debts).where(eq(debts.businessId, businessId)), "debts");
 
   // Deposits
-  await db.delete(depositTransactions).where(eq(depositTransactions.businessId, businessId));
-  await db.delete(customerDeposits).where(eq(customerDeposits.businessId, businessId));
+  await safeDel(() => db.delete(depositTransactions).where(eq(depositTransactions.businessId, businessId)), "deposit_transactions");
+  await safeDel(() => db.delete(customerDeposits).where(eq(customerDeposits.businessId, businessId)), "customer_deposits");
 
   // Commissions
-  await db.delete(staffCommissions).where(eq(staffCommissions.businessId, businessId));
-  await db.delete(commissionConfig).where(eq(commissionConfig.businessId, businessId));
+  await safeDel(() => db.delete(staffCommissions).where(eq(staffCommissions.businessId, businessId)), "staff_commissions");
+  await safeDel(() => db.delete(commissionConfig).where(eq(commissionConfig.businessId, businessId)), "commission_config");
 
   // POS receipt items (before receipts)
-  await db.delete(posReceiptItems).where(
+  await safeDel(() => db.delete(posReceiptItems).where(
     sql`${posReceiptItems.receiptId} IN (SELECT id FROM pos_receipts WHERE businessId = ${businessId})`
-  );
-  await db.delete(posReceipts).where(eq(posReceipts.businessId, businessId));
-  await db.delete(posShifts).where(eq(posShifts.businessId, businessId));
-  await db.delete(discountCodes).where(eq(discountCodes.businessId, businessId));
+  ), "pos_receipt_items");
+  await safeDel(() => db.delete(posReceipts).where(eq(posReceipts.businessId, businessId)), "pos_receipts");
+  await safeDel(() => db.delete(posShifts).where(eq(posShifts.businessId, businessId)), "pos_shifts");
+  await safeDel(() => db.delete(discountCodes).where(eq(discountCodes.businessId, businessId)), "discount_codes");
 
   // Attendance & Outlets
-  await db.delete(staffAttendance).where(eq(staffAttendance.businessId, businessId));
-  await db.delete(outlets).where(eq(outlets.businessId, businessId));
+  await safeDel(() => db.delete(staffAttendance).where(eq(staffAttendance.businessId, businessId)), "staff_attendance");
+  await safeDel(() => db.delete(outlets).where(eq(outlets.businessId, businessId)), "outlets");
 
   // Stock & inventory
-  await db.delete(stockBatches).where(eq(stockBatches.businessId, businessId));
-  await db.delete(productionLogs).where(eq(productionLogs.businessId, businessId));
-  await db.delete(stockTransfers).where(eq(stockTransfers.businessId, businessId));
-  await db.delete(warehouseStock).where(
+  await safeDel(() => db.delete(stockBatches).where(eq(stockBatches.businessId, businessId)), "stock_batches");
+  await safeDel(() => db.delete(productionLogs).where(eq(productionLogs.businessId, businessId)), "production_logs");
+  await safeDel(() => db.delete(stockTransfers).where(eq(stockTransfers.businessId, businessId)), "stock_transfers");
+  await safeDel(() => db.delete(warehouseStock).where(
     sql`${warehouseStock.warehouseId} IN (SELECT id FROM warehouses WHERE businessId = ${businessId})`
-  );
-  await db.delete(stockLogs).where(eq(stockLogs.businessId, businessId));
+  ), "warehouse_stock");
+  await safeDel(() => db.delete(stockLogs).where(eq(stockLogs.businessId, businessId)), "stock_logs");
 
   // Core data
-  await db.delete(transactions).where(eq(transactions.businessId, businessId));
-  await db.delete(products).where(eq(products.businessId, businessId));
-  await db.delete(clients).where(eq(clients.businessId, businessId));
-  await db.delete(budgets).where(eq(budgets.businessId, businessId));
-  await db.delete(monthlyBills).where(eq(monthlyBills.businessId, businessId));
-  await db.delete(savingsGoals).where(eq(savingsGoals.businessId, businessId));
-  await db.delete(monthlyCache).where(eq(monthlyCache.businessId, businessId));
+  await safeDel(() => db.delete(transactions).where(eq(transactions.businessId, businessId)), "transactions");
+  await safeDel(() => db.delete(products).where(eq(products.businessId, businessId)), "products");
+  await safeDel(() => db.delete(clients).where(eq(clients.businessId, businessId)), "clients");
+  await safeDel(() => db.delete(budgets).where(eq(budgets.businessId, businessId)), "budgets");
+  await safeDel(() => db.delete(monthlyBills).where(eq(monthlyBills.businessId, businessId)), "monthly_bills");
+  await safeDel(() => db.delete(savingsGoals).where(eq(savingsGoals.businessId, businessId)), "savings_goals");
+  await safeDel(() => db.delete(monthlyCache).where(eq(monthlyCache.businessId, businessId)), "monthly_cache");
 
   // Purchase orders
-  await db.delete(purchaseOrderItems).where(
+  await safeDel(() => db.delete(purchaseOrderItems).where(
     sql`${purchaseOrderItems.purchaseOrderId} IN (SELECT id FROM purchase_orders WHERE businessId = ${businessId})`
-  );
-  await db.delete(purchaseOrders).where(eq(purchaseOrders.businessId, businessId));
-  await db.delete(suppliers).where(eq(suppliers.businessId, businessId));
+  ), "purchase_order_items");
+  await safeDel(() => db.delete(purchaseOrders).where(eq(purchaseOrders.businessId, businessId)), "purchase_orders");
+  await safeDel(() => db.delete(suppliers).where(eq(suppliers.businessId, businessId)), "suppliers");
 
   // Loyalty
-  await db.delete(loyaltyTransactions).where(eq(loyaltyTransactions.businessId, businessId));
-  await db.delete(loyaltyPoints).where(eq(loyaltyPoints.businessId, businessId));
-  await db.delete(loyaltyConfig).where(eq(loyaltyConfig.businessId, businessId));
-  await db.delete(invoiceSettings).where(eq(invoiceSettings.businessId, businessId));
+  await safeDel(() => db.delete(loyaltyTransactions).where(eq(loyaltyTransactions.businessId, businessId)), "loyalty_transactions");
+  await safeDel(() => db.delete(loyaltyPoints).where(eq(loyaltyPoints.businessId, businessId)), "loyalty_points");
+  await safeDel(() => db.delete(loyaltyConfig).where(eq(loyaltyConfig.businessId, businessId)), "loyalty_config");
+  await safeDel(() => db.delete(invoiceSettings).where(eq(invoiceSettings.businessId, businessId)), "invoice_settings");
 
   // Warehouse access
-  await db.delete(warehouseAccess).where(
+  await safeDel(() => db.delete(warehouseAccess).where(
     sql`${warehouseAccess.warehouseId} IN (SELECT id FROM warehouses WHERE businessId = ${businessId})`
-  );
+  ), "warehouse_access");
 
   // Keep warehouses but delete non-default ones
-  await db.delete(warehouses).where(and(eq(warehouses.businessId, businessId), eq(warehouses.isDefault, false)));
+  await safeDel(() => db.delete(warehouses).where(and(eq(warehouses.businessId, businessId), eq(warehouses.isDefault, false))), "warehouses");
 
   return { success: true };
 }
