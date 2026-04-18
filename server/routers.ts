@@ -129,11 +129,11 @@ export const appRouter = router({
         }
       }
       // Use resolveBusinessForUser to support multi-business switching
-      const resolved = await resolveBusinessForUser(ctx.user.id, ctx.requestedBusinessId);
+      const resolved = await resolveBusinessForUser(ctx.user.id, ctx.requestedBusinessId, ctx.user.role);
       return resolved?.business ?? null;
     }),
     getPlan: protectedProcedure.query(async ({ ctx }) => {
-      const resolved = await resolveBusinessForUser(ctx.user.id, ctx.requestedBusinessId);
+      const resolved = await resolveBusinessForUser(ctx.user.id, ctx.requestedBusinessId, ctx.user.role);
       if (!resolved) return { plan: "free", isPro: false, isProPlus: false, planActivatedAt: null, planExpiry: null };
       const planInfo = await getBusinessPlan(resolved.business.id);
       const plan = planInfo?.plan ?? "free";
@@ -203,7 +203,7 @@ export const appRouter = router({
       invoiceFooter: z.string().nullable().optional(),
       calculatorEnabled: z.boolean().optional(),
     })).mutation(async ({ ctx, input }) => {
-      const biz = (await resolveBusinessForUser(ctx.user.id, ctx.requestedBusinessId))?.business;
+      const biz = (await resolveBusinessForUser(ctx.user.id, ctx.requestedBusinessId, ctx.user.role))?.business;
       if (!biz) throw new TRPCError({ code: "NOT_FOUND", message: "Bisnis tidak ditemukan" });
       await updateBusiness(biz.id, input);
       return { success: true };
@@ -219,7 +219,7 @@ export const appRouter = router({
       let targetBiz = await getBusinessByOwnerAndMode(ctx.user.id, input.appMode);
       if (!targetBiz) {
         // Create a new business for the target mode, copying basic info from current business
-        const currentBiz = (await resolveBusinessForUser(ctx.user.id, ctx.requestedBusinessId))?.business;
+        const currentBiz = (await resolveBusinessForUser(ctx.user.id, ctx.requestedBusinessId, ctx.user.role))?.business;
         const baseName = input.appMode === "personal"
           ? `Jurnal Pribadi${currentBiz ? ` - ${ctx.user.name ?? "User"}` : ""}`
           : `UMKM${currentBiz ? ` - ${currentBiz.businessName}` : ""}`;
@@ -249,7 +249,7 @@ export const appRouter = router({
     togglePos: protectedProcedure.input(z.object({
       posEnabled: z.boolean(),
     })).mutation(async ({ ctx, input }) => {
-      const biz = (await resolveBusinessForUser(ctx.user.id, ctx.requestedBusinessId))?.business;
+      const biz = (await resolveBusinessForUser(ctx.user.id, ctx.requestedBusinessId, ctx.user.role))?.business;
       if (!biz) throw new TRPCError({ code: "NOT_FOUND", message: "Bisnis tidak ditemukan" });
       await updateBusinessPosEnabled(biz.id, input.posEnabled);
       return { success: true };
@@ -257,13 +257,13 @@ export const appRouter = router({
     toggleDebt: protectedProcedure.input(z.object({
       debtEnabled: z.boolean(),
     })).mutation(async ({ ctx, input }) => {
-      const biz = (await resolveBusinessForUser(ctx.user.id, ctx.requestedBusinessId))?.business;
+      const biz = (await resolveBusinessForUser(ctx.user.id, ctx.requestedBusinessId, ctx.user.role))?.business;
       if (!biz) throw new TRPCError({ code: "NOT_FOUND", message: "Bisnis tidak ditemukan" });
       await updateBusinessDebtEnabled(biz.id, input.debtEnabled);
       return { success: true };
     }),
     completePersonalSetup: protectedProcedure.mutation(async ({ ctx }) => {
-      const biz = (await resolveBusinessForUser(ctx.user.id, ctx.requestedBusinessId))?.business;
+      const biz = (await resolveBusinessForUser(ctx.user.id, ctx.requestedBusinessId, ctx.user.role))?.business;
       if (!biz) throw new TRPCError({ code: "NOT_FOUND" });
       await updateBusinessPersonalSetupDone(biz.id);
       return { success: true };
@@ -273,7 +273,7 @@ export const appRouter = router({
   // ─── Savings Goals (Tabungan Impian) ───
   savings: router({
     list: protectedProcedure.query(async ({ ctx }) => {
-      const biz = (await resolveBusinessForUser(ctx.user.id, ctx.requestedBusinessId))?.business;
+      const biz = (await resolveBusinessForUser(ctx.user.id, ctx.requestedBusinessId, ctx.user.role))?.business;
       if (!biz) return [];
       return getSavingsGoalsByBusiness(biz.id);
     }),
@@ -285,7 +285,7 @@ export const appRouter = router({
       targetDate: z.string().optional(),
       notes: z.string().optional(),
     })).mutation(async ({ ctx, input }) => {
-      const biz = (await resolveBusinessForUser(ctx.user.id, ctx.requestedBusinessId))?.business;
+      const biz = (await resolveBusinessForUser(ctx.user.id, ctx.requestedBusinessId, ctx.user.role))?.business;
       if (!biz) throw new TRPCError({ code: "NOT_FOUND" });
       const id = await createSavingsGoal({ ...input, businessId: biz.id });
       return { id };
@@ -299,14 +299,14 @@ export const appRouter = router({
       targetDate: z.string().optional(),
       notes: z.string().optional(),
     })).mutation(async ({ ctx, input }) => {
-      const biz = (await resolveBusinessForUser(ctx.user.id, ctx.requestedBusinessId))?.business;
+      const biz = (await resolveBusinessForUser(ctx.user.id, ctx.requestedBusinessId, ctx.user.role))?.business;
       if (!biz) throw new TRPCError({ code: "NOT_FOUND" });
       const { id, ...data } = input;
       await updateSavingsGoal(id, biz.id, data);
       return { success: true };
     }),
     delete: protectedProcedure.input(z.object({ id: z.number() })).mutation(async ({ ctx, input }) => {
-      const biz = (await resolveBusinessForUser(ctx.user.id, ctx.requestedBusinessId))?.business;
+      const biz = (await resolveBusinessForUser(ctx.user.id, ctx.requestedBusinessId, ctx.user.role))?.business;
       if (!biz) throw new TRPCError({ code: "NOT_FOUND" });
       await deleteSavingsGoal(input.id, biz.id);
       return { success: true };
@@ -316,7 +316,7 @@ export const appRouter = router({
       amount: z.number().min(1),
       bankAccountName: z.string().optional(),
     })).mutation(async ({ ctx, input }) => {
-      const biz = (await resolveBusinessForUser(ctx.user.id, ctx.requestedBusinessId))?.business;
+      const biz = (await resolveBusinessForUser(ctx.user.id, ctx.requestedBusinessId, ctx.user.role))?.business;
       if (!biz) throw new TRPCError({ code: "NOT_FOUND" });
       const result = await addToSavingsGoal(input.id, biz.id, input.amount);
       if (!result) throw new TRPCError({ code: "NOT_FOUND" });
@@ -352,7 +352,7 @@ export const appRouter = router({
   // ─── Monthly Bills (Tagihan Bulanan) ───
   monthlyBills: router({
     list: protectedProcedure.query(async ({ ctx }) => {
-      const biz = (await resolveBusinessForUser(ctx.user.id, ctx.requestedBusinessId))?.business;
+      const biz = (await resolveBusinessForUser(ctx.user.id, ctx.requestedBusinessId, ctx.user.role))?.business;
       if (!biz) return [];
       return getMonthlyBillsByBusiness(biz.id);
     }),
@@ -364,7 +364,7 @@ export const appRouter = router({
       icon: z.string().optional(),
       notes: z.string().optional(),
     })).mutation(async ({ ctx, input }) => {
-      const biz = (await resolveBusinessForUser(ctx.user.id, ctx.requestedBusinessId))?.business;
+      const biz = (await resolveBusinessForUser(ctx.user.id, ctx.requestedBusinessId, ctx.user.role))?.business;
       if (!biz) throw new TRPCError({ code: "NOT_FOUND" });
       const id = await createMonthlyBill({ ...input, businessId: biz.id });
       return { id };
@@ -379,14 +379,14 @@ export const appRouter = router({
       isActive: z.boolean().optional(),
       notes: z.string().optional(),
     })).mutation(async ({ ctx, input }) => {
-      const biz = (await resolveBusinessForUser(ctx.user.id, ctx.requestedBusinessId))?.business;
+      const biz = (await resolveBusinessForUser(ctx.user.id, ctx.requestedBusinessId, ctx.user.role))?.business;
       if (!biz) throw new TRPCError({ code: "NOT_FOUND" });
       const { id, ...data } = input;
       await updateMonthlyBill(id, biz.id, data);
       return { success: true };
     }),
     delete: protectedProcedure.input(z.object({ id: z.number() })).mutation(async ({ ctx, input }) => {
-      const biz = (await resolveBusinessForUser(ctx.user.id, ctx.requestedBusinessId))?.business;
+      const biz = (await resolveBusinessForUser(ctx.user.id, ctx.requestedBusinessId, ctx.user.role))?.business;
       if (!biz) throw new TRPCError({ code: "NOT_FOUND" });
       await deleteMonthlyBill(input.id, biz.id);
       return { success: true };
@@ -397,7 +397,7 @@ export const appRouter = router({
       bankAccountName: z.string().optional(),
       notes: z.string().optional(),
     })).mutation(async ({ ctx, input }) => {
-      const biz = (await resolveBusinessForUser(ctx.user.id, ctx.requestedBusinessId))?.business;
+      const biz = (await resolveBusinessForUser(ctx.user.id, ctx.requestedBusinessId, ctx.user.role))?.business;
       if (!biz) throw new TRPCError({ code: "NOT_FOUND" });
       const bills = await getMonthlyBillsByBusiness(biz.id);
       const bill = bills.find((b: any) => b.id === input.id);
@@ -434,12 +434,12 @@ export const appRouter = router({
   // ─── Products / Stock ───
   product: router({
     list: protectedProcedure.query(async ({ ctx }) => {
-      const biz = (await resolveBusinessForUser(ctx.user.id, ctx.requestedBusinessId))?.business;
+      const biz = (await resolveBusinessForUser(ctx.user.id, ctx.requestedBusinessId, ctx.user.role))?.business;
       if (!biz) return [];
       return getProductsByBusiness(biz.id);
     }),
     lowStock: protectedProcedure.query(async ({ ctx }) => {
-      const biz = (await resolveBusinessForUser(ctx.user.id, ctx.requestedBusinessId))?.business;
+      const biz = (await resolveBusinessForUser(ctx.user.id, ctx.requestedBusinessId, ctx.user.role))?.business;
       if (!biz) return [];
       return getLowStockProducts(biz.id);
     }),
@@ -457,7 +457,7 @@ export const appRouter = router({
       discountPercent: z.number().min(0).max(100).default(0),
       warehouseId: z.number().optional(),
     })).mutation(async ({ ctx, input }) => {
-      const biz = (await resolveBusinessForUser(ctx.user.id, ctx.requestedBusinessId))?.business;
+      const biz = (await resolveBusinessForUser(ctx.user.id, ctx.requestedBusinessId, ctx.user.role))?.business;
       if (!biz) throw new TRPCError({ code: "NOT_FOUND", message: "Bisnis tidak ditemukan" });
       // No plan limits — all users are Pro
       const { warehouseId, ...restInput } = input;
@@ -489,7 +489,7 @@ export const appRouter = router({
       priceType: z.enum(["fixed", "dynamic"]).optional(),
       discountPercent: z.number().min(0).max(100).optional(),
     })).mutation(async ({ ctx, input }) => {
-      const biz = (await resolveBusinessForUser(ctx.user.id, ctx.requestedBusinessId))?.business;
+      const biz = (await resolveBusinessForUser(ctx.user.id, ctx.requestedBusinessId, ctx.user.role))?.business;
       if (!biz) throw new TRPCError({ code: "NOT_FOUND" });
       const product = await getProductById(input.id);
       if (!product || product.businessId !== biz.id) throw new TRPCError({ code: "NOT_FOUND" });
@@ -505,7 +505,7 @@ export const appRouter = router({
       notes: z.string().optional(),
       warehouseId: z.number().optional(),
     })).mutation(async ({ ctx, input }) => {
-      const biz = (await resolveBusinessForUser(ctx.user.id, ctx.requestedBusinessId))?.business;
+      const biz = (await resolveBusinessForUser(ctx.user.id, ctx.requestedBusinessId, ctx.user.role))?.business;
       if (!biz) throw new TRPCError({ code: "NOT_FOUND" });
       const product = await getProductById(input.productId);
       if (!product || product.businessId !== biz.id) throw new TRPCError({ code: "NOT_FOUND" });
@@ -529,7 +529,7 @@ export const appRouter = router({
       return { stockBefore: product.stockCurrent, stockAfter: newStock };
     }),
     delete: protectedProcedure.input(z.object({ id: z.number() })).mutation(async ({ ctx, input }) => {
-      const biz = (await resolveBusinessForUser(ctx.user.id, ctx.requestedBusinessId))?.business;
+      const biz = (await resolveBusinessForUser(ctx.user.id, ctx.requestedBusinessId, ctx.user.role))?.business;
       if (!biz) throw new TRPCError({ code: "NOT_FOUND" });
       const product = await getProductById(input.id);
       if (!product || product.businessId !== biz.id) throw new TRPCError({ code: "NOT_FOUND" });
@@ -537,7 +537,7 @@ export const appRouter = router({
       return { success: true };
     }),
     stockLogs: protectedProcedure.input(z.object({ productId: z.number() })).query(async ({ ctx, input }) => {
-      const biz = (await resolveBusinessForUser(ctx.user.id, ctx.requestedBusinessId))?.business;
+      const biz = (await resolveBusinessForUser(ctx.user.id, ctx.requestedBusinessId, ctx.user.role))?.business;
       if (!biz) return [];
       const product = await getProductById(input.productId);
       if (!product || product.businessId !== biz.id) return [];
@@ -545,7 +545,7 @@ export const appRouter = router({
       return getStockLogsByProduct(input.productId);
     }),
     allStockHistory: protectedProcedure.query(async ({ ctx }) => {
-      const biz = (await resolveBusinessForUser(ctx.user.id, ctx.requestedBusinessId))?.business;
+      const biz = (await resolveBusinessForUser(ctx.user.id, ctx.requestedBusinessId, ctx.user.role))?.business;
       if (!biz) return [];
       return getStockLogsByBusiness(biz.id);
     }),
@@ -561,7 +561,7 @@ export const appRouter = router({
         unit: z.string().default("pcs"),
       })),
     })).mutation(async ({ ctx, input }) => {
-      const biz = (await resolveBusinessForUser(ctx.user.id, ctx.requestedBusinessId))?.business;
+      const biz = (await resolveBusinessForUser(ctx.user.id, ctx.requestedBusinessId, ctx.user.role))?.business;
       if (!biz) throw new TRPCError({ code: "NOT_FOUND", message: "Bisnis tidak ditemukan" });
       // No plan limits — all users are Pro
       const results: { name: string; id: number }[] = [];
@@ -584,7 +584,7 @@ export const appRouter = router({
       costPrice: z.number(),
       initialQty: z.number().min(1),
     })).mutation(async ({ ctx, input }) => {
-      const biz = (await resolveBusinessForUser(ctx.user.id, ctx.requestedBusinessId))?.business;
+      const biz = (await resolveBusinessForUser(ctx.user.id, ctx.requestedBusinessId, ctx.user.role))?.business;
       if (!biz) throw new TRPCError({ code: "NOT_FOUND" });
       const product = await getProductById(input.productId);
       if (!product || product.businessId !== biz.id) throw new TRPCError({ code: "NOT_FOUND" });
@@ -607,7 +607,7 @@ export const appRouter = router({
       productId: z.number(),
       warehouseId: z.number().optional(),
     })).query(async ({ ctx, input }) => {
-      const biz = (await resolveBusinessForUser(ctx.user.id, ctx.requestedBusinessId))?.business;
+      const biz = (await resolveBusinessForUser(ctx.user.id, ctx.requestedBusinessId, ctx.user.role))?.business;
       if (!biz) return [];
       const product = await getProductById(input.productId);
       if (!product || product.businessId !== biz.id) return [];
@@ -620,7 +620,7 @@ export const appRouter = router({
       safetyStock: z.number().optional(),
       leadTimeDays: z.number().optional(),
     })).mutation(async ({ ctx, input }) => {
-      const biz = (await resolveBusinessForUser(ctx.user.id, ctx.requestedBusinessId))?.business;
+      const biz = (await resolveBusinessForUser(ctx.user.id, ctx.requestedBusinessId, ctx.user.role))?.business;
       if (!biz) throw new TRPCError({ code: "NOT_FOUND" });
       const product = await getProductById(input.id);
       if (!product || product.businessId !== biz.id) throw new TRPCError({ code: "NOT_FOUND" });
@@ -636,7 +636,7 @@ export const appRouter = router({
       month: z.number().optional(),
       year: z.number().optional(),
     }).optional()).query(async ({ ctx, input }) => {
-      const biz = (await resolveBusinessForUser(ctx.user.id, ctx.requestedBusinessId))?.business;
+      const biz = (await resolveBusinessForUser(ctx.user.id, ctx.requestedBusinessId, ctx.user.role))?.business;
       if (!biz) throw new TRPCError({ code: "NOT_FOUND" });
       const txs = await getTransactionsByBusiness(biz.id, input ?? {});
       // Return CSV string
@@ -649,7 +649,7 @@ export const appRouter = router({
       return { csv: [header, ...rows].join("\n"), filename: `transaksi-${biz.slug}-${input?.year || "all"}.csv` };
     }),
     products: protectedProcedure.query(async ({ ctx }) => {
-      const biz = (await resolveBusinessForUser(ctx.user.id, ctx.requestedBusinessId))?.business;
+      const biz = (await resolveBusinessForUser(ctx.user.id, ctx.requestedBusinessId, ctx.user.role))?.business;
       if (!biz) throw new TRPCError({ code: "NOT_FOUND" });
       const prods = await getProductsByBusiness(biz.id);
       const header = "Nama,SKU,Kategori,HPP,Harga Jual,Stok,Min Stok,Satuan";
@@ -660,7 +660,7 @@ export const appRouter = router({
       return { csv: [header, ...rows].join("\n"), filename: `produk-${biz.slug}.csv` };
     }),
     allData: protectedProcedure.query(async ({ ctx }) => {
-      const biz = (await resolveBusinessForUser(ctx.user.id, ctx.requestedBusinessId))?.business;
+      const biz = (await resolveBusinessForUser(ctx.user.id, ctx.requestedBusinessId, ctx.user.role))?.business;
       if (!biz) throw new TRPCError({ code: "NOT_FOUND" });
       // All users have Pro access — no plan restriction
       const txs = await getTransactionsByBusiness(biz.id, {});
@@ -687,7 +687,7 @@ export const appRouter = router({
       category: z.string().optional(),
       limit: z.number().optional(),
     }).optional()).query(async ({ ctx, input }) => {
-      const biz = (await resolveBusinessForUser(ctx.user.id, ctx.requestedBusinessId))?.business;
+      const biz = (await resolveBusinessForUser(ctx.user.id, ctx.requestedBusinessId, ctx.user.role))?.business;
       if (!biz) return [];
       return getTransactionsByBusiness(biz.id, input ?? {});
     }),
@@ -703,7 +703,7 @@ export const appRouter = router({
       notes: z.string().optional(),
       warehouseId: z.number().optional(),
     })).mutation(async ({ ctx, input }) => {
-      const biz = (await resolveBusinessForUser(ctx.user.id, ctx.requestedBusinessId))?.business;
+      const biz = (await resolveBusinessForUser(ctx.user.id, ctx.requestedBusinessId, ctx.user.role))?.business;
       if (!biz) throw new TRPCError({ code: "NOT_FOUND", message: "Bisnis tidak ditemukan" });
       // No plan limits — all users are Pro
       const txCode = await generateTxCode(biz.id);
@@ -754,7 +754,7 @@ export const appRouter = router({
       paymentMethod: z.string().optional(),
       notes: z.string().optional(),
     })).mutation(async ({ ctx, input }) => {
-      const biz = (await resolveBusinessForUser(ctx.user.id, ctx.requestedBusinessId))?.business;
+      const biz = (await resolveBusinessForUser(ctx.user.id, ctx.requestedBusinessId, ctx.user.role))?.business;
       if (!biz) throw new TRPCError({ code: "NOT_FOUND" });
       const tx = await getTransactionById(input.id);
       if (!tx || tx.businessId !== biz.id) throw new TRPCError({ code: "NOT_FOUND" });
@@ -763,7 +763,7 @@ export const appRouter = router({
       return { success: true };
     }),
     delete: protectedProcedure.input(z.object({ id: z.number() })).mutation(async ({ ctx, input }) => {
-      const biz = (await resolveBusinessForUser(ctx.user.id, ctx.requestedBusinessId))?.business;
+      const biz = (await resolveBusinessForUser(ctx.user.id, ctx.requestedBusinessId, ctx.user.role))?.business;
       if (!biz) throw new TRPCError({ code: "NOT_FOUND" });
       // All users have Pro access — no plan restriction
       const tx = await getTransactionById(input.id);
@@ -794,12 +794,12 @@ export const appRouter = router({
       month: z.number().min(1).max(12),
       year: z.number(),
     })).query(async ({ ctx, input }) => {
-      const biz = (await resolveBusinessForUser(ctx.user.id, ctx.requestedBusinessId))?.business;
+      const biz = (await resolveBusinessForUser(ctx.user.id, ctx.requestedBusinessId, ctx.user.role))?.business;
       if (!biz) return [];
       return calcTaxForMonth(biz.id, input.month, input.year);
     }),
     payments: protectedProcedure.query(async ({ ctx }) => {
-      const biz = (await resolveBusinessForUser(ctx.user.id, ctx.requestedBusinessId))?.business;
+      const biz = (await resolveBusinessForUser(ctx.user.id, ctx.requestedBusinessId, ctx.user.role))?.business;
       if (!biz) return [];
       return getTaxPaymentsByBusiness(biz.id);
     }),
@@ -813,7 +813,7 @@ export const appRouter = router({
       status: z.enum(["LUNAS", "BELUM", "TERLAMBAT"]).default("LUNAS"),
       notes: z.string().optional(),
     })).mutation(async ({ ctx, input }) => {
-      const biz = (await resolveBusinessForUser(ctx.user.id, ctx.requestedBusinessId))?.business;
+      const biz = (await resolveBusinessForUser(ctx.user.id, ctx.requestedBusinessId, ctx.user.role))?.business;
       if (!biz) throw new TRPCError({ code: "NOT_FOUND" });
       const id = await createTaxPayment({ ...input, businessId: biz.id });
       return { id };
@@ -834,52 +834,52 @@ export const appRouter = router({
   // ─── Reports ───
   report: router({
     labaRugi: protectedProcedure.input(z.object({ month: z.number(), year: z.number() })).query(async ({ ctx, input }) => {
-      const biz = (await resolveBusinessForUser(ctx.user.id, ctx.requestedBusinessId))?.business;
+      const biz = (await resolveBusinessForUser(ctx.user.id, ctx.requestedBusinessId, ctx.user.role))?.business;
       if (!biz) throw new TRPCError({ code: "NOT_FOUND" });
       return generateLabaRugi(biz.id, input.month, input.year);
     }),
     arusKas: protectedProcedure.input(z.object({ month: z.number(), year: z.number() })).query(async ({ ctx, input }) => {
-      const biz = (await resolveBusinessForUser(ctx.user.id, ctx.requestedBusinessId))?.business;
+      const biz = (await resolveBusinessForUser(ctx.user.id, ctx.requestedBusinessId, ctx.user.role))?.business;
       if (!biz) throw new TRPCError({ code: "NOT_FOUND" });
       return generateArusKas(biz.id, input.month, input.year);
     }),
     neraca: protectedProcedure.input(z.object({ month: z.number(), year: z.number() })).query(async ({ ctx, input }) => {
-      const biz = (await resolveBusinessForUser(ctx.user.id, ctx.requestedBusinessId))?.business;
+      const biz = (await resolveBusinessForUser(ctx.user.id, ctx.requestedBusinessId, ctx.user.role))?.business;
       if (!biz) throw new TRPCError({ code: "NOT_FOUND" });
       return generateNeraca(biz.id, input.month, input.year);
     }),
     perubahanModal: protectedProcedure.input(z.object({ month: z.number(), year: z.number() })).query(async ({ ctx, input }) => {
-      const biz = (await resolveBusinessForUser(ctx.user.id, ctx.requestedBusinessId))?.business;
+      const biz = (await resolveBusinessForUser(ctx.user.id, ctx.requestedBusinessId, ctx.user.role))?.business;
       if (!biz) throw new TRPCError({ code: "NOT_FOUND" });
       return generatePerubahanModal(biz.id, input.month, input.year);
     }),
     calk: protectedProcedure.input(z.object({ month: z.number(), year: z.number() })).query(async ({ ctx, input }) => {
-      const biz = (await resolveBusinessForUser(ctx.user.id, ctx.requestedBusinessId))?.business;
+      const biz = (await resolveBusinessForUser(ctx.user.id, ctx.requestedBusinessId, ctx.user.role))?.business;
       if (!biz) throw new TRPCError({ code: "NOT_FOUND" });
       return generateCALK(biz.id, input.month, input.year);
     }),
     dashboard: protectedProcedure.query(async ({ ctx }) => {
-      const biz = (await resolveBusinessForUser(ctx.user.id, ctx.requestedBusinessId))?.business;
+      const biz = (await resolveBusinessForUser(ctx.user.id, ctx.requestedBusinessId, ctx.user.role))?.business;
       if (!biz) throw new TRPCError({ code: "NOT_FOUND" });
       return getDashboardKPIs(biz.id);
     }),
     yearlyOmzet: protectedProcedure.input(z.object({ year: z.number() })).query(async ({ ctx, input }) => {
-      const biz = (await resolveBusinessForUser(ctx.user.id, ctx.requestedBusinessId))?.business;
+      const biz = (await resolveBusinessForUser(ctx.user.id, ctx.requestedBusinessId, ctx.user.role))?.business;
       if (!biz) return new Array(12).fill(0);
       return getYearlyOmzet(biz.id, input.year);
     }),
     summary: protectedProcedure.input(z.object({ month: z.number(), year: z.number() })).query(async ({ ctx, input }) => {
-      const biz = (await resolveBusinessForUser(ctx.user.id, ctx.requestedBusinessId))?.business;
+      const biz = (await resolveBusinessForUser(ctx.user.id, ctx.requestedBusinessId, ctx.user.role))?.business;
       if (!biz) throw new TRPCError({ code: "NOT_FOUND" });
       return getTransactionSummary(biz.id, input.month, input.year);
     }),
     dailySales: protectedProcedure.input(z.object({ date: z.string() })).query(async ({ ctx, input }) => {
-      const biz = (await resolveBusinessForUser(ctx.user.id, ctx.requestedBusinessId))?.business;
+      const biz = (await resolveBusinessForUser(ctx.user.id, ctx.requestedBusinessId, ctx.user.role))?.business;
       if (!biz) throw new TRPCError({ code: "NOT_FOUND" });
       return getDailySalesReport(biz.id, input.date);
     }),
     periodSales: protectedProcedure.input(z.object({ startDate: z.string(), endDate: z.string() })).query(async ({ ctx, input }) => {
-      const biz = (await resolveBusinessForUser(ctx.user.id, ctx.requestedBusinessId))?.business;
+      const biz = (await resolveBusinessForUser(ctx.user.id, ctx.requestedBusinessId, ctx.user.role))?.business;
       if (!biz) throw new TRPCError({ code: "NOT_FOUND" });
       return getPeriodSalesReport(biz.id, input.startDate, input.endDate);
     }),
@@ -888,7 +888,7 @@ export const appRouter = router({
       startDate: z.string(),
       endDate: z.string(),
     })).query(async ({ ctx, input }) => {
-      const biz = (await resolveBusinessForUser(ctx.user.id, ctx.requestedBusinessId))?.business;
+      const biz = (await resolveBusinessForUser(ctx.user.id, ctx.requestedBusinessId, ctx.user.role))?.business;
       if (!biz) throw new TRPCError({ code: "NOT_FOUND" });
       return getRekeningKoranReport(biz.id, input.bankAccountName, input.startDate, input.endDate);
     }),
@@ -897,7 +897,7 @@ export const appRouter = router({
       startDate: z.string(),
       endDate: z.string(),
     })).query(async ({ ctx, input }) => {
-      const biz = (await resolveBusinessForUser(ctx.user.id, ctx.requestedBusinessId))?.business;
+      const biz = (await resolveBusinessForUser(ctx.user.id, ctx.requestedBusinessId, ctx.user.role))?.business;
       if (!biz) throw new TRPCError({ code: "NOT_FOUND" });
       return getMutasiPersediaanReport(biz.id, input.productId, input.startDate, input.endDate);
     }),
@@ -906,7 +906,7 @@ export const appRouter = router({
       startDate: z.string(),
       endDate: z.string(),
     })).query(async ({ ctx, input }) => {
-      const biz = (await resolveBusinessForUser(ctx.user.id, ctx.requestedBusinessId))?.business;
+      const biz = (await resolveBusinessForUser(ctx.user.id, ctx.requestedBusinessId, ctx.user.role))?.business;
       if (!biz) throw new TRPCError({ code: "NOT_FOUND" });
       return getSalesByProduct(biz.id, input.startDate, input.endDate);
     }),
@@ -915,7 +915,7 @@ export const appRouter = router({
       startDate: z.string(),
       endDate: z.string(),
     })).query(async ({ ctx, input }) => {
-      const biz = (await resolveBusinessForUser(ctx.user.id, ctx.requestedBusinessId))?.business;
+      const biz = (await resolveBusinessForUser(ctx.user.id, ctx.requestedBusinessId, ctx.user.role))?.business;
       if (!biz) throw new TRPCError({ code: "NOT_FOUND" });
       return getPaymentMethodSummary(biz.id, input.startDate, input.endDate);
     }),
@@ -925,7 +925,7 @@ export const appRouter = router({
       endDate: z.string(),
       limit: z.number().optional().default(10),
     })).query(async ({ ctx, input }) => {
-      const biz = (await resolveBusinessForUser(ctx.user.id, ctx.requestedBusinessId))?.business;
+      const biz = (await resolveBusinessForUser(ctx.user.id, ctx.requestedBusinessId, ctx.user.role))?.business;
       if (!biz) throw new TRPCError({ code: "NOT_FOUND" });
       return getTopProductsAndCategories(biz.id, input.startDate, input.endDate, input.limit);
     }),
@@ -937,7 +937,7 @@ export const appRouter = router({
       startDate: z.string(),
       endDate: z.string(),
     })).query(async ({ ctx, input }) => {
-      const biz = (await resolveBusinessForUser(ctx.user.id, ctx.requestedBusinessId))?.business;
+      const biz = (await resolveBusinessForUser(ctx.user.id, ctx.requestedBusinessId, ctx.user.role))?.business;
       if (!biz) throw new TRPCError({ code: "NOT_FOUND" });
       return getSalesByCustomer(biz.id, input.startDate, input.endDate);
     }),
@@ -947,7 +947,7 @@ export const appRouter = router({
       startDate: z.string(),
       endDate: z.string(),
     })).query(async ({ ctx, input }) => {
-      const biz = (await resolveBusinessForUser(ctx.user.id, ctx.requestedBusinessId))?.business;
+      const biz = (await resolveBusinessForUser(ctx.user.id, ctx.requestedBusinessId, ctx.user.role))?.business;
       if (!biz) throw new TRPCError({ code: "NOT_FOUND" });
       return getSalesByHour(biz.id, input.startDate, input.endDate);
     }),
@@ -957,7 +957,7 @@ export const appRouter = router({
       startDate: z.string(),
       endDate: z.string(),
     })).query(async ({ ctx, input }) => {
-      const biz = (await resolveBusinessForUser(ctx.user.id, ctx.requestedBusinessId))?.business;
+      const biz = (await resolveBusinessForUser(ctx.user.id, ctx.requestedBusinessId, ctx.user.role))?.business;
       if (!biz) throw new TRPCError({ code: "NOT_FOUND" });
       return getSalesByDate(biz.id, input.startDate, input.endDate);
     }),
@@ -967,7 +967,7 @@ export const appRouter = router({
       startDate: z.string(),
       endDate: z.string(),
     })).query(async ({ ctx, input }) => {
-      const biz = (await resolveBusinessForUser(ctx.user.id, ctx.requestedBusinessId))?.business;
+      const biz = (await resolveBusinessForUser(ctx.user.id, ctx.requestedBusinessId, ctx.user.role))?.business;
       if (!biz) throw new TRPCError({ code: "NOT_FOUND" });
       return getDiscountSummary(biz.id, input.startDate, input.endDate);
     }),
@@ -977,7 +977,7 @@ export const appRouter = router({
       startDate: z.string(),
       endDate: z.string(),
     })).query(async ({ ctx, input }) => {
-      const biz = (await resolveBusinessForUser(ctx.user.id, ctx.requestedBusinessId))?.business;
+      const biz = (await resolveBusinessForUser(ctx.user.id, ctx.requestedBusinessId, ctx.user.role))?.business;
       if (!biz) throw new TRPCError({ code: "NOT_FOUND" });
       return getVoidRefundAnalysis(biz.id, input.startDate, input.endDate);
     }),
@@ -987,7 +987,7 @@ export const appRouter = router({
       startDate: z.string(),
       endDate: z.string(),
     })).query(async ({ ctx, input }) => {
-      const biz = (await resolveBusinessForUser(ctx.user.id, ctx.requestedBusinessId))?.business;
+      const biz = (await resolveBusinessForUser(ctx.user.id, ctx.requestedBusinessId, ctx.user.role))?.business;
       if (!biz) throw new TRPCError({ code: "NOT_FOUND" });
       return getKasReconciliation(biz.id, input.startDate, input.endDate);
     }),
@@ -997,14 +997,14 @@ export const appRouter = router({
       startDate: z.string().optional(),
       endDate: z.string().optional(),
     })).query(async ({ ctx, input }) => {
-      const resolved = await resolveBusinessForUser(ctx.user.id, ctx.requestedBusinessId);
+      const resolved = await resolveBusinessForUser(ctx.user.id, ctx.requestedBusinessId, ctx.user.role);
       if (!resolved) return { shifts: [], summary: { totalShifts: 0, totalPenjualan: 0, totalRefund: 0, avgCashDifference: 0 } };
       return getShiftReport(resolved.business.id, input.startDate, input.endDate);
     }),
 
     // ─── Inventory: FIFO Valuation ───
     fifoValuation: protectedProcedure.query(async ({ ctx }) => {
-      const biz = (await resolveBusinessForUser(ctx.user.id, ctx.requestedBusinessId))?.business;
+      const biz = (await resolveBusinessForUser(ctx.user.id, ctx.requestedBusinessId, ctx.user.role))?.business;
       if (!biz) throw new TRPCError({ code: "NOT_FOUND" });
       const { getFIFOValuation } = await import("./db");
       return getFIFOValuation(biz.id);
@@ -1014,7 +1014,7 @@ export const appRouter = router({
     expiringStock: protectedProcedure.input(z.object({
       daysAhead: z.number().default(30),
     })).query(async ({ ctx, input }) => {
-      const biz = (await resolveBusinessForUser(ctx.user.id, ctx.requestedBusinessId))?.business;
+      const biz = (await resolveBusinessForUser(ctx.user.id, ctx.requestedBusinessId, ctx.user.role))?.business;
       if (!biz) throw new TRPCError({ code: "NOT_FOUND" });
       const { getExpiringStock } = await import("./db");
       return getExpiringStock(biz.id, input.daysAhead);
@@ -1022,7 +1022,7 @@ export const appRouter = router({
 
     // ─── Inventory: Expired Stock ───
     expiredStock: protectedProcedure.query(async ({ ctx }) => {
-      const biz = (await resolveBusinessForUser(ctx.user.id, ctx.requestedBusinessId))?.business;
+      const biz = (await resolveBusinessForUser(ctx.user.id, ctx.requestedBusinessId, ctx.user.role))?.business;
       if (!biz) throw new TRPCError({ code: "NOT_FOUND" });
       const { getExpiredStock } = await import("./db");
       return getExpiredStock(biz.id);
@@ -1030,7 +1030,7 @@ export const appRouter = router({
 
     // ─── Inventory: Stock Aging ───
     stockAging: protectedProcedure.query(async ({ ctx }) => {
-      const biz = (await resolveBusinessForUser(ctx.user.id, ctx.requestedBusinessId))?.business;
+      const biz = (await resolveBusinessForUser(ctx.user.id, ctx.requestedBusinessId, ctx.user.role))?.business;
       if (!biz) throw new TRPCError({ code: "NOT_FOUND" });
       const { getStockAging } = await import("./db");
       return getStockAging(biz.id);
@@ -1038,7 +1038,7 @@ export const appRouter = router({
 
     // ─── Inventory: Low Stock Alerts ───
     lowStockAlerts: protectedProcedure.query(async ({ ctx }) => {
-      const biz = (await resolveBusinessForUser(ctx.user.id, ctx.requestedBusinessId))?.business;
+      const biz = (await resolveBusinessForUser(ctx.user.id, ctx.requestedBusinessId, ctx.user.role))?.business;
       if (!biz) throw new TRPCError({ code: "NOT_FOUND" });
       const { getLowStockAlerts } = await import("./db");
       return getLowStockAlerts(biz.id);
@@ -1049,7 +1049,7 @@ export const appRouter = router({
       month: z.number().min(1).max(12),
       year: z.number().min(2000),
     })).query(async ({ ctx, input }) => {
-      const biz = (await resolveBusinessForUser(ctx.user.id, ctx.requestedBusinessId))?.business;
+      const biz = (await resolveBusinessForUser(ctx.user.id, ctx.requestedBusinessId, ctx.user.role))?.business;
       if (!biz) throw new TRPCError({ code: "NOT_FOUND" });
       return generateLabaRugiDetail(biz.id, input.month, input.year);
     }),
@@ -1058,7 +1058,7 @@ export const appRouter = router({
       startDate: z.string(),
       endDate: z.string(),
     })).query(async ({ ctx, input }) => {
-      const biz = (await resolveBusinessForUser(ctx.user.id, ctx.requestedBusinessId))?.business;
+      const biz = (await resolveBusinessForUser(ctx.user.id, ctx.requestedBusinessId, ctx.user.role))?.business;
       if (!biz) throw new TRPCError({ code: "NOT_FOUND" });
       return getSalesByStaff(biz.id, input.startDate, input.endDate);
     }),
@@ -1068,7 +1068,7 @@ export const appRouter = router({
       startDate: z.string(),
       endDate: z.string(),
     })).query(async ({ ctx, input }) => {
-      const biz = (await resolveBusinessForUser(ctx.user.id, ctx.requestedBusinessId))?.business;
+      const biz = (await resolveBusinessForUser(ctx.user.id, ctx.requestedBusinessId, ctx.user.role))?.business;
       if (!biz) throw new TRPCError({ code: "NOT_FOUND" });
       return getStaffSalesDetail(biz.id, input.staffName, input.startDate, input.endDate);
     }),
@@ -1077,7 +1077,7 @@ export const appRouter = router({
       startDate: z.string(),
       endDate: z.string(),
     })).query(async ({ ctx, input }) => {
-      const biz = (await resolveBusinessForUser(ctx.user.id, ctx.requestedBusinessId))?.business;
+      const biz = (await resolveBusinessForUser(ctx.user.id, ctx.requestedBusinessId, ctx.user.role))?.business;
       if (!biz) throw new TRPCError({ code: "NOT_FOUND" });
       return getSalesByDevice(biz.id, input.startDate, input.endDate);
     }),
@@ -1086,7 +1086,7 @@ export const appRouter = router({
   // ═══ Wave 4: Outlets ═══
   outlet: router({
     list: protectedProcedure.query(async ({ ctx }) => {
-      const biz = (await resolveBusinessForUser(ctx.user.id, ctx.requestedBusinessId))?.business;
+      const biz = (await resolveBusinessForUser(ctx.user.id, ctx.requestedBusinessId, ctx.user.role))?.business;
       if (!biz) throw new TRPCError({ code: "NOT_FOUND" });
       return getOutletsByBusiness(biz.id);
     }),
@@ -1096,7 +1096,7 @@ export const appRouter = router({
       address: z.string().optional(),
       phone: z.string().optional(),
     })).mutation(async ({ ctx, input }) => {
-      const biz = (await resolveBusinessForUser(ctx.user.id, ctx.requestedBusinessId))?.business;
+      const biz = (await resolveBusinessForUser(ctx.user.id, ctx.requestedBusinessId, ctx.user.role))?.business;
       if (!biz) throw new TRPCError({ code: "NOT_FOUND" });
       return createOutlet({ ...input, businessId: biz.id, isActive: true });
     }),
@@ -1108,7 +1108,7 @@ export const appRouter = router({
       phone: z.string().optional(),
       isActive: z.boolean().optional(),
     })).mutation(async ({ ctx, input }) => {
-      const biz = (await resolveBusinessForUser(ctx.user.id, ctx.requestedBusinessId))?.business;
+      const biz = (await resolveBusinessForUser(ctx.user.id, ctx.requestedBusinessId, ctx.user.role))?.business;
       if (!biz) throw new TRPCError({ code: "NOT_FOUND" });
       const { id, ...rest } = input;
       await updateOutlet(id, biz.id, rest);
@@ -1117,7 +1117,7 @@ export const appRouter = router({
     delete: protectedProcedure.input(z.object({
       id: z.number(),
     })).mutation(async ({ ctx, input }) => {
-      const biz = (await resolveBusinessForUser(ctx.user.id, ctx.requestedBusinessId))?.business;
+      const biz = (await resolveBusinessForUser(ctx.user.id, ctx.requestedBusinessId, ctx.user.role))?.business;
       if (!biz) throw new TRPCError({ code: "NOT_FOUND" });
       await deleteOutlet(input.id, biz.id);
       return { success: true };
@@ -1127,7 +1127,7 @@ export const appRouter = router({
       endDate: z.string(),
       outletId: z.number().optional(),
     })).query(async ({ ctx, input }) => {
-      const biz = (await resolveBusinessForUser(ctx.user.id, ctx.requestedBusinessId))?.business;
+      const biz = (await resolveBusinessForUser(ctx.user.id, ctx.requestedBusinessId, ctx.user.role))?.business;
       if (!biz) throw new TRPCError({ code: "NOT_FOUND" });
       return getOutletSalesReport(biz.id, input.outletId, input.startDate, input.endDate);
     }),
@@ -1136,7 +1136,7 @@ export const appRouter = router({
   // ═══ Wave 4: Staff Attendance ═══
   attendance: router({
     clockIn: protectedProcedure.mutation(async ({ ctx }) => {
-      const biz = (await resolveBusinessForUser(ctx.user.id, ctx.requestedBusinessId))?.business;
+      const biz = (await resolveBusinessForUser(ctx.user.id, ctx.requestedBusinessId, ctx.user.role))?.business;
       if (!biz) throw new TRPCError({ code: "NOT_FOUND" });
       const today = new Date().toISOString().split('T')[0];
       const userName = ctx.user.name || "User";
@@ -1145,13 +1145,13 @@ export const appRouter = router({
     clockOut: protectedProcedure.input(z.object({
       id: z.number(),
     })).mutation(async ({ ctx, input }) => {
-      const biz = (await resolveBusinessForUser(ctx.user.id, ctx.requestedBusinessId))?.business;
+      const biz = (await resolveBusinessForUser(ctx.user.id, ctx.requestedBusinessId, ctx.user.role))?.business;
       if (!biz) throw new TRPCError({ code: "NOT_FOUND" });
       await clockOut(biz.id, input.id);
       return { success: true };
     }),
     today: protectedProcedure.query(async ({ ctx }) => {
-      const biz = (await resolveBusinessForUser(ctx.user.id, ctx.requestedBusinessId))?.business;
+      const biz = (await resolveBusinessForUser(ctx.user.id, ctx.requestedBusinessId, ctx.user.role))?.business;
       if (!biz) throw new TRPCError({ code: "NOT_FOUND" });
       const today = new Date().toISOString().split('T')[0];
       return getAttendanceByDate(biz.id, today);
@@ -1160,7 +1160,7 @@ export const appRouter = router({
       startDate: z.string(),
       endDate: z.string(),
     })).query(async ({ ctx, input }) => {
-      const biz = (await resolveBusinessForUser(ctx.user.id, ctx.requestedBusinessId))?.business;
+      const biz = (await resolveBusinessForUser(ctx.user.id, ctx.requestedBusinessId, ctx.user.role))?.business;
       if (!biz) throw new TRPCError({ code: "NOT_FOUND" });
       return getAttendanceReport(biz.id, input.startDate, input.endDate);
     }),
@@ -1168,7 +1168,7 @@ export const appRouter = router({
       startDate: z.string(),
       endDate: z.string(),
     })).query(async ({ ctx, input }) => {
-      const biz = (await resolveBusinessForUser(ctx.user.id, ctx.requestedBusinessId))?.business;
+      const biz = (await resolveBusinessForUser(ctx.user.id, ctx.requestedBusinessId, ctx.user.role))?.business;
       if (!biz) throw new TRPCError({ code: "NOT_FOUND" });
       return getAttendanceReport(biz.id, input.startDate, input.endDate);
     }),
@@ -1176,7 +1176,7 @@ export const appRouter = router({
       startDate: z.string(),
       endDate: z.string(),
     })).query(async ({ ctx, input }) => {
-      const biz = (await resolveBusinessForUser(ctx.user.id, ctx.requestedBusinessId))?.business;
+      const biz = (await resolveBusinessForUser(ctx.user.id, ctx.requestedBusinessId, ctx.user.role))?.business;
       if (!biz) throw new TRPCError({ code: "NOT_FOUND" });
       return getMyAttendance(biz.id, ctx.user.id.toString(), input.startDate, input.endDate);
     }),
@@ -1187,7 +1187,7 @@ export const appRouter = router({
     balance: protectedProcedure.input(z.object({
       clientId: z.number(),
     })).query(async ({ ctx, input }) => {
-      const biz = (await resolveBusinessForUser(ctx.user.id, ctx.requestedBusinessId))?.business;
+      const biz = (await resolveBusinessForUser(ctx.user.id, ctx.requestedBusinessId, ctx.user.role))?.business;
       if (!biz) throw new TRPCError({ code: "NOT_FOUND" });
       return getOrCreateDeposit(biz.id, input.clientId);
     }),
@@ -1196,7 +1196,7 @@ export const appRouter = router({
       amount: z.number().positive(),
       notes: z.string().optional(),
     })).mutation(async ({ ctx, input }) => {
-      const biz = (await resolveBusinessForUser(ctx.user.id, ctx.requestedBusinessId))?.business;
+      const biz = (await resolveBusinessForUser(ctx.user.id, ctx.requestedBusinessId, ctx.user.role))?.business;
       if (!biz) throw new TRPCError({ code: "NOT_FOUND" });
       await topUpDeposit(biz.id, input.clientId, input.amount, input.notes);
       return { success: true };
@@ -1206,7 +1206,7 @@ export const appRouter = router({
       amount: z.number().positive(),
       notes: z.string().optional(),
     })).mutation(async ({ ctx, input }) => {
-      const biz = (await resolveBusinessForUser(ctx.user.id, ctx.requestedBusinessId))?.business;
+      const biz = (await resolveBusinessForUser(ctx.user.id, ctx.requestedBusinessId, ctx.user.role))?.business;
       if (!biz) throw new TRPCError({ code: "NOT_FOUND" });
       await useDeposit(biz.id, input.clientId, input.amount, input.notes);
       return { success: true };
@@ -1216,7 +1216,7 @@ export const appRouter = router({
       amount: z.number().positive(),
       notes: z.string().optional(),
     })).mutation(async ({ ctx, input }) => {
-      const biz = (await resolveBusinessForUser(ctx.user.id, ctx.requestedBusinessId))?.business;
+      const biz = (await resolveBusinessForUser(ctx.user.id, ctx.requestedBusinessId, ctx.user.role))?.business;
       if (!biz) throw new TRPCError({ code: "NOT_FOUND" });
       await refundDeposit(biz.id, input.clientId, input.amount, input.notes);
       return { success: true };
@@ -1224,12 +1224,12 @@ export const appRouter = router({
     history: protectedProcedure.input(z.object({
       clientId: z.number(),
     })).query(async ({ ctx, input }) => {
-      const biz = (await resolveBusinessForUser(ctx.user.id, ctx.requestedBusinessId))?.business;
+      const biz = (await resolveBusinessForUser(ctx.user.id, ctx.requestedBusinessId, ctx.user.role))?.business;
       if (!biz) throw new TRPCError({ code: "NOT_FOUND" });
       return getDepositHistory(biz.id, input.clientId);
     }),
     list: protectedProcedure.query(async ({ ctx }) => {
-      const biz = (await resolveBusinessForUser(ctx.user.id, ctx.requestedBusinessId))?.business;
+      const biz = (await resolveBusinessForUser(ctx.user.id, ctx.requestedBusinessId, ctx.user.role))?.business;
       if (!biz) throw new TRPCError({ code: "NOT_FOUND" });
       return getAllDeposits(biz.id);
     }),
@@ -1237,7 +1237,7 @@ export const appRouter = router({
       startDate: z.string().optional(),
       endDate: z.string().optional(),
     })).query(async ({ ctx, input }) => {
-      const biz = (await resolveBusinessForUser(ctx.user.id, ctx.requestedBusinessId))?.business;
+      const biz = (await resolveBusinessForUser(ctx.user.id, ctx.requestedBusinessId, ctx.user.role))?.business;
       if (!biz) throw new TRPCError({ code: "NOT_FOUND" });
       return getDepositReport(biz.id, input.startDate, input.endDate);
     }),
@@ -1250,7 +1250,7 @@ export const appRouter = router({
       endDate: z.string().optional(),
       status: z.string().optional(),
     })).query(async ({ ctx, input }) => {
-      const biz = (await resolveBusinessForUser(ctx.user.id, ctx.requestedBusinessId))?.business;
+      const biz = (await resolveBusinessForUser(ctx.user.id, ctx.requestedBusinessId, ctx.user.role))?.business;
       if (!biz) throw new TRPCError({ code: "NOT_FOUND" });
       return getCreditSalesReport(biz.id, input.startDate, input.endDate, input.status);
     }),
@@ -1262,7 +1262,7 @@ export const appRouter = router({
       dueDate: z.string().optional(),
       notes: z.string().optional(),
     })).mutation(async ({ ctx, input }) => {
-      const biz = (await resolveBusinessForUser(ctx.user.id, ctx.requestedBusinessId))?.business;
+      const biz = (await resolveBusinessForUser(ctx.user.id, ctx.requestedBusinessId, ctx.user.role))?.business;
       if (!biz) throw new TRPCError({ code: "NOT_FOUND" });
       const id = await createCreditSale({
         businessId: biz.id,
@@ -1284,7 +1284,7 @@ export const appRouter = router({
       date: z.string(),
       notes: z.string().optional(),
     })).mutation(async ({ ctx, input }) => {
-      const resolved = await resolveBusinessForUser(ctx.user.id, ctx.requestedBusinessId);
+      const resolved = await resolveBusinessForUser(ctx.user.id, ctx.requestedBusinessId, ctx.user.role);
       if (!resolved) throw new TRPCError({ code: "NOT_FOUND" });
       const bizId = resolved.business.id;
 
@@ -1329,7 +1329,7 @@ export const appRouter = router({
   // ─── Notifications ───
   notification: router({
     sendTaxReminder: protectedProcedure.mutation(async ({ ctx }) => {
-      const biz = (await resolveBusinessForUser(ctx.user.id, ctx.requestedBusinessId))?.business;
+      const biz = (await resolveBusinessForUser(ctx.user.id, ctx.requestedBusinessId, ctx.user.role))?.business;
       if (!biz) throw new TRPCError({ code: "NOT_FOUND" });
       const now = new Date();
       const month = now.getMonth() + 1;
@@ -1464,7 +1464,7 @@ Penting: Kembalikan HANYA JSON valid, tidak ada teks penjelasan.`,
   // ─── Product Compositions (COGS) ───
   composition: router({
     list: protectedProcedure.input(z.object({ productId: z.number() })).query(async ({ ctx, input }) => {
-      const biz = (await resolveBusinessForUser(ctx.user.id, ctx.requestedBusinessId))?.business;
+      const biz = (await resolveBusinessForUser(ctx.user.id, ctx.requestedBusinessId, ctx.user.role))?.business;
       if (!biz) return { compositions: [], totalCogs: 0 };
       const product = await getProductById(input.productId);
       if (!product || product.businessId !== biz.id) return { compositions: [], totalCogs: 0 };
@@ -1481,7 +1481,7 @@ Penting: Kembalikan HANYA JSON valid, tidak ada teks penjelasan.`,
       costPerUnit: z.number().min(0),
       notes: z.string().optional(),
     })).mutation(async ({ ctx, input }) => {
-      const biz = (await resolveBusinessForUser(ctx.user.id, ctx.requestedBusinessId))?.business;
+      const biz = (await resolveBusinessForUser(ctx.user.id, ctx.requestedBusinessId, ctx.user.role))?.business;
       if (!biz) throw new TRPCError({ code: "NOT_FOUND", message: "Bisnis tidak ditemukan" });
       const product = await getProductById(input.productId);
       if (!product || product.businessId !== biz.id) throw new TRPCError({ code: "NOT_FOUND" });
@@ -1501,7 +1501,7 @@ Penting: Kembalikan HANYA JSON valid, tidak ada teks penjelasan.`,
       costPerUnit: z.number().min(0).optional(),
       notes: z.string().optional(),
     })).mutation(async ({ ctx, input }) => {
-      const biz = (await resolveBusinessForUser(ctx.user.id, ctx.requestedBusinessId))?.business;
+      const biz = (await resolveBusinessForUser(ctx.user.id, ctx.requestedBusinessId, ctx.user.role))?.business;
       if (!biz) throw new TRPCError({ code: "NOT_FOUND" });
       const comp = await getCompositionById(input.id);
       if (!comp) throw new TRPCError({ code: "NOT_FOUND" });
@@ -1518,7 +1518,7 @@ Penting: Kembalikan HANYA JSON valid, tidak ada teks penjelasan.`,
       return { success: true, totalCogs: Math.round(totalCogs) };
     }),
     delete: protectedProcedure.input(z.object({ id: z.number() })).mutation(async ({ ctx, input }) => {
-      const biz = (await resolveBusinessForUser(ctx.user.id, ctx.requestedBusinessId))?.business;
+      const biz = (await resolveBusinessForUser(ctx.user.id, ctx.requestedBusinessId, ctx.user.role))?.business;
       if (!biz) throw new TRPCError({ code: "NOT_FOUND" });
       const comp = await getCompositionById(input.id);
       if (!comp) throw new TRPCError({ code: "NOT_FOUND" });
@@ -1541,7 +1541,7 @@ Penting: Kembalikan HANYA JSON valid, tidak ada teks penjelasan.`,
       date: z.string(),
       notes: z.string().optional(),
     })).mutation(async ({ ctx, input }) => {
-      const biz = (await resolveBusinessForUser(ctx.user.id, ctx.requestedBusinessId))?.business;
+      const biz = (await resolveBusinessForUser(ctx.user.id, ctx.requestedBusinessId, ctx.user.role))?.business;
       if (!biz) throw new TRPCError({ code: "NOT_FOUND" });
       return runProduction(biz.id, input.productId, input.qty, input.date, input.notes);
     }),
@@ -1551,7 +1551,7 @@ Penting: Kembalikan HANYA JSON valid, tidak ada teks penjelasan.`,
       startDate: z.string().optional(),
       endDate: z.string().optional(),
     })).query(async ({ ctx, input }) => {
-      const biz = (await resolveBusinessForUser(ctx.user.id, ctx.requestedBusinessId))?.business;
+      const biz = (await resolveBusinessForUser(ctx.user.id, ctx.requestedBusinessId, ctx.user.role))?.business;
       if (!biz) return [];
       return getProductionLogs(biz.id, input.productId, input.startDate, input.endDate);
     }),
@@ -1560,7 +1560,7 @@ Penting: Kembalikan HANYA JSON valid, tidak ada teks penjelasan.`,
       startDate: z.string(),
       endDate: z.string(),
     })).query(async ({ ctx, input }) => {
-      const biz = (await resolveBusinessForUser(ctx.user.id, ctx.requestedBusinessId))?.business;
+      const biz = (await resolveBusinessForUser(ctx.user.id, ctx.requestedBusinessId, ctx.user.role))?.business;
       if (!biz) throw new TRPCError({ code: "NOT_FOUND" });
       return getProductionCostReport(biz.id, input.startDate, input.endDate);
     }),
@@ -1568,7 +1568,7 @@ Penting: Kembalikan HANYA JSON valid, tidak ada teks penjelasan.`,
 
   // ─── Search Products (for scan-to-stock matching) ───
   searchProducts: protectedProcedure.input(z.object({ name: z.string() })).query(async ({ ctx, input }) => {
-    const biz = (await resolveBusinessForUser(ctx.user.id, ctx.requestedBusinessId))?.business;
+    const biz = (await resolveBusinessForUser(ctx.user.id, ctx.requestedBusinessId, ctx.user.role))?.business;
     if (!biz) return [];
     return searchProductsByName(biz.id, input.name);
   }),
@@ -1576,7 +1576,7 @@ Penting: Kembalikan HANYA JSON valid, tidak ada teks penjelasan.`,
   // ─── Product Categories (user-defined) ───
   category: router({
     list: protectedProcedure.query(async ({ ctx }) => {
-      const biz = (await resolveBusinessForUser(ctx.user.id, ctx.requestedBusinessId))?.business;
+      const biz = (await resolveBusinessForUser(ctx.user.id, ctx.requestedBusinessId, ctx.user.role))?.business;
       if (!biz) return [];
       return getProductCategories(biz.id);
     }),
@@ -1585,7 +1585,7 @@ Penting: Kembalikan HANYA JSON valid, tidak ada teks penjelasan.`,
       parentId: z.number().nullable().optional(),
       sortOrder: z.number().optional(),
     })).mutation(async ({ ctx, input }) => {
-      const biz = (await resolveBusinessForUser(ctx.user.id, ctx.requestedBusinessId))?.business;
+      const biz = (await resolveBusinessForUser(ctx.user.id, ctx.requestedBusinessId, ctx.user.role))?.business;
       if (!biz) throw new TRPCError({ code: "NOT_FOUND" });
       const cat = await createProductCategory({ businessId: biz.id, name: input.name, parentId: input.parentId ?? null, sortOrder: input.sortOrder ?? 0 });
       return cat;
@@ -1596,14 +1596,14 @@ Penting: Kembalikan HANYA JSON valid, tidak ada teks penjelasan.`,
       parentId: z.number().nullable().optional(),
       sortOrder: z.number().optional(),
     })).mutation(async ({ ctx, input }) => {
-      const biz = (await resolveBusinessForUser(ctx.user.id, ctx.requestedBusinessId))?.business;
+      const biz = (await resolveBusinessForUser(ctx.user.id, ctx.requestedBusinessId, ctx.user.role))?.business;
       if (!biz) throw new TRPCError({ code: "NOT_FOUND" });
       const { id, ...data } = input;
       await updateProductCategory(id, biz.id, data);
       return { success: true };
     }),
     delete: protectedProcedure.input(z.object({ id: z.number() })).mutation(async ({ ctx, input }) => {
-      const biz = (await resolveBusinessForUser(ctx.user.id, ctx.requestedBusinessId))?.business;
+      const biz = (await resolveBusinessForUser(ctx.user.id, ctx.requestedBusinessId, ctx.user.role))?.business;
       if (!biz) throw new TRPCError({ code: "NOT_FOUND" });
       await deleteProductCategory(input.id, biz.id);
       return { success: true };
@@ -1685,7 +1685,7 @@ Penting: Kembalikan HANYA JSON valid, tidak ada teks penjelasan.`,
       if (link.expiresAt && link.expiresAt < new Date()) throw new TRPCError({ code: "BAD_REQUEST", message: "Link sudah kadaluarsa" });
 
       // Get business for user
-      const biz = (await resolveBusinessForUser(ctx.user.id, ctx.requestedBusinessId))?.business;
+      const biz = (await resolveBusinessForUser(ctx.user.id, ctx.requestedBusinessId, ctx.user.role))?.business;
       if (!biz) {
         throw new TRPCError({ code: "PRECONDITION_FAILED", message: "Silakan selesaikan setup bisnis terlebih dahulu, lalu klik link Pro lagi." });
       }
@@ -1717,12 +1717,12 @@ Penting: Kembalikan HANYA JSON valid, tidak ada teks penjelasan.`,
    }),
   bankAccount: router({
     list: protectedProcedure.query(async ({ ctx }) => {
-      const biz = (await resolveBusinessForUser(ctx.user.id, ctx.requestedBusinessId))?.business;
+      const biz = (await resolveBusinessForUser(ctx.user.id, ctx.requestedBusinessId, ctx.user.role))?.business;
       if (!biz) return [];
       return getBankAccountsByBusiness(biz.id);
     }),
     balances: protectedProcedure.query(async ({ ctx }) => {
-      const biz = (await resolveBusinessForUser(ctx.user.id, ctx.requestedBusinessId))?.business;
+      const biz = (await resolveBusinessForUser(ctx.user.id, ctx.requestedBusinessId, ctx.user.role))?.business;
       if (!biz) return [] as any[];
       const accounts = await getBankAccountsByBusiness(biz.id);
       if (accounts.length === 0) return [] as any[];
@@ -1746,7 +1746,7 @@ Penting: Kembalikan HANYA JSON valid, tidak ada teks penjelasan.`,
       description: z.string().optional(),
       initialBalance: z.number().default(0),
     })).mutation(async ({ ctx, input }) => {
-      const biz = (await resolveBusinessForUser(ctx.user.id, ctx.requestedBusinessId))?.business;
+      const biz = (await resolveBusinessForUser(ctx.user.id, ctx.requestedBusinessId, ctx.user.role))?.business;
       if (!biz) throw new TRPCError({ code: "NOT_FOUND", message: "Bisnis tidak ditemukan" });
       const id = await safeInsertBankAccount({ ...input, businessId: biz.id });
       return { id };
@@ -1760,7 +1760,7 @@ Penting: Kembalikan HANYA JSON valid, tidak ada teks penjelasan.`,
       description: z.string().nullable().optional(),
       initialBalance: z.number().optional(),
     })).mutation(async ({ ctx, input }) => {
-      const biz = (await resolveBusinessForUser(ctx.user.id, ctx.requestedBusinessId))?.business;
+      const biz = (await resolveBusinessForUser(ctx.user.id, ctx.requestedBusinessId, ctx.user.role))?.business;
       if (!biz) throw new TRPCError({ code: "NOT_FOUND" });
       const account = await getBankAccountById(input.id);
       if (!account || account.businessId !== biz.id) throw new TRPCError({ code: "NOT_FOUND" });
@@ -1769,7 +1769,7 @@ Penting: Kembalikan HANYA JSON valid, tidak ada teks penjelasan.`,
       return { success: true };
     }),
     delete: protectedProcedure.input(z.object({ id: z.number() })).mutation(async ({ ctx, input }) => {
-      const biz = (await resolveBusinessForUser(ctx.user.id, ctx.requestedBusinessId))?.business;
+      const biz = (await resolveBusinessForUser(ctx.user.id, ctx.requestedBusinessId, ctx.user.role))?.business;
       if (!biz) throw new TRPCError({ code: "NOT_FOUND" });
       const account = await getBankAccountById(input.id);
       if (!account || account.businessId !== biz.id) throw new TRPCError({ code: "NOT_FOUND" });
@@ -1783,7 +1783,7 @@ Penting: Kembalikan HANYA JSON valid, tidak ada teks penjelasan.`,
       date: z.string(),
       notes: z.string().optional(),
     })).mutation(async ({ ctx, input }) => {
-      const biz = (await resolveBusinessForUser(ctx.user.id, ctx.requestedBusinessId))?.business;
+      const biz = (await resolveBusinessForUser(ctx.user.id, ctx.requestedBusinessId, ctx.user.role))?.business;
       if (!biz) throw new TRPCError({ code: "NOT_FOUND" });
       if (input.fromAccount === input.toAccount) throw new TRPCError({ code: "BAD_REQUEST", message: "Akun asal dan tujuan harus berbeda" });
       const result = await createTransferBetweenAccounts(biz.id, input.fromAccount, input.toAccount, input.amount, input.date, input.notes);
@@ -1794,12 +1794,12 @@ Penting: Kembalikan HANYA JSON valid, tidak ada teks penjelasan.`,
   // ─── Client Management ───
   clientMgmt: router({
     list: protectedProcedure.query(async ({ ctx }) => {
-      const biz = (await resolveBusinessForUser(ctx.user.id, ctx.requestedBusinessId))?.business;
+      const biz = (await resolveBusinessForUser(ctx.user.id, ctx.requestedBusinessId, ctx.user.role))?.business;
       if (!biz) return [];
       return getClientsByBusiness(biz.id);
     }),
     getById: protectedProcedure.input(z.object({ id: z.number() })).query(async ({ ctx, input }) => {
-      const biz = (await resolveBusinessForUser(ctx.user.id, ctx.requestedBusinessId))?.business;
+      const biz = (await resolveBusinessForUser(ctx.user.id, ctx.requestedBusinessId, ctx.user.role))?.business;
       if (!biz) throw new TRPCError({ code: "NOT_FOUND" });
       const client = await getClientById(input.id);
       if (!client || client.businessId !== biz.id) throw new TRPCError({ code: "NOT_FOUND" });
@@ -1813,7 +1813,7 @@ Penting: Kembalikan HANYA JSON valid, tidak ada teks penjelasan.`,
       address: z.string().optional(),
       notes: z.string().optional(),
     })).mutation(async ({ ctx, input }) => {
-      const biz = (await resolveBusinessForUser(ctx.user.id, ctx.requestedBusinessId))?.business;
+      const biz = (await resolveBusinessForUser(ctx.user.id, ctx.requestedBusinessId, ctx.user.role))?.business;
       if (!biz) throw new TRPCError({ code: "NOT_FOUND" });
       const id = await createClient({ ...input, businessId: biz.id });
       return { id };
@@ -1827,7 +1827,7 @@ Penting: Kembalikan HANYA JSON valid, tidak ada teks penjelasan.`,
       address: z.string().optional(),
       notes: z.string().optional(),
     })).mutation(async ({ ctx, input }) => {
-      const biz = (await resolveBusinessForUser(ctx.user.id, ctx.requestedBusinessId))?.business;
+      const biz = (await resolveBusinessForUser(ctx.user.id, ctx.requestedBusinessId, ctx.user.role))?.business;
       if (!biz) throw new TRPCError({ code: "NOT_FOUND" });
       const client = await getClientById(input.id);
       if (!client || client.businessId !== biz.id) throw new TRPCError({ code: "NOT_FOUND" });
@@ -1836,7 +1836,7 @@ Penting: Kembalikan HANYA JSON valid, tidak ada teks penjelasan.`,
       return { success: true };
     }),
     delete: protectedProcedure.input(z.object({ id: z.number() })).mutation(async ({ ctx, input }) => {
-      const biz = (await resolveBusinessForUser(ctx.user.id, ctx.requestedBusinessId))?.business;
+      const biz = (await resolveBusinessForUser(ctx.user.id, ctx.requestedBusinessId, ctx.user.role))?.business;
       if (!biz) throw new TRPCError({ code: "NOT_FOUND" });
       const client = await getClientById(input.id);
       if (!client || client.businessId !== biz.id) throw new TRPCError({ code: "NOT_FOUND" });
@@ -1844,7 +1844,7 @@ Penting: Kembalikan HANYA JSON valid, tidak ada teks penjelasan.`,
       return { success: true };
     }),
     transactions: protectedProcedure.input(z.object({ clientId: z.number() })).query(async ({ ctx, input }) => {
-      const biz = (await resolveBusinessForUser(ctx.user.id, ctx.requestedBusinessId))?.business;
+      const biz = (await resolveBusinessForUser(ctx.user.id, ctx.requestedBusinessId, ctx.user.role))?.business;
       if (!biz) return [];
       return getTransactionsByClient(biz.id, input.clientId);
     }),
@@ -1853,12 +1853,12 @@ Penting: Kembalikan HANYA JSON valid, tidak ada teks penjelasan.`,
   // ─── Debts / Receivables (Hutang & Piutang) ───
   debt: router({
     list: protectedProcedure.input(z.object({ type: z.enum(["hutang", "piutang"]).optional() }).optional()).query(async ({ ctx, input }) => {
-      const biz = (await resolveBusinessForUser(ctx.user.id, ctx.requestedBusinessId))?.business;
+      const biz = (await resolveBusinessForUser(ctx.user.id, ctx.requestedBusinessId, ctx.user.role))?.business;
       if (!biz) return [];
       return getDebtsByBusiness(biz.id, input?.type);
     }),
     getById: protectedProcedure.input(z.object({ id: z.number() })).query(async ({ ctx, input }) => {
-      const biz = (await resolveBusinessForUser(ctx.user.id, ctx.requestedBusinessId))?.business;
+      const biz = (await resolveBusinessForUser(ctx.user.id, ctx.requestedBusinessId, ctx.user.role))?.business;
       if (!biz) throw new TRPCError({ code: "NOT_FOUND" });
       const debt = await getDebtById(input.id);
       if (!debt || debt.businessId !== biz.id) throw new TRPCError({ code: "NOT_FOUND" });
@@ -1873,7 +1873,7 @@ Penting: Kembalikan HANYA JSON valid, tidak ada teks penjelasan.`,
       dueDate: z.string().optional(),
       notes: z.string().optional(),
     })).mutation(async ({ ctx, input }) => {
-      const biz = (await resolveBusinessForUser(ctx.user.id, ctx.requestedBusinessId))?.business;
+      const biz = (await resolveBusinessForUser(ctx.user.id, ctx.requestedBusinessId, ctx.user.role))?.business;
       if (!biz) throw new TRPCError({ code: "NOT_FOUND" });
       const id = await createDebt({ ...input, businessId: biz.id });
       return { id };
@@ -1887,7 +1887,7 @@ Penting: Kembalikan HANYA JSON valid, tidak ada teks penjelasan.`,
       notes: z.string().optional(),
       status: z.enum(["belum_lunas", "lunas", "terlambat"]).optional(),
     })).mutation(async ({ ctx, input }) => {
-      const biz = (await resolveBusinessForUser(ctx.user.id, ctx.requestedBusinessId))?.business;
+      const biz = (await resolveBusinessForUser(ctx.user.id, ctx.requestedBusinessId, ctx.user.role))?.business;
       if (!biz) throw new TRPCError({ code: "NOT_FOUND" });
       const debt = await getDebtById(input.id);
       if (!debt || debt.businessId !== biz.id) throw new TRPCError({ code: "NOT_FOUND" });
@@ -1896,7 +1896,7 @@ Penting: Kembalikan HANYA JSON valid, tidak ada teks penjelasan.`,
       return { success: true };
     }),
     delete: protectedProcedure.input(z.object({ id: z.number() })).mutation(async ({ ctx, input }) => {
-      const biz = (await resolveBusinessForUser(ctx.user.id, ctx.requestedBusinessId))?.business;
+      const biz = (await resolveBusinessForUser(ctx.user.id, ctx.requestedBusinessId, ctx.user.role))?.business;
       if (!biz) throw new TRPCError({ code: "NOT_FOUND" });
       const debt = await getDebtById(input.id);
       if (!debt || debt.businessId !== biz.id) throw new TRPCError({ code: "NOT_FOUND" });
@@ -1904,7 +1904,7 @@ Penting: Kembalikan HANYA JSON valid, tidak ada teks penjelasan.`,
       return { success: true };
     }),
     payments: protectedProcedure.input(z.object({ debtId: z.number() })).query(async ({ ctx, input }) => {
-      const biz = (await resolveBusinessForUser(ctx.user.id, ctx.requestedBusinessId))?.business;
+      const biz = (await resolveBusinessForUser(ctx.user.id, ctx.requestedBusinessId, ctx.user.role))?.business;
       if (!biz) return [];
       const debt = await getDebtById(input.debtId);
       if (!debt || debt.businessId !== biz.id) return [];
@@ -1918,7 +1918,7 @@ Penting: Kembalikan HANYA JSON valid, tidak ada teks penjelasan.`,
       bankAccountName: z.string().optional(),
       notes: z.string().optional(),
     })).mutation(async ({ ctx, input }) => {
-      const biz = (await resolveBusinessForUser(ctx.user.id, ctx.requestedBusinessId))?.business;
+      const biz = (await resolveBusinessForUser(ctx.user.id, ctx.requestedBusinessId, ctx.user.role))?.business;
       if (!biz) throw new TRPCError({ code: "NOT_FOUND" });
       const debt = await getDebtById(input.debtId);
       if (!debt || debt.businessId !== biz.id) throw new TRPCError({ code: "NOT_FOUND" });
@@ -1971,7 +1971,7 @@ Penting: Kembalikan HANYA JSON valid, tidak ada teks penjelasan.`,
       return { id };
     }),
     deletePayment: protectedProcedure.input(z.object({ id: z.number(), debtId: z.number() })).mutation(async ({ ctx, input }) => {
-      const biz = (await resolveBusinessForUser(ctx.user.id, ctx.requestedBusinessId))?.business;
+      const biz = (await resolveBusinessForUser(ctx.user.id, ctx.requestedBusinessId, ctx.user.role))?.business;
       if (!biz) throw new TRPCError({ code: "NOT_FOUND" });
       const debt = await getDebtById(input.debtId);
       if (!debt || debt.businessId !== biz.id) throw new TRPCError({ code: "NOT_FOUND" });
@@ -1983,7 +1983,7 @@ Penting: Kembalikan HANYA JSON valid, tidak ada teks penjelasan.`,
   // ─── Budget Management ───
   budget: router({
     list: protectedProcedure.input(z.object({ period: z.string().optional() }).optional()).query(async ({ ctx, input }) => {
-      const biz = (await resolveBusinessForUser(ctx.user.id, ctx.requestedBusinessId))?.business;
+      const biz = (await resolveBusinessForUser(ctx.user.id, ctx.requestedBusinessId, ctx.user.role))?.business;
       if (!biz) return [];
       return getBudgetsByBusiness(biz.id, input?.period);
     }),
@@ -1993,7 +1993,7 @@ Penting: Kembalikan HANYA JSON valid, tidak ada teks penjelasan.`,
       budgetAmount: z.number().min(1),
       notes: z.string().optional(),
     })).mutation(async ({ ctx, input }) => {
-      const biz = (await resolveBusinessForUser(ctx.user.id, ctx.requestedBusinessId))?.business;
+      const biz = (await resolveBusinessForUser(ctx.user.id, ctx.requestedBusinessId, ctx.user.role))?.business;
       if (!biz) throw new TRPCError({ code: "NOT_FOUND" });
       const id = await createBudget({ ...input, businessId: biz.id });
       return { id };
@@ -2004,7 +2004,7 @@ Penting: Kembalikan HANYA JSON valid, tidak ada teks penjelasan.`,
       budgetAmount: z.number().optional(),
       notes: z.string().optional(),
     })).mutation(async ({ ctx, input }) => {
-      const biz = (await resolveBusinessForUser(ctx.user.id, ctx.requestedBusinessId))?.business;
+      const biz = (await resolveBusinessForUser(ctx.user.id, ctx.requestedBusinessId, ctx.user.role))?.business;
       if (!biz) throw new TRPCError({ code: "NOT_FOUND" });
       const budget = await getBudgetById(input.id);
       if (!budget || budget.businessId !== biz.id) throw new TRPCError({ code: "NOT_FOUND" });
@@ -2013,7 +2013,7 @@ Penting: Kembalikan HANYA JSON valid, tidak ada teks penjelasan.`,
       return { success: true };
     }),
     delete: protectedProcedure.input(z.object({ id: z.number() })).mutation(async ({ ctx, input }) => {
-      const biz = (await resolveBusinessForUser(ctx.user.id, ctx.requestedBusinessId))?.business;
+      const biz = (await resolveBusinessForUser(ctx.user.id, ctx.requestedBusinessId, ctx.user.role))?.business;
       if (!biz) throw new TRPCError({ code: "NOT_FOUND" });
       const budget = await getBudgetById(input.id);
       if (!budget || budget.businessId !== biz.id) throw new TRPCError({ code: "NOT_FOUND" });
@@ -2021,7 +2021,7 @@ Penting: Kembalikan HANYA JSON valid, tidak ada teks penjelasan.`,
       return { success: true };
     }),
     spending: protectedProcedure.input(z.object({ period: z.string() })).query(async ({ ctx, input }) => {
-      const biz = (await resolveBusinessForUser(ctx.user.id, ctx.requestedBusinessId))?.business;
+      const biz = (await resolveBusinessForUser(ctx.user.id, ctx.requestedBusinessId, ctx.user.role))?.business;
       if (!biz) return {};
       return getSpendingByCategory(biz.id, input.period);
     }),
@@ -2030,13 +2030,13 @@ Penting: Kembalikan HANYA JSON valid, tidak ada teks penjelasan.`,
   // ─── Settings (Calculator, Signature) ───
   settings: router({
     toggleCalculator: protectedProcedure.input(z.object({ enabled: z.boolean() })).mutation(async ({ ctx, input }) => {
-      const biz = (await resolveBusinessForUser(ctx.user.id, ctx.requestedBusinessId))?.business;
+      const biz = (await resolveBusinessForUser(ctx.user.id, ctx.requestedBusinessId, ctx.user.role))?.business;
       if (!biz) throw new TRPCError({ code: "NOT_FOUND" });
       await updateBusinessCalculator(biz.id, input.enabled);
       return { success: true };
     }),
     updateSignature: protectedProcedure.input(z.object({ signatureUrl: z.string().nullable() })).mutation(async ({ ctx, input }) => {
-      const biz = (await resolveBusinessForUser(ctx.user.id, ctx.requestedBusinessId))?.business;
+      const biz = (await resolveBusinessForUser(ctx.user.id, ctx.requestedBusinessId, ctx.user.role))?.business;
       if (!biz) throw new TRPCError({ code: "NOT_FOUND" });
       await updateBusinessSignature(biz.id, input.signatureUrl);
       return { success: true };
@@ -2046,7 +2046,7 @@ Penting: Kembalikan HANYA JSON valid, tidak ada teks penjelasan.`,
   // ─── Sales Analytics ───
   analytics: router({
     sales: protectedProcedure.input(z.object({ year: z.number() })).query(async ({ ctx, input }) => {
-      const biz = (await resolveBusinessForUser(ctx.user.id, ctx.requestedBusinessId))?.business;
+      const biz = (await resolveBusinessForUser(ctx.user.id, ctx.requestedBusinessId, ctx.user.role))?.business;
       if (!biz) return null;
       return getSalesAnalytics(biz.id, input.year);
     }),
@@ -2055,7 +2055,7 @@ Penting: Kembalikan HANYA JSON valid, tidak ada teks penjelasan.`,
   // ─── Due Date Notifications ───
   notifications: router({
     dueDates: protectedProcedure.input(z.object({ daysAhead: z.number().default(7) }).optional()).query(async ({ ctx, input }) => {
-      const biz = (await resolveBusinessForUser(ctx.user.id, ctx.requestedBusinessId))?.business;
+      const biz = (await resolveBusinessForUser(ctx.user.id, ctx.requestedBusinessId, ctx.user.role))?.business;
       if (!biz) return { debts: [], invoices: [] };
       return getUpcomingDueDates(biz.id, input?.daysAhead ?? 7);
     }),
@@ -2124,7 +2124,7 @@ Penting: Kembalikan HANYA JSON valid, tidak ada teks penjelasan.`,
   warehouse: router({
     // List all warehouses for the user's business
     list: protectedProcedure.query(async ({ ctx }) => {
-      const biz = (await resolveBusinessForUser(ctx.user.id, ctx.requestedBusinessId))?.business;
+      const biz = (await resolveBusinessForUser(ctx.user.id, ctx.requestedBusinessId, ctx.user.role))?.business;
       if (!biz) return [];
       return getWarehousesByBusiness(biz.id);
     }),
@@ -2138,7 +2138,7 @@ Penting: Kembalikan HANYA JSON valid, tidak ada teks penjelasan.`,
 
     // Get or create default warehouse
     ensureDefault: protectedProcedure.mutation(async ({ ctx }) => {
-      const biz = (await resolveBusinessForUser(ctx.user.id, ctx.requestedBusinessId))?.business;
+      const biz = (await resolveBusinessForUser(ctx.user.id, ctx.requestedBusinessId, ctx.user.role))?.business;
       if (!biz) throw new TRPCError({ code: "NOT_FOUND", message: "Bisnis tidak ditemukan" });
       return ensureDefaultWarehouse(biz.id);
     }),
@@ -2152,7 +2152,7 @@ Penting: Kembalikan HANYA JSON valid, tidak ada teks penjelasan.`,
         notes: z.string().optional(),
       }))
       .mutation(async ({ ctx, input }) => {
-        const biz = (await resolveBusinessForUser(ctx.user.id, ctx.requestedBusinessId))?.business;
+        const biz = (await resolveBusinessForUser(ctx.user.id, ctx.requestedBusinessId, ctx.user.role))?.business;
         if (!biz) throw new TRPCError({ code: "NOT_FOUND", message: "Bisnis tidak ditemukan" });
         const id = await createWarehouse({
           businessId: biz.id,
@@ -2185,7 +2185,7 @@ Penting: Kembalikan HANYA JSON valid, tidak ada teks penjelasan.`,
     setDefault: protectedProcedure
       .input(z.object({ id: z.number() }))
       .mutation(async ({ ctx, input }) => {
-        const biz = (await resolveBusinessForUser(ctx.user.id, ctx.requestedBusinessId))?.business;
+        const biz = (await resolveBusinessForUser(ctx.user.id, ctx.requestedBusinessId, ctx.user.role))?.business;
         if (!biz) throw new TRPCError({ code: "NOT_FOUND" });
         // Unset all defaults first
         const allWh = await getWarehousesByBusiness(biz.id);
@@ -2232,7 +2232,7 @@ Penting: Kembalikan HANYA JSON valid, tidak ada teks penjelasan.`,
         notes: z.string().optional(),
       }))
       .mutation(async ({ ctx, input }) => {
-        const biz = (await resolveBusinessForUser(ctx.user.id, ctx.requestedBusinessId))?.business;
+        const biz = (await resolveBusinessForUser(ctx.user.id, ctx.requestedBusinessId, ctx.user.role))?.business;
         if (!biz) throw new TRPCError({ code: "NOT_FOUND" });
         if (input.fromWarehouseId === input.toWarehouseId) {
           throw new TRPCError({ code: "BAD_REQUEST", message: "Gudang asal dan tujuan harus berbeda" });
@@ -2248,14 +2248,14 @@ Penting: Kembalikan HANYA JSON valid, tidak ada teks penjelasan.`,
     transfers: protectedProcedure
       .input(z.object({ limit: z.number().optional() }).optional())
       .query(async ({ ctx, input }) => {
-        const biz = (await resolveBusinessForUser(ctx.user.id, ctx.requestedBusinessId))?.business;
+        const biz = (await resolveBusinessForUser(ctx.user.id, ctx.requestedBusinessId, ctx.user.role))?.business;
         if (!biz) return [];
         return getStockTransfersByBusiness(biz.id, input?.limit ?? 100);
       }),
 
     // Migrate existing stock to default warehouse (one-time)
     migrateStock: protectedProcedure.mutation(async ({ ctx }) => {
-      const biz = (await resolveBusinessForUser(ctx.user.id, ctx.requestedBusinessId))?.business;
+      const biz = (await resolveBusinessForUser(ctx.user.id, ctx.requestedBusinessId, ctx.user.role))?.business;
       if (!biz) throw new TRPCError({ code: "NOT_FOUND" });
       await migrateStockToDefaultWarehouse(biz.id);
       return { success: true };
@@ -2285,6 +2285,16 @@ Penting: Kembalikan HANYA JSON valid, tidak ada teks penjelasan.`,
       };
     }),
 
+    // Admin: get all businesses for impersonation switcher
+    adminAllBusinesses: adminProcedure.query(async () => {
+      const allBiz = await getAllBusinesses();
+      return allBiz.map((b: any) => ({
+        id: b.id,
+        name: b.businessName,
+        plan: b.plan ?? "free",
+      }));
+    }),
+
     // Get role permissions map
     rolePermissions: protectedProcedure.query(() => {
       return { roles: ROLE_PERMISSIONS, labels: PERMISSION_LABELS };
@@ -2292,7 +2302,7 @@ Penting: Kembalikan HANYA JSON valid, tidak ada teks penjelasan.`,
 
     // List team members (owner only, Pro+ only)
     list: protectedProcedure.query(async ({ ctx }) => {
-      const biz = (await resolveBusinessForUser(ctx.user.id, ctx.requestedBusinessId))?.business;
+      const biz = (await resolveBusinessForUser(ctx.user.id, ctx.requestedBusinessId, ctx.user.role))?.business;
       if (!biz) return [];
       if (biz.plan !== "pro_plus") return [];
       const members = await getTeamMembersByBusiness(biz.id);
@@ -2317,7 +2327,7 @@ Penting: Kembalikan HANYA JSON valid, tidak ada teks penjelasan.`,
       role: z.enum(["manager", "kasir", "gudang", "viewer"]),
       permissions: z.record(z.string(), z.boolean()).optional(),
     })).mutation(async ({ ctx, input }) => {
-      const biz = (await resolveBusinessForUser(ctx.user.id, ctx.requestedBusinessId))?.business;
+      const biz = (await resolveBusinessForUser(ctx.user.id, ctx.requestedBusinessId, ctx.user.role))?.business;
       if (!biz) throw new TRPCError({ code: "NOT_FOUND", message: "Bisnis tidak ditemukan" });
       if (biz.plan !== "pro_plus") throw new TRPCError({ code: "FORBIDDEN", message: "Fitur Multi Akun hanya tersedia untuk paket Pro+. Hubungi admin untuk upgrade." });
       // Enforce max 5 team members
@@ -2342,7 +2352,7 @@ Penting: Kembalikan HANYA JSON valid, tidak ada teks penjelasan.`,
 
     // List pending invites (owner only, Pro+ only)
     invites: protectedProcedure.query(async ({ ctx }) => {
-      const biz = (await resolveBusinessForUser(ctx.user.id, ctx.requestedBusinessId))?.business;
+      const biz = (await resolveBusinessForUser(ctx.user.id, ctx.requestedBusinessId, ctx.user.role))?.business;
       if (!biz) return [];
       if (biz.plan !== "pro_plus") return [];
       return getTeamInvitesByBusiness(biz.id);
@@ -2350,7 +2360,7 @@ Penting: Kembalikan HANYA JSON valid, tidak ada teks penjelasan.`,
 
     // Delete/cancel invite (owner only)
     cancelInvite: protectedProcedure.input(z.object({ id: z.number() })).mutation(async ({ ctx, input }) => {
-      const biz = (await resolveBusinessForUser(ctx.user.id, ctx.requestedBusinessId))?.business;
+      const biz = (await resolveBusinessForUser(ctx.user.id, ctx.requestedBusinessId, ctx.user.role))?.business;
       if (!biz) throw new TRPCError({ code: "NOT_FOUND" });
       await deleteTeamInvite(input.id);
       return { success: true };
@@ -2389,7 +2399,7 @@ Penting: Kembalikan HANYA JSON valid, tidak ada teks penjelasan.`,
       permissions: z.record(z.string(), z.boolean()).optional(),
       status: z.enum(["active", "suspended"]).optional(),
     })).mutation(async ({ ctx, input }) => {
-      const biz = (await resolveBusinessForUser(ctx.user.id, ctx.requestedBusinessId))?.business;
+      const biz = (await resolveBusinessForUser(ctx.user.id, ctx.requestedBusinessId, ctx.user.role))?.business;
       if (!biz) throw new TRPCError({ code: "NOT_FOUND" });
       const member = await getTeamMemberById(input.memberId);
       if (!member || member.businessId !== biz.id) throw new TRPCError({ code: "NOT_FOUND" });
@@ -2403,7 +2413,7 @@ Penting: Kembalikan HANYA JSON valid, tidak ada teks penjelasan.`,
 
     // Remove member (owner only)
     removeMember: protectedProcedure.input(z.object({ memberId: z.number() })).mutation(async ({ ctx, input }) => {
-      const biz = (await resolveBusinessForUser(ctx.user.id, ctx.requestedBusinessId))?.business;
+      const biz = (await resolveBusinessForUser(ctx.user.id, ctx.requestedBusinessId, ctx.user.role))?.business;
       if (!biz) throw new TRPCError({ code: "NOT_FOUND" });
       const member = await getTeamMemberById(input.memberId);
       if (!member || member.businessId !== biz.id) throw new TRPCError({ code: "NOT_FOUND" });
@@ -2424,7 +2434,7 @@ Penting: Kembalikan HANYA JSON valid, tidak ada teks penjelasan.`,
   posShift: router({
     // Get open shift for current user
     current: protectedProcedure.query(async ({ ctx }) => {
-      const resolved = await resolveBusinessForUser(ctx.user.id, ctx.requestedBusinessId);
+      const resolved = await resolveBusinessForUser(ctx.user.id, ctx.requestedBusinessId, ctx.user.role);
       if (!resolved) return null;
       return getOpenShift(resolved.business.id, ctx.user.id);
     }),
@@ -2434,7 +2444,7 @@ Penting: Kembalikan HANYA JSON valid, tidak ada teks penjelasan.`,
       openingCash: z.number().min(0),
       warehouseId: z.number().optional(),
     })).mutation(async ({ ctx, input }) => {
-      const resolved = await resolveBusinessForUser(ctx.user.id, ctx.requestedBusinessId);
+      const resolved = await resolveBusinessForUser(ctx.user.id, ctx.requestedBusinessId, ctx.user.role);
       if (!resolved) throw new TRPCError({ code: "NOT_FOUND" });
       const bizId = resolved.business.id;
 
@@ -2476,7 +2486,7 @@ Penting: Kembalikan HANYA JSON valid, tidak ada teks penjelasan.`,
 
     // List shifts
     list: protectedProcedure.input(z.object({ limit: z.number().optional() }).optional()).query(async ({ ctx, input }) => {
-      const resolved = await resolveBusinessForUser(ctx.user.id, ctx.requestedBusinessId);
+      const resolved = await resolveBusinessForUser(ctx.user.id, ctx.requestedBusinessId, ctx.user.role);
       if (!resolved) return [];
       return getShiftsByBusiness(resolved.business.id, input?.limit ?? 50);
     }),
@@ -2485,7 +2495,7 @@ Penting: Kembalikan HANYA JSON valid, tidak ada teks penjelasan.`,
   // ─── Discount Codes ───
   discount: router({
     list: protectedProcedure.query(async ({ ctx }) => {
-      const resolved = await resolveBusinessForUser(ctx.user.id, ctx.requestedBusinessId);
+      const resolved = await resolveBusinessForUser(ctx.user.id, ctx.requestedBusinessId, ctx.user.role);
       if (!resolved) return [];
       return getDiscountCodesByBusiness(resolved.business.id);
     }),
@@ -2501,7 +2511,7 @@ Penting: Kembalikan HANYA JSON valid, tidak ada teks penjelasan.`,
       validFrom: z.string().optional(),
       validUntil: z.string().optional(),
     })).mutation(async ({ ctx, input }) => {
-      const resolved = await resolveBusinessForUser(ctx.user.id, ctx.requestedBusinessId);
+      const resolved = await resolveBusinessForUser(ctx.user.id, ctx.requestedBusinessId, ctx.user.role);
       if (!resolved) throw new TRPCError({ code: "NOT_FOUND" });
       const id = await createDiscountCode({
         ...input,
@@ -2519,7 +2529,7 @@ Penting: Kembalikan HANYA JSON valid, tidak ada teks penjelasan.`,
       code: z.string(),
       subtotal: z.number().min(0),
     })).query(async ({ ctx, input }) => {
-      const resolved = await resolveBusinessForUser(ctx.user.id, ctx.requestedBusinessId);
+      const resolved = await resolveBusinessForUser(ctx.user.id, ctx.requestedBusinessId, ctx.user.role);
       if (!resolved) return { valid: false as const, message: "Bisnis tidak ditemukan" };
 
       const discount = await validateDiscountCode(resolved.business.id, input.code);
@@ -2569,7 +2579,7 @@ Penting: Kembalikan HANYA JSON valid, tidak ada teks penjelasan.`,
   // ─── POS Receipts (checkout with split payment, discount, refund) ───
   posReceipt: router({
     list: protectedProcedure.input(z.object({ limit: z.number().optional() }).optional()).query(async ({ ctx, input }) => {
-      const resolved = await resolveBusinessForUser(ctx.user.id, ctx.requestedBusinessId);
+      const resolved = await resolveBusinessForUser(ctx.user.id, ctx.requestedBusinessId, ctx.user.role);
       if (!resolved) return [];
       return getPosReceiptsByBusiness(resolved.business.id, input?.limit ?? 50);
     }),
@@ -2602,7 +2612,7 @@ Penting: Kembalikan HANYA JSON valid, tidak ada teks penjelasan.`,
         warehouseId: z.number().optional(),
       })),
     })).mutation(async ({ ctx, input }) => {
-      const resolved = await resolveBusinessForUser(ctx.user.id, ctx.requestedBusinessId);
+      const resolved = await resolveBusinessForUser(ctx.user.id, ctx.requestedBusinessId, ctx.user.role);
       if (!resolved) throw new TRPCError({ code: "NOT_FOUND" });
       const bizId = resolved.business.id;
       const saleDate = input.date || new Date().toISOString().slice(0, 10);
@@ -2768,7 +2778,7 @@ Penting: Kembalikan HANYA JSON valid, tidak ada teks penjelasan.`,
       receiptId: z.number(),
       reason: z.string().min(1),
     })).mutation(async ({ ctx, input }) => {
-      const resolved = await resolveBusinessForUser(ctx.user.id, ctx.requestedBusinessId);
+      const resolved = await resolveBusinessForUser(ctx.user.id, ctx.requestedBusinessId, ctx.user.role);
       if (!resolved) throw new TRPCError({ code: "NOT_FOUND" });
 
       const bizId = resolved.business.id;
@@ -2878,7 +2888,7 @@ Penting: Kembalikan HANYA JSON valid, tidak ada teks penjelasan.`,
   // ─── Supplier Management ───
   supplier: router({
     list: protectedProcedure.query(async ({ ctx }) => {
-      const resolved = await resolveBusinessForUser(ctx.user.id, ctx.requestedBusinessId);
+      const resolved = await resolveBusinessForUser(ctx.user.id, ctx.requestedBusinessId, ctx.user.role);
       if (!resolved) return [];
       return getSuppliersByBusiness(resolved.business.id);
     }),
@@ -2893,7 +2903,7 @@ Penting: Kembalikan HANYA JSON valid, tidak ada teks penjelasan.`,
       address: z.string().optional(),
       notes: z.string().optional(),
     })).mutation(async ({ ctx, input }) => {
-      const resolved = await resolveBusinessForUser(ctx.user.id, ctx.requestedBusinessId);
+      const resolved = await resolveBusinessForUser(ctx.user.id, ctx.requestedBusinessId, ctx.user.role);
       if (!resolved) throw new TRPCError({ code: "NOT_FOUND" });
       return createSupplier({ businessId: resolved.business.id, ...input });
     }),
@@ -2920,7 +2930,7 @@ Penting: Kembalikan HANYA JSON valid, tidak ada teks penjelasan.`,
   // ─── Purchase Orders ───
   purchaseOrder: router({
     list: protectedProcedure.query(async ({ ctx }) => {
-      const resolved = await resolveBusinessForUser(ctx.user.id, ctx.requestedBusinessId);
+      const resolved = await resolveBusinessForUser(ctx.user.id, ctx.requestedBusinessId, ctx.user.role);
       if (!resolved) return [];
       return getPurchaseOrdersByBusiness(resolved.business.id);
     }),
@@ -2943,7 +2953,7 @@ Penting: Kembalikan HANYA JSON valid, tidak ada teks penjelasan.`,
         totalPrice: z.number(),
       })).optional(),
     })).mutation(async ({ ctx, input }) => {
-      const resolved = await resolveBusinessForUser(ctx.user.id, ctx.requestedBusinessId);
+      const resolved = await resolveBusinessForUser(ctx.user.id, ctx.requestedBusinessId, ctx.user.role);
       if (!resolved) throw new TRPCError({ code: "NOT_FOUND" });
       const poNumber = await generatePONumber(resolved.business.id);
       const total = input.items?.reduce((s, i) => s + i.totalPrice, 0) ?? input.totalAmount;
@@ -2981,12 +2991,12 @@ Penting: Kembalikan HANYA JSON valid, tidak ada teks penjelasan.`,
   // ─── Loyalty Points ───
   loyalty: router({
     getPoints: protectedProcedure.input(z.object({ clientId: z.number() })).query(async ({ ctx, input }) => {
-      const resolved = await resolveBusinessForUser(ctx.user.id, ctx.requestedBusinessId);
+      const resolved = await resolveBusinessForUser(ctx.user.id, ctx.requestedBusinessId, ctx.user.role);
       if (!resolved) return null;
       return getLoyaltyPoints(resolved.business.id, input.clientId);
     }),
     allPoints: protectedProcedure.query(async ({ ctx }) => {
-      const resolved = await resolveBusinessForUser(ctx.user.id, ctx.requestedBusinessId);
+      const resolved = await resolveBusinessForUser(ctx.user.id, ctx.requestedBusinessId, ctx.user.role);
       if (!resolved) return [];
       return getLoyaltyPointsByBusiness(resolved.business.id);
     }),
@@ -2995,7 +3005,7 @@ Penting: Kembalikan HANYA JSON valid, tidak ada teks penjelasan.`,
       points: z.number().min(1),
       description: z.string().optional(),
     })).mutation(async ({ ctx, input }) => {
-      const resolved = await resolveBusinessForUser(ctx.user.id, ctx.requestedBusinessId);
+      const resolved = await resolveBusinessForUser(ctx.user.id, ctx.requestedBusinessId, ctx.user.role);
       if (!resolved) throw new TRPCError({ code: "NOT_FOUND" });
       await addLoyaltyPoints(resolved.business.id, input.clientId, input.points, input.description);
       return { success: true };
@@ -3005,19 +3015,19 @@ Penting: Kembalikan HANYA JSON valid, tidak ada teks penjelasan.`,
       points: z.number().min(1),
       description: z.string().optional(),
     })).mutation(async ({ ctx, input }) => {
-      const resolved = await resolveBusinessForUser(ctx.user.id, ctx.requestedBusinessId);
+      const resolved = await resolveBusinessForUser(ctx.user.id, ctx.requestedBusinessId, ctx.user.role);
       if (!resolved) throw new TRPCError({ code: "NOT_FOUND" });
       const success = await redeemLoyaltyPoints(resolved.business.id, input.clientId, input.points, input.description);
       if (!success) throw new TRPCError({ code: "BAD_REQUEST", message: "Poin tidak cukup" });
       return { success: true };
     }),
     transactions: protectedProcedure.input(z.object({ clientId: z.number() })).query(async ({ ctx, input }) => {
-      const resolved = await resolveBusinessForUser(ctx.user.id, ctx.requestedBusinessId);
+      const resolved = await resolveBusinessForUser(ctx.user.id, ctx.requestedBusinessId, ctx.user.role);
       if (!resolved) return [];
       return getLoyaltyTransactionsByClient(resolved.business.id, input.clientId);
     }),
     getConfig: protectedProcedure.query(async ({ ctx }) => {
-      const resolved = await resolveBusinessForUser(ctx.user.id, ctx.requestedBusinessId);
+      const resolved = await resolveBusinessForUser(ctx.user.id, ctx.requestedBusinessId, ctx.user.role);
       if (!resolved) throw new TRPCError({ code: "NOT_FOUND" });
       return getLoyaltyConfig(resolved.business.id);
     }),
@@ -3031,7 +3041,7 @@ Penting: Kembalikan HANYA JSON valid, tidak ada teks penjelasan.`,
       goldThreshold: z.number().min(0).optional(),
       platinumThreshold: z.number().min(0).optional(),
     })).mutation(async ({ ctx, input }) => {
-      const resolved = await resolveBusinessForUser(ctx.user.id, ctx.requestedBusinessId);
+      const resolved = await resolveBusinessForUser(ctx.user.id, ctx.requestedBusinessId, ctx.user.role);
       if (!resolved) throw new TRPCError({ code: "NOT_FOUND" });
       await upsertLoyaltyConfig(resolved.business.id, input);
       return { success: true };
@@ -3041,7 +3051,7 @@ Penting: Kembalikan HANYA JSON valid, tidak ada teks penjelasan.`,
       clientId: z.number(),
       points: z.number().min(1),
     })).mutation(async ({ ctx, input }) => {
-      const resolved = await resolveBusinessForUser(ctx.user.id, ctx.requestedBusinessId);
+      const resolved = await resolveBusinessForUser(ctx.user.id, ctx.requestedBusinessId, ctx.user.role);
       if (!resolved) throw new TRPCError({ code: "NOT_FOUND" });
       const bizId = resolved.business.id;
       const config = await getLoyaltyConfig(bizId);
@@ -3064,7 +3074,7 @@ Penting: Kembalikan HANYA JSON valid, tidak ada teks penjelasan.`,
   // ─── Invoice Settings ───
   invoiceSettings: router({
     get: protectedProcedure.query(async ({ ctx }) => {
-      const resolved = await resolveBusinessForUser(ctx.user.id, ctx.requestedBusinessId);
+      const resolved = await resolveBusinessForUser(ctx.user.id, ctx.requestedBusinessId, ctx.user.role);
       if (!resolved) return null;
       return getInvoiceSettings(resolved.business.id);
     }),
@@ -3081,7 +3091,7 @@ Penting: Kembalikan HANYA JSON valid, tidak ada teks penjelasan.`,
       showLogo: z.boolean().optional(),
       footerText: z.string().optional(),
     })).mutation(async ({ ctx, input }) => {
-      const resolved = await resolveBusinessForUser(ctx.user.id, ctx.requestedBusinessId);
+      const resolved = await resolveBusinessForUser(ctx.user.id, ctx.requestedBusinessId, ctx.user.role);
       if (!resolved) throw new TRPCError({ code: "NOT_FOUND" });
       await upsertInvoiceSettings(resolved.business.id, input);
       return { success: true };
@@ -3104,7 +3114,7 @@ Penting: Kembalikan HANYA JSON valid, tidak ada teks penjelasan.`,
       return { success: true };
     }),
     accessible: protectedProcedure.query(async ({ ctx }) => {
-      const resolved = await resolveBusinessForUser(ctx.user.id, ctx.requestedBusinessId);
+      const resolved = await resolveBusinessForUser(ctx.user.id, ctx.requestedBusinessId, ctx.user.role);
       if (!resolved) return [];
       return getAccessibleWarehouses(resolved.business.id, ctx.user.id, resolved.isOwner);
     }),
@@ -3113,7 +3123,7 @@ Penting: Kembalikan HANYA JSON valid, tidak ada teks penjelasan.`,
   // ─── Staff Commission ───
   commission: router({
     config: protectedProcedure.query(async ({ ctx }) => {
-      const resolved = await resolveBusinessForUser(ctx.user.id, ctx.requestedBusinessId);
+      const resolved = await resolveBusinessForUser(ctx.user.id, ctx.requestedBusinessId, ctx.user.role);
       if (!resolved) return null;
       return getCommissionConfig(resolved.business.id);
     }),
@@ -3123,7 +3133,7 @@ Penting: Kembalikan HANYA JSON valid, tidak ada teks penjelasan.`,
       commissionType: z.enum(["percentage", "flat"]).optional(),
       commissionRate: z.number().optional(),
     })).mutation(async ({ ctx, input }) => {
-      const resolved = await resolveBusinessForUser(ctx.user.id, ctx.requestedBusinessId);
+      const resolved = await resolveBusinessForUser(ctx.user.id, ctx.requestedBusinessId, ctx.user.role);
       if (!resolved) throw new TRPCError({ code: "NOT_FOUND" });
       return upsertCommissionConfig(resolved.business.id, input);
     }),
@@ -3133,7 +3143,7 @@ Penting: Kembalikan HANYA JSON valid, tidak ada teks penjelasan.`,
       endDate: z.string().optional(),
       userId: z.number().optional(),
     })).query(async ({ ctx, input }) => {
-      const resolved = await resolveBusinessForUser(ctx.user.id, ctx.requestedBusinessId);
+      const resolved = await resolveBusinessForUser(ctx.user.id, ctx.requestedBusinessId, ctx.user.role);
       if (!resolved) return [];
       const { getCommissionReport } = await import("./db");
       return getCommissionReport(resolved.business.id, input.startDate, input.endDate, input.userId);
@@ -3143,7 +3153,7 @@ Penting: Kembalikan HANYA JSON valid, tidak ada teks penjelasan.`,
       startDate: z.string(),
       endDate: z.string(),
     })).query(async ({ ctx, input }) => {
-      const resolved = await resolveBusinessForUser(ctx.user.id, ctx.requestedBusinessId);
+      const resolved = await resolveBusinessForUser(ctx.user.id, ctx.requestedBusinessId, ctx.user.role);
       if (!resolved) return [];
       const { getCommissionSummaryByStaff } = await import("./db");
       return getCommissionSummaryByStaff(resolved.business.id, input.startDate, input.endDate);

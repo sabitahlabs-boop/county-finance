@@ -2978,15 +2978,20 @@ export async function getUsersByIds(ids: number[]) {
  * 2. Otherwise, fall back to user's own business
  * Returns { business, isOwner, membership } or null
  */
-export async function resolveBusinessForUser(userId: number, requestedBusinessId: number | null): Promise<{
+export async function resolveBusinessForUser(userId: number, requestedBusinessId: number | null, userRole?: string): Promise<{
   business: Business;
   isOwner: boolean;
   membership: TeamMember | null;
+  isAdminImpersonating?: boolean;
 } | null> {
   // If a specific business is requested, check access
   if (requestedBusinessId) {
     const biz = await getBusinessById(requestedBusinessId);
     if (!biz) return null;
+    // Admin impersonation: admin can access ANY business as owner
+    if (userRole === "admin") {
+      return { business: biz, isOwner: true, membership: null, isAdminImpersonating: biz.ownerId !== userId };
+    }
     // Check if user is the owner
     if (biz.ownerId === userId) {
       return { business: biz, isOwner: true, membership: null };

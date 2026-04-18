@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { trpc } from "@/lib/trpc";
 import { useAuth } from "@/_core/hooks/useAuth";
+import { useBusinessContext } from "@/contexts/BusinessContext";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -9,11 +10,12 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Skeleton } from "@/components/ui/skeleton";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
-import { Shield, Building2, Users, Crown, Trash2, AlertTriangle, Link2, Plus, Copy, CheckCircle, Clock, ExternalLink, Loader2, Megaphone, ToggleLeft, ToggleRight, BarChart3, Database, RefreshCw, Sparkles } from "lucide-react";
+import { Shield, Building2, Users, Crown, Trash2, AlertTriangle, Link2, Plus, Copy, CheckCircle, Clock, ExternalLink, Loader2, Megaphone, ToggleLeft, ToggleRight, BarChart3, Database, RefreshCw, Sparkles, LogIn } from "lucide-react";
 import { toast } from "sonner";
 
 export default function SuperAdmin() {
   const { user } = useAuth();
+  const { switchBusiness } = useBusinessContext();
   const utils = trpc.useUtils();
   const { data: businesses, isLoading: bizLoading } = trpc.admin.businesses.useQuery(undefined, { retry: false });
   const { data: users, isLoading: usersLoading } = trpc.admin.users.useQuery(undefined, { retry: false });
@@ -371,6 +373,7 @@ export default function SuperAdmin() {
                         <th className="text-left p-3 font-medium">PKP</th>
                         <th className="text-left p-3 font-medium">Terdaftar</th>
                         <th className="text-left p-3 font-medium">Owner</th>
+                        <th className="text-left p-3 font-medium">Aksi</th>
                       </tr>
                     </thead>
                     <tbody>
@@ -407,6 +410,20 @@ export default function SuperAdmin() {
                             <Badge variant="outline" className="text-xs">
                               #{biz.ownerId}
                             </Badge>
+                          </td>
+                          <td className="p-3">
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              className="h-7 px-2 text-[#1E4D9B] border-[#1E4D9B]/30 hover:bg-[#1E4D9B]/10"
+                              onClick={() => {
+                                switchBusiness(biz.id);
+                                toast.success(`Masuk ke bisnis "${biz.businessName}"`);
+                              }}
+                            >
+                              <LogIn className="h-3.5 w-3.5 mr-1" />
+                              Masuk
+                            </Button>
                           </td>
                         </tr>
                       ))}

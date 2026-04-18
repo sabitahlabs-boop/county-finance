@@ -314,11 +314,14 @@ function DashboardLayoutContent({
   const {
     businesses,
     activeBusinessId,
+    activeBusinessName,
     switchBusiness,
     hasMultipleBusinesses,
     isOwnBusiness,
     activeRole,
     activePermissions,
+    isAdminImpersonating,
+    stopImpersonating,
   } = useBusinessContext();
 
   // Get team context
@@ -961,6 +964,20 @@ function DashboardLayoutContent({
         ) : (
           <div className="flex h-12 items-center justify-end px-4 border-b border-border/30">
             <NotificationCenter />
+          </div>
+        )}
+        {isAdminImpersonating && (
+          <div className="bg-amber-500 text-white px-4 py-2 flex items-center justify-between text-sm font-medium">
+            <div className="flex items-center gap-2">
+              <Shield className="h-4 w-4" />
+              <span>Admin Mode — Anda sedang melihat bisnis: <strong>{activeBusinessName}</strong></span>
+            </div>
+            <button
+              onClick={stopImpersonating}
+              className="bg-white/20 hover:bg-white/30 rounded px-3 py-1 text-xs font-semibold transition-colors"
+            >
+              Kembali ke Akun Saya
+            </button>
           </div>
         )}
         <main className="flex-1 p-4 md:p-6">{children}</main>
