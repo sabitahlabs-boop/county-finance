@@ -70,6 +70,7 @@ import {
   getDiscountSummary, getVoidRefundAnalysis, getKasReconciliation, getShiftReport,
   getCommissionConfig, createStaffCommission, upsertCommissionConfig,
   createProductionLog, getProductionLogs, getProductionCostReport, runProduction, generateLabaRugiDetail,
+  consumeStockFIFO,
   getDb,
 } from "./db";
 import { PLAN_LIMITS, BULAN_INDONESIA, formatRupiah } from "../shared/finance";
@@ -1246,6 +1247,10 @@ export const appRouter = router({
       date: z.string(),
       notes: z.string().optional(),
     })).mutation(async ({ ctx, input }) => {
+      const resolved = await resolveBusinessForUser(ctx.user.id, ctx.requestedBusinessId);
+      if (!resolved) throw new TRPCError({ code: "NOT_FOUND" });
+      const bizId = resolved.business.id;
+
       const id = await addCreditPayment(input.creditSaleId, {
         creditSaleId: input.creditSaleId,
         amount: input.amount,
@@ -1253,6 +1258,31 @@ export const appRouter = router({
         date: input.date,
         notes: input.notes,
       });
+
+      // ─── Create journal entry for credit payment (pemasukan) ───
+      const paymentMethod = input.paymentMethod ?? "tunai";
+      const txCode = await generateTxCode(bizId);
+
+      // Resolve bankAccountId from payment method
+      let bankAccountId: number | undefined;
+      const posAccounts = await getBankAccountsByBusiness(bizId);
+      const matchedAccount = posAccounts.find(a => a.accountName === paymentMethod);
+      if (matchedAccount) {
+        bankAccountId = matchedAccount.id;
+      }
+
+      await createTransaction({
+        businessId: bizId,
+        txCode,
+        date: input.date,
+        type: "pemasukan",
+        category: "Pelunasan Kredit",
+        description: `Pelunasan kredit #${input.creditSaleId}${input.notes ? ` — ${input.notes}` : ""}`,
+        amount: input.amount,
+        paymentMethod,
+        bankAccountId,
+      });
+
       return { success: true, id };
     }),
 
@@ -2612,6 +2642,13 @@ Penting: Kembalikan HANYA JSON valid, tidak ada teks penjelasan.`,
 
       // Only reduce stock for each cart item.
       for (const item of input.items) {
+        // ─── Consume FIFO batches if available ───
+        try {
+          await consumeStockFIFO(item.productId, item.productQty, item.warehouseId);
+        } catch (e) {
+          // FIFO batches may not exist for all products — continue with regular stock reduction
+        }
+
         // ─── Reduce stock from warehouse ───
         if (item.warehouseId && item.productQty > 0) {
           const ws = await getOrCreateWarehouseStock(item.warehouseId, item.productId);
@@ -2740,10 +2777,20 @@ Penting: Kembalikan HANYA JSON valid, tidak ada teks penjelasan.`,
 
       // ─── 2. Create reversal journal transactions ───
       // For each payment method in the receipt, create a pengeluaran (refund expense) transaction
+      // Include bankAccountId so bank balances are correctly reduced
       const payments = receipt.payments as Array<{ method: string; amount: number }>;
       if (Array.isArray(payments)) {
+        const posAccounts = await getBankAccountsByBusiness(bizId);
         for (const payment of payments) {
           const txCode = await generateTxCode(bizId);
+
+          // Resolve bankAccountId from payment method — same logic as POS checkout
+          let bankAccountId: number | undefined;
+          const matchedAccount = posAccounts.find(a => a.accountName === payment.method);
+          if (matchedAccount) {
+            bankAccountId = matchedAccount.id;
+          }
+
           await createTransaction({
             businessId: bizId,
             txCode,
@@ -2756,6 +2803,7 @@ Penting: Kembalikan HANYA JSON valid, tidak ada teks penjelasan.`,
             clientId: receipt.clientId || undefined,
             shiftId: receipt.shiftId || undefined,
             receiptId: input.receiptId,
+            bankAccountId,
             taxRelated: false,
           });
         }

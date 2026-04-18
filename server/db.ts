@@ -4833,8 +4833,8 @@ export async function runProduction(
 
   // Run transaction: deduct materials, add produced stock, create logs
   await db.transaction(async (tx) => {
-    // Create production log
-    const logId = await createProductionLog({
+    // Create production log INSIDE the transaction (not via createProductionLog which opens a new connection)
+    const [logResult] = await tx.insert(productionLogs).values({
       businessId,
       productId,
       batchCode: null,
@@ -4844,12 +4844,13 @@ export async function runProduction(
       date,
       notes,
     });
+    const logId = logResult.insertId;
 
     // Deduct material stock for each composition
     for (const comp of compositions) {
       if (!comp.materialProductId) continue;
 
-      const deductQty = parseInt(comp.qty) * qty;
+      const deductQty = parseFloat(comp.qty) * qty;
       const material = await getProductById(comp.materialProductId);
       if (!material) continue;
 
@@ -4934,7 +4935,8 @@ export async function generateLabaRugiDetail(
 
   const penjualanPOS = posSales[0]?.total || 0;
 
-  // Manual transactions (sales category)
+  // Manual transactions (sales category) — exclude POS-generated transactions
+  // POS checkout auto-creates transactions with receiptId set, so we filter those out
   const manualSales = await db
     .select({
       total: sql<number>`SUM(${transactions.amount})`,
@@ -4943,9 +4945,11 @@ export async function generateLabaRugiDetail(
     .where(
       and(
         eq(transactions.businessId, businessId),
-        eq(transactions.category, "penjualan"),
+        sql`LOWER(${transactions.category}) = 'penjualan'`,
         gte(transactions.date, startDate),
-        lte(transactions.date, endDate)
+        lte(transactions.date, endDate),
+        eq(transactions.isDeleted, false),
+        sql`${transactions.receiptId} IS NULL`
       )
     );
 
@@ -5296,20 +5300,23 @@ export async function topUpDeposit(businessId: number, clientId: number, amount:
   const db = await getDb();
   if (!db) throw new Error("Database not available");
 
-  let deposit = await getOrCreateDeposit(businessId, clientId);
-  const newBalance = (deposit.balance || 0) + amount;
+  const deposit = await getOrCreateDeposit(businessId, clientId);
 
-  await db
-    .update(customerDeposits)
-    .set({ balance: newBalance })
-    .where(eq(customerDeposits.id, deposit.id));
+  await db.transaction(async (tx) => {
+    // Atomic: update balance + insert history in one transaction
+    const newBalance = (deposit.balance || 0) + amount;
+    await tx
+      .update(customerDeposits)
+      .set({ balance: newBalance })
+      .where(eq(customerDeposits.id, deposit.id));
 
-  await db.insert(depositTransactions).values({
-    businessId,
-    depositId: deposit.id,
-    type: "topup",
-    amount,
-    notes,
+    await tx.insert(depositTransactions).values({
+      businessId,
+      depositId: deposit.id,
+      type: "topup",
+      amount,
+      notes,
+    });
   });
 }
 
@@ -5317,22 +5324,31 @@ export async function useDeposit(businessId: number, clientId: number, amount: n
   const db = await getDb();
   if (!db) throw new Error("Database not available");
 
-  let deposit = await getOrCreateDeposit(businessId, clientId);
+  const deposit = await getOrCreateDeposit(businessId, clientId);
   if ((deposit.balance || 0) < amount) throw new Error("Insufficient deposit balance");
 
-  const newBalance = (deposit.balance || 0) - amount;
+  await db.transaction(async (tx) => {
+    // Re-read inside tx for consistency under concurrent access
+    const [current] = await tx
+      .select()
+      .from(customerDeposits)
+      .where(eq(customerDeposits.id, deposit.id));
 
-  await db
-    .update(customerDeposits)
-    .set({ balance: newBalance })
-    .where(eq(customerDeposits.id, deposit.id));
+    if ((current.balance || 0) < amount) throw new Error("Insufficient deposit balance");
 
-  await db.insert(depositTransactions).values({
-    businessId,
-    depositId: deposit.id,
-    type: "use",
-    amount,
-    notes,
+    const newBalance = (current.balance || 0) - amount;
+    await tx
+      .update(customerDeposits)
+      .set({ balance: newBalance })
+      .where(eq(customerDeposits.id, deposit.id));
+
+    await tx.insert(depositTransactions).values({
+      businessId,
+      depositId: deposit.id,
+      type: "use",
+      amount,
+      notes,
+    });
   });
 }
 
@@ -5340,20 +5356,22 @@ export async function refundDeposit(businessId: number, clientId: number, amount
   const db = await getDb();
   if (!db) throw new Error("Database not available");
 
-  let deposit = await getOrCreateDeposit(businessId, clientId);
-  const newBalance = (deposit.balance || 0) + amount;
+  const deposit = await getOrCreateDeposit(businessId, clientId);
 
-  await db
-    .update(customerDeposits)
-    .set({ balance: newBalance })
-    .where(eq(customerDeposits.id, deposit.id));
+  await db.transaction(async (tx) => {
+    const newBalance = (deposit.balance || 0) + amount;
+    await tx
+      .update(customerDeposits)
+      .set({ balance: newBalance })
+      .where(eq(customerDeposits.id, deposit.id));
 
-  await db.insert(depositTransactions).values({
-    businessId,
-    depositId: deposit.id,
-    type: "refund",
-    amount,
-    notes,
+    await tx.insert(depositTransactions).values({
+      businessId,
+      depositId: deposit.id,
+      type: "refund",
+      amount,
+      notes,
+    });
   });
 }
 
