@@ -88,11 +88,13 @@ export default function Laporan() {
       .map(([label, value]) => ({ label, value }));
 
     const data = [
+      { label: "Saldo Awal Kas", value: arusKas.saldoAwal },
       ...masukItems,
       { label: "Total Kas Masuk", value: arusKas.kasMasuk.total },
       ...keluarItems,
       { label: "Total Kas Keluar", value: arusKas.kasKeluar.total },
       { label: "Arus Kas Bersih", value: arusKas.netKas },
+      { label: "Saldo Akhir Kas", value: arusKas.saldoAkhir },
     ];
 
     const options = {
@@ -121,8 +123,12 @@ export default function Laporan() {
       { header: "Jumlah (Rp)", key: "value", width: 18, align: "right", format: (v: any) => fmtRp(v) },
     ];
 
+    const kasDetailRows = (neraca.aset.kasDetail ?? []).map(acc => ({
+      label: `  ${acc.account}`, value: acc.balance,
+    }));
     const data = [
       { label: "Kas & Setara Kas", value: neraca.aset.kas },
+      ...kasDetailRows,
       { label: "Piutang Usaha", value: neraca.aset.piutang },
       { label: "Persediaan Barang", value: neraca.aset.persediaan },
       { label: "Total Aset Lancar", value: neraca.aset.totalAsetLancar },
@@ -332,7 +338,14 @@ export default function Laporan() {
               <CardContent>
                 <div className="space-y-5">
                   <ReportSection title="Aset" color="emerald">
-                    <ReportRow label="Kas & Setara Kas" value={neraca.aset.kas} />
+                    <ReportRow label="Kas & Setara Kas" value={neraca.aset.kas} bold />
+                    {neraca.aset.kasDetail && neraca.aset.kasDetail.length > 0 && (
+                      <div className="pl-4 space-y-0.5 mb-1">
+                        {neraca.aset.kasDetail.map((acc, i) => (
+                          <ReportRow key={i} label={`  ${acc.account}`} value={acc.balance} className="text-xs text-muted-foreground" />
+                        ))}
+                      </div>
+                    )}
                     <ReportRow label="Piutang Usaha" value={neraca.aset.piutang} />
                     <ReportRow label="Persediaan Barang" value={neraca.aset.persediaan} />
                     <ReportRow label="Total Aset Lancar" value={neraca.aset.totalAsetLancar} bold className="border-t pt-1" />
@@ -372,6 +385,9 @@ export default function Laporan() {
               </CardHeader>
               <CardContent>
                 <div className="space-y-5">
+                  <div className="bg-muted/30 rounded-lg p-3">
+                    <ReportRow label="Saldo Awal Kas" value={arusKas.saldoAwal} bold />
+                  </div>
                   <ReportSection title="Kas Masuk" color="emerald">
                     {Object.entries(arusKas.kasMasuk).filter(([k]) => k !== "total").map(([key, val]) => (
                       <ReportRow key={key} label={key} value={val as number} />
@@ -384,8 +400,9 @@ export default function Laporan() {
                     ))}
                     <ReportRow label="Total Kas Keluar" value={arusKas.kasKeluar.total} bold className="border-t pt-1" />
                   </ReportSection>
-                  <div className="border-t-2 pt-4">
-                    <ReportRow label="Arus Kas Bersih" value={arusKas.netKas} bold highlight />
+                  <div className="border-t-2 pt-4 space-y-1">
+                    <ReportRow label="Arus Kas Bersih" value={arusKas.netKas} bold />
+                    <ReportRow label="Saldo Akhir Kas" value={arusKas.saldoAkhir} bold highlight />
                   </div>
                 </div>
               </CardContent>

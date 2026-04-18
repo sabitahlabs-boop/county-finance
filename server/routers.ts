@@ -53,7 +53,7 @@ import {
   getDailySalesReport, getPeriodSalesReport,
   getSalesByProduct, getPaymentMethodSummary, getTopProductsAndCategories,
   seedDummyData, clearBusinessData,
-  generateNeraca, generatePerubahanModal, generateCALK,
+  generateNeraca, generatePerubahanModal, generateCALK, validateFinancialConsistency,
   getSuppliersByBusiness, getSupplierById, createSupplier, updateSupplier, deleteSupplier,
   generatePONumber, getPurchaseOrdersByBusiness, getPurchaseOrderById, createPurchaseOrder, updatePurchaseOrder, deletePurchaseOrder,
   getPurchaseOrderItems, createPurchaseOrderItem, deletePurchaseOrderItems,
@@ -857,6 +857,12 @@ export const appRouter = router({
       const biz = (await resolveBusinessForUser(ctx.user.id, ctx.requestedBusinessId, ctx.user.role))?.business;
       if (!biz) throw new TRPCError({ code: "NOT_FOUND" });
       return generateCALK(biz.id, input.month, input.year);
+    }),
+    // Financial consistency check: verifies Neraca Kas == Arus Kas saldoAkhir
+    consistencyCheck: protectedProcedure.input(z.object({ month: z.number(), year: z.number() })).query(async ({ ctx, input }) => {
+      const biz = (await resolveBusinessForUser(ctx.user.id, ctx.requestedBusinessId, ctx.user.role))?.business;
+      if (!biz) throw new TRPCError({ code: "NOT_FOUND" });
+      return validateFinancialConsistency(biz.id, input.month, input.year);
     }),
     dashboard: protectedProcedure.query(async ({ ctx }) => {
       const biz = (await resolveBusinessForUser(ctx.user.id, ctx.requestedBusinessId, ctx.user.role))?.business;

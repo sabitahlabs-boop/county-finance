@@ -93,15 +93,18 @@ export interface LabaRugiReport {
 
 export interface ArusKasReport {
   period: string;
+  saldoAwal: number;       // Opening balance (Neraca kas previous period)
   kasMasuk: Record<string, number> & { total: number };
   kasKeluar: Record<string, number> & { total: number };
   netKas: number;
+  saldoAkhir: number;      // Closing balance = saldoAwal + netKas (MUST match Neraca kas)
 }
 
 export interface NeracaReport {
   period: string;
   aset: {
     kas: number;
+    kasDetail?: { account: string; balance: number }[];  // Per-account breakdown
     piutang: number;
     persediaan: number;
     totalAsetLancar: number;
@@ -120,6 +123,11 @@ export interface NeracaReport {
     totalEkuitas: number;
   };
   balance: boolean; // aset === kewajiban + ekuitas
+  _consistency?: {  // Cross-report validation
+    neracaKas: number;
+    arusKasSaldoAkhir: number;
+    isConsistent: boolean;
+  };
 }
 
 export interface PerubahanModalReport {

@@ -1267,16 +1267,22 @@ export async function generateLabaRugi(businessId: number, month: number, year: 
 }
 
 export async function generateArusKas(businessId: number, month: number, year: number): Promise<ArusKasReport> {
-  const summary = await getTransactionSummary(businessId, month, year);
   const bulanNames = ["Januari","Februari","Maret","April","Mei","Juni","Juli","Agustus","September","Oktober","November","Desember"];
   const period = `${bulanNames[month - 1]} ${year}`;
   const db = await getDb();
   const periodStr = `${year}-${String(month).padStart(2, "0")}`;
+
+  // ═══ OPENING BALANCE: from calculateCashBalance for previous month ═══
+  const prevMonth = month === 1 ? 12 : month - 1;
+  const prevYear = month === 1 ? year - 1 : year;
+  const saldoAwalResult = await calculateCashBalance(businessId, prevMonth, prevYear);
+  const saldoAwal = saldoAwalResult.total;
+
+  // ═══ MONTHLY MOVEMENTS: from journal (transactions table) ═══
   const txs = db ? await db.select().from(transactions).where(
     and(eq(transactions.businessId, businessId), eq(transactions.isDeleted, false), sql`${transactions.date} LIKE ${periodStr + "%"}`)
   ) : [];
 
-  // Group by category (standard accounting) — transactions only (no POS)
   const kasMasuk: Record<string, number> & { total: number } = { total: 0 } as any;
   const kasKeluar: Record<string, number> & { total: number } = { total: 0 } as any;
   for (const tx of txs) {
@@ -1291,7 +1297,7 @@ export async function generateArusKas(businessId: number, month: number, year: n
     }
   }
 
-  // Add POS revenue from pos_receipts (standalone)
+  // Add orphaned POS receipts (no linked journal entry) for this month
   const posData = await getPosRevenueForPeriod(businessId, month, year);
   if (posData.revenue > 0) {
     kasMasuk["Penjualan POS"] = posData.revenue;
@@ -1302,7 +1308,92 @@ export async function generateArusKas(businessId: number, month: number, year: n
     kasKeluar.total += posData.refunds;
   }
 
-  return { period, kasMasuk, kasKeluar, netKas: kasMasuk.total - kasKeluar.total };
+  const netKas = kasMasuk.total - kasKeluar.total;
+  const saldoAkhir = saldoAwal + netKas;
+
+  return { period, saldoAwal, kasMasuk, kasKeluar, netKas, saldoAkhir };
+}
+
+// ─── SINGLE SOURCE OF TRUTH: Cash Balance Calculator ───
+// Used by BOTH Neraca and Arus Kas to ensure consistency
+// Formula: SUM(bankAccounts.initialBalance) + SUM(journal pemasukan) - SUM(journal pengeluaran) + orphaned POS
+export async function calculateCashBalance(businessId: number, upToMonth: number, upToYear: number): Promise<{
+  total: number;
+  perAccount: { account: string; balance: number }[];
+}> {
+  const db = await getDb();
+  if (!db) return { total: 0, perAccount: [] };
+
+  const lastDay = new Date(upToYear, upToMonth, 0).getDate(); // actual last day of month
+  const periodEnd = `${upToYear}-${String(upToMonth).padStart(2, "0")}-${String(lastDay).padStart(2, "0")}`;
+
+  // Step 1: Get all bank accounts with initial balances
+  const accounts = await db.select().from(bankAccounts).where(
+    and(eq(bankAccounts.businessId, businessId), eq(bankAccounts.isActive, true))
+  );
+
+  // Step 2: Get ALL journal transactions up to period end (SINGLE SOURCE)
+  const allTxs = await db.select().from(transactions).where(
+    and(eq(transactions.businessId, businessId), eq(transactions.isDeleted, false), sql`${transactions.date} <= ${periodEnd}`)
+  );
+
+  // Step 3: Calculate per-account balances
+  const accountBalances = new Map<number, { name: string; balance: number }>();
+  for (const acc of accounts) {
+    accountBalances.set(acc.id, {
+      name: acc.accountName,
+      balance: acc.initialBalance ?? 0,
+    });
+  }
+
+  // Track unlinked transactions (no bankAccountId — legacy or manual cash)
+  let unlinkedBalance = 0;
+
+  for (const tx of allTxs) {
+    const amount = tx.type === "pemasukan" ? tx.amount : -tx.amount;
+
+    if (tx.bankAccountId && accountBalances.has(tx.bankAccountId)) {
+      accountBalances.get(tx.bankAccountId)!.balance += amount;
+    } else {
+      // Transactions without bankAccountId = untracked cash
+      unlinkedBalance += amount;
+    }
+  }
+
+  // Step 4: Add orphaned POS receipts (no linked journal entry) — cumulative
+  const linkedTxs = await db.select({ receiptId: transactions.receiptId })
+    .from(transactions)
+    .where(and(
+      eq(transactions.businessId, businessId),
+      eq(transactions.isDeleted, false),
+      isNotNull(transactions.receiptId),
+      sql`${transactions.date} <= ${periodEnd}`
+    ));
+  const linkedReceiptIds = new Set(linkedTxs.map(t => t.receiptId).filter(Boolean));
+
+  const allPosReceipts = await db.select().from(posReceipts).where(
+    and(eq(posReceipts.businessId, businessId), sql`${posReceipts.date} <= ${periodEnd}`)
+  );
+  for (const r of allPosReceipts) {
+    if (linkedReceiptIds.has(r.id)) continue; // Already in journal — skip
+    unlinkedBalance += r.isRefunded ? -r.grandTotal : r.grandTotal;
+  }
+
+  // Step 5: Build result
+  const perAccount: { account: string; balance: number }[] = [];
+  let total = 0;
+
+  accountBalances.forEach((acc) => {
+    perAccount.push({ account: acc.name, balance: acc.balance });
+    total += acc.balance;
+  });
+
+  if (unlinkedBalance !== 0) {
+    perAccount.push({ account: "Kas (tidak terhubung rekening)", balance: unlinkedBalance });
+    total += unlinkedBalance;
+  }
+
+  return { total, perAccount };
 }
 
 // ─── Laporan Neraca (Posisi Keuangan) ───
@@ -1310,26 +1401,10 @@ export async function generateNeraca(businessId: number, month: number, year: nu
   const db = await getDb();
   const bulanNames = ["Januari","Februari","Maret","April","Mei","Juni","Juli","Agustus","September","Oktober","November","Desember"];
   const period = `${bulanNames[month - 1]} ${year}`;
-  const periodStr = `${year}-${String(month).padStart(2, "0")}`;
 
-  // Kas: total pemasukan - total pengeluaran s/d periode ini (transactions + POS)
-  const allTxs = db ? await db.select().from(transactions).where(
-    and(eq(transactions.businessId, businessId), eq(transactions.isDeleted, false), sql`${transactions.date} <= ${periodStr}-31`)
-  ) : [];
-  let totalPemasukan = 0, totalPengeluaran = 0;
-  for (const tx of allTxs) {
-    if (tx.type === "pemasukan") totalPemasukan += tx.amount;
-    else totalPengeluaran += tx.amount;
-  }
-  // Add POS revenue from pos_receipts (standalone)
-  const allPosReceipts = db ? await db.select().from(posReceipts).where(
-    and(eq(posReceipts.businessId, businessId), sql`${posReceipts.date} <= ${periodStr}-31`)
-  ) : [];
-  for (const r of allPosReceipts) {
-    if (r.isRefunded) totalPengeluaran += r.grandTotal;
-    else totalPemasukan += r.grandTotal;
-  }
-  const kas = totalPemasukan - totalPengeluaran;
+  // ═══ KAS: from unified cash balance calculator (single source of truth) ═══
+  const cashResult = await calculateCashBalance(businessId, month, year);
+  const kas = cashResult.total;
 
   // Piutang: semua piutang aktif (belum lunas)
   const allDebts = db ? await db.select().from(debts).where(
@@ -1349,7 +1424,7 @@ export async function generateNeraca(businessId: number, month: number, year: nu
   ) : [];
   const persediaan = allProducts.reduce((s, p) => s + ((p.stockCurrent ?? 0) * (p.hpp ?? 0)), 0);
 
-  const totalAsetLancar = Math.max(0, kas) + piutang + persediaan;
+  const totalAsetLancar = kas + piutang + persediaan;
   const asetTetap = 0; // No fixed asset tracking yet
   const totalAset = totalAsetLancar + asetTetap;
   const totalKewajiban = hutangUsaha;
@@ -1364,7 +1439,15 @@ export async function generateNeraca(businessId: number, month: number, year: nu
 
   return {
     period,
-    aset: { kas: Math.max(0, kas), piutang, persediaan, totalAsetLancar, asetTetap, totalAset },
+    aset: {
+      kas,
+      kasDetail: cashResult.perAccount,
+      piutang,
+      persediaan,
+      totalAsetLancar,
+      asetTetap,
+      totalAset,
+    },
     kewajiban: { hutangUsaha, hutangLain: 0, totalKewajiban },
     ekuitas: { modalAwal, labaPeriode, prive: 0, totalEkuitas },
     balance: Math.abs(totalAset - (totalKewajiban + totalEkuitas)) < 1,
@@ -1375,26 +1458,17 @@ export async function generateNeraca(businessId: number, month: number, year: nu
 export async function generatePerubahanModal(businessId: number, month: number, year: number): Promise<PerubahanModalReport> {
   const bulanNames = ["Januari","Februari","Maret","April","Mei","Juni","Juli","Agustus","September","Oktober","November","Desember"];
   const period = `${bulanNames[month - 1]} ${year}`;
+  const db = await getDb();
 
   // Calculate laba bersih this period
   const labaRugi = await generateLabaRugi(businessId, month, year);
   const labaBersih = labaRugi.labaBersih;
 
-  // Calculate cumulative kas up to last month
-  const db = await getDb();
-  const lastMonth = month === 1 ? 12 : month - 1;
-  const lastYear = month === 1 ? year - 1 : year;
-  const lastPeriodStr = `${lastYear}-${String(lastMonth).padStart(2, "0")}`;
-
-  const prevTxs = db ? await db.select().from(transactions).where(
-    and(eq(transactions.businessId, businessId), eq(transactions.isDeleted, false), sql`${transactions.date} <= ${lastPeriodStr}-31`)
-  ) : [];
-  let prevIn = 0, prevOut = 0;
-  for (const tx of prevTxs) {
-    if (tx.type === "pemasukan") prevIn += tx.amount;
-    else prevOut += tx.amount;
-  }
-  const modalAwal = prevIn - prevOut;
+  // Modal Awal: derive from previous month's Neraca (Ekuitas = Aset - Kewajiban)
+  const prevMonth = month === 1 ? 12 : month - 1;
+  const prevYear = month === 1 ? year - 1 : year;
+  const prevNeraca = await generateNeraca(businessId, prevMonth, prevYear);
+  const modalAwal = prevNeraca.ekuitas.totalEkuitas;
 
   // Penambahan modal: any pemasukan categorized as "Modal" or "Investasi"
   const periodStr = `${year}-${String(month).padStart(2, "0")}`;
@@ -1411,6 +1485,37 @@ export async function generatePerubahanModal(businessId: number, month: number, 
   const modalAkhir = modalAwal + penambahanModal + labaBersih - prive;
 
   return { period, modalAwal, penambahanModal, labaBersih, prive, modalAkhir };
+}
+
+// ─── Financial Consistency Validator ───
+// Checks: Neraca Kas == Arus Kas saldoAkhir (MUST match for accounting integrity)
+export async function validateFinancialConsistency(businessId: number, month: number, year: number): Promise<{
+  isConsistent: boolean;
+  neracaKas: number;
+  arusKasSaldoAkhir: number;
+  delta: number;
+  details: string[];
+}> {
+  const neraca = await generateNeraca(businessId, month, year);
+  const arusKas = await generateArusKas(businessId, month, year);
+
+  const neracaKas = neraca.aset.kas;
+  const arusKasSaldoAkhir = arusKas.saldoAkhir;
+  const delta = Math.abs(neracaKas - arusKasSaldoAkhir);
+  const isConsistent = delta < 1; // tolerance < Rp 1 (rounding)
+
+  const details: string[] = [];
+  if (!isConsistent) {
+    details.push(`Neraca Kas (${neracaKas}) != Arus Kas Saldo Akhir (${arusKasSaldoAkhir}), delta: ${delta}`);
+  }
+  if (!neraca.balance) {
+    details.push(`Neraca tidak balance: Aset (${neraca.aset.totalAset}) != Kewajiban + Ekuitas (${neraca.kewajiban.totalKewajiban + neraca.ekuitas.totalEkuitas})`);
+  }
+  if (isConsistent && neraca.balance) {
+    details.push("Semua laporan keuangan konsisten");
+  }
+
+  return { isConsistent, neracaKas, arusKasSaldoAkhir, delta, details };
 }
 
 // ─── Catatan atas Laporan Keuangan (CALK) ───
