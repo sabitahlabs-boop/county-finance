@@ -92,18 +92,39 @@ async function runAutoMigration(db: ReturnType<typeof drizzle>) {
   console.log("[Migration] Running auto-migration...");
 
   // --- Alter existing tables ---
-  // products: add barcode, imei, motorCode, productCode
+
+  // users: add loginMethod (added after initial schema)
+  await safeExec("ALTER TABLE `users` ADD COLUMN `loginMethod` varchar(64) DEFAULT NULL");
+
+  // businesses: add columns that may be missing from original CREATE TABLE
+  await safeExec("ALTER TABLE `businesses` ADD COLUMN `invoiceFooter` text DEFAULT NULL");
+  await safeExec("ALTER TABLE `businesses` ADD COLUMN `appMode` enum('personal','umkm') NOT NULL DEFAULT 'umkm'");
+  await safeExec("ALTER TABLE `businesses` ADD COLUMN `posEnabled` boolean NOT NULL DEFAULT false");
+  await safeExec("ALTER TABLE `businesses` ADD COLUMN `calculatorEnabled` boolean NOT NULL DEFAULT false");
+  await safeExec("ALTER TABLE `businesses` ADD COLUMN `signatureUrl` text DEFAULT NULL");
+  await safeExec("ALTER TABLE `businesses` ADD COLUMN `onboardingCompleted` boolean NOT NULL DEFAULT false");
+  await safeExec("ALTER TABLE `businesses` ADD COLUMN `debtEnabled` boolean NOT NULL DEFAULT true");
+  await safeExec("ALTER TABLE `businesses` ADD COLUMN `personalSetupDone` boolean NOT NULL DEFAULT false");
+  await safeExec("ALTER TABLE `businesses` ADD COLUMN `scalevOrderId` varchar(255) DEFAULT NULL");
+  await safeExec("ALTER TABLE `businesses` ADD COLUMN `waNumber` varchar(20) DEFAULT NULL");
+  await safeExec("ALTER TABLE `businesses` ADD COLUMN `bankName` varchar(100) DEFAULT NULL");
+  await safeExec("ALTER TABLE `businesses` ADD COLUMN `bankAccount` varchar(50) DEFAULT NULL");
+  await safeExec("ALTER TABLE `businesses` ADD COLUMN `bankHolder` varchar(255) DEFAULT NULL");
+  await safeExec("ALTER TABLE `businesses` ADD COLUMN `qrisImageUrl` text DEFAULT NULL");
+  await safeExec("ALTER TABLE `businesses` ADD COLUMN `logoUrl` text DEFAULT NULL");
+
+  // products: add barcode, imei, motorCode, productCode + reorderPoint, safetyStock, leadTimeDays
   await safeExec("ALTER TABLE `products` ADD COLUMN `barcode` varchar(100) DEFAULT NULL");
   await safeExec("ALTER TABLE `products` ADD COLUMN `imei` varchar(50) DEFAULT NULL");
   await safeExec("ALTER TABLE `products` ADD COLUMN `motorCode` varchar(50) DEFAULT NULL");
   await safeExec("ALTER TABLE `products` ADD COLUMN `productCode` varchar(50) DEFAULT NULL");
+  await safeExec("ALTER TABLE `products` ADD COLUMN `reorderPoint` int DEFAULT NULL");
+  await safeExec("ALTER TABLE `products` ADD COLUMN `safetyStock` int DEFAULT NULL");
+  await safeExec("ALTER TABLE `products` ADD COLUMN `leadTimeDays` int DEFAULT NULL");
 
   // warehouses: add waCode, code
   await safeExec("ALTER TABLE `warehouses` ADD COLUMN `waCode` varchar(20) DEFAULT NULL");
   await safeExec("ALTER TABLE `warehouses` ADD COLUMN `code` varchar(20) DEFAULT NULL");
-
-  // businesses: add invoiceFooter
-  await safeExec("ALTER TABLE `businesses` ADD COLUMN `invoiceFooter` text DEFAULT NULL");
 
   // clients: add customerType, depositAmount, lastTransactionDate, activeDate, expiryDate
   await safeExec("ALTER TABLE `clients` ADD COLUMN `customerType` enum('regular','vip','wholesale') DEFAULT 'regular'");
@@ -437,6 +458,22 @@ async function runAutoMigration(db: ReturnType<typeof drizzle>) {
 
   // Add deviceInfo column to pos_receipts
   await safeExec("ALTER TABLE \`pos_receipts\` ADD COLUMN \`deviceInfo\` varchar(200) DEFAULT NULL");
+
+  // stock_batches: add warehouseId, batchCode (may be missing if table was created before these columns)
+  await safeExec("ALTER TABLE `stock_batches` ADD COLUMN `warehouseId` int DEFAULT NULL");
+  await safeExec("ALTER TABLE `stock_batches` ADD COLUMN `batchCode` varchar(50) DEFAULT NULL");
+
+  // product_categories: add parentId, sortOrder
+  await safeExec("ALTER TABLE `product_categories` ADD COLUMN `parentId` int DEFAULT NULL");
+  await safeExec("ALTER TABLE `product_categories` ADD COLUMN `sortOrder` int NOT NULL DEFAULT 0");
+
+  // pos_receipts: add refund-related and client columns
+  await safeExec("ALTER TABLE `pos_receipts` ADD COLUMN `isRefunded` boolean NOT NULL DEFAULT false");
+  await safeExec("ALTER TABLE `pos_receipts` ADD COLUMN `refundedAt` timestamp NULL DEFAULT NULL");
+  await safeExec("ALTER TABLE `pos_receipts` ADD COLUMN `refundReason` text DEFAULT NULL");
+  await safeExec("ALTER TABLE `pos_receipts` ADD COLUMN `refundAmount` bigint DEFAULT NULL");
+  await safeExec("ALTER TABLE `pos_receipts` ADD COLUMN `clientId` int DEFAULT NULL");
+  await safeExec("ALTER TABLE `pos_receipts` ADD COLUMN `discountCodeId` int DEFAULT NULL");
 
   // ─── Performance indexes ───
   await safeExec("CREATE INDEX IF NOT EXISTS `idx_transactions_biz_date` ON `transactions` (`businessId`, `date`)");
