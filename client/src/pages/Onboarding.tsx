@@ -121,7 +121,7 @@ export default function Onboarding({ onComplete }: { onComplete: () => void }) {
           className="text-center mb-8"
         >
           <div className="inline-flex items-center gap-2.5 mb-3 px-4 py-2 rounded-full bg-primary/10">
-            <img src="https://d2xsxph8kpxj0f.cloudfront.net/310519663380060214/BWbi9ugLsQu4nq5jm7TSFB/county-logo-new_8e4282c5.png" alt="County" className="h-6 w-6" />
+            <img src="/county-icon.png" alt="County" className="h-6 w-6" />
             <span className="text-xl font-bold text-primary">County</span>
           </div>
           <p className="text-muted-foreground text-sm">

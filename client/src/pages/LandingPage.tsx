@@ -13,7 +13,7 @@ import {
 } from "lucide-react";
 import { trpc } from "@/lib/trpc";
 
-const LOGO_URL = "https://d2xsxph8kpxj0f.cloudfront.net/310519663380060214/BWbi9ugLsQu4nq5jm7TSFB/county-logo-new_8e4282c5.png";
+const LOGO_URL = "/county-icon.png";
 const SALE_PRICE = 299000;
 const ORIGINAL_PRICE = 2000000;
 

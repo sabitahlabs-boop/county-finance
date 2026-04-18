@@ -222,7 +222,7 @@ export default function DashboardLayout({
         <div className="flex flex-col items-center gap-8 p-8 max-w-md w-full">
           <div className="flex flex-col items-center gap-3">
             <img
-              src="https://d2xsxph8kpxj0f.cloudfront.net/310519663380060214/BWbi9ugLsQu4nq5jm7TSFB/county-logo-new_8e4282c5.png"
+              src="/county-icon.png"
               alt="County"
               className="h-20 w-20 object-contain mb-2"
             />
@@ -604,7 +604,7 @@ function DashboardLayoutContent({
                     />
                   ) : (
                     <img
-                      src="https://d2xsxph8kpxj0f.cloudfront.net/310519663380060214/BWbi9ugLsQu4nq5jm7TSFB/county-logo-new_8e4282c5.png"
+                      src="/county-icon.png"
                       alt="County"
                       className="h-7 w-7 object-contain shrink-0"
                     />
