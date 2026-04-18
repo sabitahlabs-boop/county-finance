@@ -46,6 +46,7 @@ import {
   staffAttendance, InsertStaffAttendance, StaffAttendanceRecord,
   customerDeposits, InsertCustomerDeposit, CustomerDeposit,
   depositTransactions, InsertDepositTransaction, DepositTransaction,
+  auditLogs, InsertAuditLog,
 } from "../drizzle/schema";
 import { ENV } from './_core/env';
 import type { TaxCalcResult, DashboardKPIs, LabaRugiReport, ArusKasReport, NeracaReport, PerubahanModalReport, CALKReport } from "../shared/finance";
@@ -529,6 +530,35 @@ async function runAutoMigration(db: ReturnType<typeof drizzle>) {
   await safeExec("ALTER TABLE `pos_receipts` ADD COLUMN `clientId` int DEFAULT NULL");
   await safeExec("ALTER TABLE `pos_receipts` ADD COLUMN `discountCodeId` int DEFAULT NULL");
 
+  // audit_logs: CREATE TABLE for financial transaction audit trail
+  await safeExec(`CREATE TABLE IF NOT EXISTS \`audit_logs\` (
+    \`id\` int NOT NULL AUTO_INCREMENT PRIMARY KEY,
+    \`businessId\` int NOT NULL,
+    \`userId\` int DEFAULT NULL,
+    \`action\` varchar(50) NOT NULL,
+    \`entityType\` varchar(50) NOT NULL,
+    \`entityId\` int DEFAULT NULL,
+    \`details\` json DEFAULT NULL,
+    \`ipAddress\` varchar(45) DEFAULT NULL,
+    \`createdAt\` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP
+  )`);
+
+  // ─── Foreign Key Constraints (Top 5 Critical) ───
+  // 1. transactions.businessId → businesses.id
+  await safeExec("ALTER TABLE `transactions` ADD CONSTRAINT `fk_transactions_business` FOREIGN KEY (`businessId`) REFERENCES `businesses` (`id`)");
+
+  // 2. transactions.bankAccountId → bank_accounts.id
+  await safeExec("ALTER TABLE `transactions` ADD CONSTRAINT `fk_transactions_bankaccount` FOREIGN KEY (`bankAccountId`) REFERENCES `bank_accounts` (`id`)");
+
+  // 3. pos_receipts.businessId → businesses.id
+  await safeExec("ALTER TABLE `pos_receipts` ADD CONSTRAINT `fk_posreceipts_business` FOREIGN KEY (`businessId`) REFERENCES `businesses` (`id`)");
+
+  // 4. credit_sales.businessId → businesses.id
+  await safeExec("ALTER TABLE `credit_sales` ADD CONSTRAINT `fk_creditsales_business` FOREIGN KEY (`businessId`) REFERENCES `businesses` (`id`)");
+
+  // 5. stock_logs.businessId → businesses.id
+  await safeExec("ALTER TABLE `stock_logs` ADD CONSTRAINT `fk_stocklogs_business` FOREIGN KEY (`businessId`) REFERENCES `businesses` (`id`)");
+
   // ─── Performance indexes ───
   await safeExec("CREATE INDEX IF NOT EXISTS `idx_transactions_biz_date` ON `transactions` (`businessId`, `date`)");
   await safeExec("CREATE INDEX IF NOT EXISTS `idx_transactions_biz_receipt` ON `transactions` (`businessId`, `receiptId`)");
@@ -622,6 +652,34 @@ async function runAutoMigration(db: ReturnType<typeof drizzle>) {
   }
 
   console.log("[Migration] Auto-migration complete.");
+}
+
+// ─── Audit Logging Helper ───
+export async function createAuditLog(data: {
+  businessId: number;
+  userId?: number;
+  action: string;
+  entityType: string;
+  entityId?: number;
+  details?: any;
+  ipAddress?: string;
+}) {
+  const db = await getDb();
+  if (!db) return;
+  try {
+    await db.insert(auditLogs).values({
+      businessId: data.businessId,
+      userId: data.userId ?? null,
+      action: data.action,
+      entityType: data.entityType,
+      entityId: data.entityId ?? null,
+      details: data.details ?? null,
+      ipAddress: data.ipAddress ?? null,
+    });
+  } catch (e) {
+    console.error("[AuditLog] Failed to write:", e);
+    // Never fail business logic due to audit log error
+  }
 }
 
 export async function getDb() {
@@ -1074,10 +1132,14 @@ export async function createStockLog(data: InsertStockLog): Promise<number> {
   }
 }
 
-export async function getStockLogsByProduct(productId: number, limit = 50) {
+export async function getStockLogsByProduct(productId: number, limit = 50, businessId?: number) {
   const db = await getDb();
   if (!db) return [];
-  return db.select().from(stockLogs).where(eq(stockLogs.productId, productId)).orderBy(desc(stockLogs.createdAt)).limit(limit);
+  const conditions = [eq(stockLogs.productId, productId)];
+  if (businessId !== undefined) {
+    conditions.push(eq(stockLogs.businessId, businessId));
+  }
+  return db.select().from(stockLogs).where(and(...conditions)).orderBy(desc(stockLogs.createdAt)).limit(limit);
 }
 
 export async function getStockLogsByBusiness(businessId: number, limit = 200) {
@@ -1243,9 +1305,10 @@ export async function generateLabaRugi(businessId: number, month: number, year: 
   const pendapatanLain = summary.byCategory["Pendapatan Lain-lain"] || 0;
   const totalPendapatan = penjualan + jasa + pendapatanLain;
 
-  // HPP: "Pembelian Stok" from transactions + HPP from POS receipt items
+  // HPP: "Pembelian Stok" + "HPP Produksi" from transactions + HPP from POS receipt items
   const pembelianStok = summary.byCategory["Pembelian Stok"] || 0;
-  const hpp = pembelianStok + posData.hpp;
+  const hppProduksi = summary.byCategory["HPP Produksi"] || 0;
+  const hpp = pembelianStok + hppProduksi + posData.hpp;
 
   const operasional = summary.byCategory["Operasional"] || 0;
   const gaji = summary.byCategory["Gaji"] || 0;
@@ -2338,15 +2401,21 @@ export async function createDebtPayment(data: InsertDebtPayment): Promise<number
   const db = await getDb();
   if (!db) throw new Error("Database not available");
   requireFields(data, ["debtId", "amount", "date"], "debt_payments");
-  const result = await db.insert(debtPayments).values(stripUndefined(data));
-  // Update the parent debt's paidAmount
-  const debt = await getDebtById(data.debtId);
-  if (debt) {
-    const newPaid = debt.paidAmount + data.amount;
-    const newStatus = newPaid >= debt.totalAmount ? "lunas" : "belum_lunas";
-    await updateDebt(data.debtId, { paidAmount: newPaid, status: newStatus });
-  }
-  return result[0].insertId;
+
+  return db.transaction(async (tx) => {
+    // Insert payment
+    const [result] = await tx.insert(debtPayments).values(stripUndefined(data));
+
+    // Read and update parent debt atomically
+    const [debt] = await tx.select().from(debts).where(eq(debts.id, data.debtId));
+    if (debt) {
+      const newPaid = debt.paidAmount + data.amount;
+      const newStatus = newPaid >= debt.totalAmount ? "lunas" : "belum_lunas";
+      await tx.update(debts).set({ paidAmount: newPaid, status: newStatus }).where(eq(debts.id, data.debtId));
+    }
+
+    return result.insertId;
+  });
 }
 
 export async function deleteDebtPayment(id: number, debtId: number): Promise<void> {
@@ -2430,39 +2499,44 @@ export async function createTransferBetweenAccounts(
   date: string,
   notes?: string
 ): Promise<{ outTxId: number; inTxId: number }> {
-  const txCodeOut = await generateTxCode(businessId);
-  const txCodeIn = `${txCodeOut}-IN`;
-  const description = `Transfer ${fromAccountName} → ${toAccountName}`;
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
 
-  // Create outgoing transaction (pengeluaran from source account)
-  const outTxId = await createTransaction({
-    businessId,
-    txCode: txCodeOut,
-    date,
-    type: "pengeluaran",
-    category: "Transfer Antar Akun",
-    description,
-    amount,
-    paymentMethod: fromAccountName,
-    taxRelated: false,
-    notes: notes || `Transfer ke ${toAccountName}`,
+  return db.transaction(async (tx) => {
+    const txCodeOut = await generateTxCode(businessId);
+    const txCodeIn = `${txCodeOut}-IN`;
+    const description = `Transfer ${fromAccountName} → ${toAccountName}`;
+
+    // Create outgoing transaction (pengeluaran from source account) inside tx
+    const [outResult] = await tx.insert(transactions).values(stripUndefined({
+      businessId,
+      txCode: txCodeOut,
+      date,
+      type: "pengeluaran",
+      category: "Transfer Antar Akun",
+      description,
+      amount,
+      paymentMethod: fromAccountName,
+      taxRelated: false,
+      notes: notes || `Transfer ke ${toAccountName}`,
+    }));
+
+    // Create incoming transaction (pemasukan to destination account) inside tx
+    const [inResult] = await tx.insert(transactions).values(stripUndefined({
+      businessId,
+      txCode: txCodeIn,
+      date,
+      type: "pemasukan",
+      category: "Transfer Antar Akun",
+      description,
+      amount,
+      paymentMethod: toAccountName,
+      taxRelated: false,
+      notes: notes || `Transfer dari ${fromAccountName}`,
+    }));
+
+    return { outTxId: outResult.insertId, inTxId: inResult.insertId };
   });
-
-  // Create incoming transaction (pemasukan to destination account)
-  const inTxId = await createTransaction({
-    businessId,
-    txCode: txCodeIn,
-    date,
-    type: "pemasukan",
-    category: "Transfer Antar Akun",
-    description,
-    amount,
-    paymentMethod: toAccountName,
-    taxRelated: false,
-    notes: notes || `Transfer dari ${fromAccountName}`,
-  });
-
-  return { outTxId, inTxId };
 }
 
 // ─── Calculator & Signature Settings ───
@@ -2715,9 +2789,13 @@ export async function getWarehouseStockByWarehouse(warehouseId: number) {
     .orderBy(products.name);
 }
 
-export async function getWarehouseStockByProduct(productId: number) {
+export async function getWarehouseStockByProduct(productId: number, businessId?: number) {
   const db = await getDb();
   if (!db) return [];
+  const conditions = [eq(warehouseStock.productId, productId), eq(warehouses.isActive, true)];
+  if (businessId !== undefined) {
+    conditions.push(eq(warehouses.businessId, businessId));
+  }
   return db.select({
     id: warehouseStock.id,
     warehouseId: warehouseStock.warehouseId,
@@ -2727,7 +2805,7 @@ export async function getWarehouseStockByProduct(productId: number) {
     warehouseIsDefault: warehouses.isDefault,
   }).from(warehouseStock)
     .innerJoin(warehouses, eq(warehouseStock.warehouseId, warehouses.id))
-    .where(and(eq(warehouseStock.productId, productId), eq(warehouses.isActive, true)))
+    .where(and(...conditions))
     .orderBy(desc(warehouses.isDefault), warehouses.name);
 }
 
@@ -2809,67 +2887,66 @@ export async function performStockTransfer(params: {
   notes?: string;
 }): Promise<{ transferId: number; fromQty: number; toQty: number }> {
   const { businessId, fromWarehouseId, toWarehouseId, productId, qty, date, notes } = params;
-  
-  // Get source warehouse stock
-  const fromWs = await getOrCreateWarehouseStock(fromWarehouseId, productId);
-  if (fromWs.quantity < qty) {
-    throw new Error(`Stok di gudang asal tidak cukup. Tersedia: ${fromWs.quantity}`);
-  }
-  
-  // Get destination warehouse stock
-  const toWs = await getOrCreateWarehouseStock(toWarehouseId, productId);
-  
-  // Update source: decrease
-  const newFromQty = fromWs.quantity - qty;
-  await updateWarehouseStockQty(fromWarehouseId, productId, newFromQty);
-  
-  // Update destination: increase
-  const newToQty = toWs.quantity + qty;
-  await updateWarehouseStockQty(toWarehouseId, productId, newToQty);
-  
-  // Create stock logs for both warehouses
-  const product = await getProductById(productId);
-  const productStock = product?.stockCurrent ?? 0;
-  
-  await createStockLog({
-    businessId,
-    productId,
-    date,
-    movementType: "out",
-    qty,
-    direction: -1,
-    stockBefore: productStock,
-    stockAfter: productStock, // total doesn't change for transfers
-    notes: `Transfer keluar ke gudang lain${notes ? ': ' + notes : ''}`,
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+
+  return db.transaction(async (tx) => {
+    // Read source warehouse stock inside tx
+    const [fromWs] = await tx.select().from(warehouseStock)
+      .where(and(eq(warehouseStock.warehouseId, fromWarehouseId), eq(warehouseStock.productId, productId)));
+
+    if (!fromWs || fromWs.quantity < qty) {
+      throw new Error(`Stok di gudang asal tidak cukup. Tersedia: ${fromWs?.quantity ?? 0}`);
+    }
+
+    // Read or create destination warehouse stock inside tx
+    let [toWs] = await tx.select().from(warehouseStock)
+      .where(and(eq(warehouseStock.warehouseId, toWarehouseId), eq(warehouseStock.productId, productId)));
+
+    if (!toWs) {
+      await tx.insert(warehouseStock).values({ warehouseId: toWarehouseId, productId, quantity: 0 });
+      [toWs] = await tx.select().from(warehouseStock)
+        .where(and(eq(warehouseStock.warehouseId, toWarehouseId), eq(warehouseStock.productId, productId)));
+    }
+
+    const newFromQty = fromWs.quantity - qty;
+    const newToQty = (toWs?.quantity ?? 0) + qty;
+
+    // Update both warehouse stocks atomically
+    await tx.update(warehouseStock).set({ quantity: newFromQty })
+      .where(and(eq(warehouseStock.warehouseId, fromWarehouseId), eq(warehouseStock.productId, productId)));
+    await tx.update(warehouseStock).set({ quantity: newToQty })
+      .where(and(eq(warehouseStock.warehouseId, toWarehouseId), eq(warehouseStock.productId, productId)));
+
+    // Get product stock for logs
+    const [product] = await tx.select().from(products).where(eq(products.id, productId));
+    const productStock = product?.stockCurrent ?? 0;
+
+    // Create stock logs
+    await tx.insert(stockLogs).values({
+      businessId, productId, date, movementType: "out", qty, direction: -1,
+      stockBefore: productStock, stockAfter: productStock,
+      notes: `Transfer keluar ke gudang lain${notes ? ': ' + notes : ''}`,
+    });
+    await tx.insert(stockLogs).values({
+      businessId, productId, date, movementType: "in", qty, direction: 1,
+      stockBefore: productStock, stockAfter: productStock,
+      notes: `Transfer masuk dari gudang lain${notes ? ': ' + notes : ''}`,
+    });
+
+    // Create transfer record
+    const [transferResult] = await tx.insert(stockTransfers).values(stripUndefined({
+      businessId, fromWarehouseId, toWarehouseId, productId, qty, date, notes,
+    }));
+
+    // Recalc product aggregate from all warehouses inside tx
+    const allWs = await tx.select({ quantity: warehouseStock.quantity })
+      .from(warehouseStock).where(eq(warehouseStock.productId, productId));
+    const totalStock = allWs.reduce((sum, ws) => sum + (ws.quantity || 0), 0);
+    await tx.update(products).set({ stockCurrent: totalStock }).where(eq(products.id, productId));
+
+    return { transferId: transferResult.insertId, fromQty: newFromQty, toQty: newToQty };
   });
-  
-  await createStockLog({
-    businessId,
-    productId,
-    date,
-    movementType: "in",
-    qty,
-    direction: 1,
-    stockBefore: productStock,
-    stockAfter: productStock,
-    notes: `Transfer masuk dari gudang lain${notes ? ': ' + notes : ''}`,
-  });
-  
-  // Create transfer record
-  const transferId = await createStockTransfer({
-    businessId,
-    fromWarehouseId,
-    toWarehouseId,
-    productId,
-    qty,
-    date,
-    notes,
-  });
-  
-  // Recalc product aggregate (should stay same for transfers)
-  await recalcProductStockFromWarehouses(productId);
-  
-  return { transferId, fromQty: newFromQty, toQty: newToQty };
 }
 
 // Adjust warehouse stock when a sale/purchase happens
@@ -4460,28 +4537,30 @@ export async function addCreditPayment(creditSaleId: number, payment: InsertCred
   const db = await getDb();
   if (!db) throw new Error("Database not available");
 
-  // Insert payment
-  const cleanedPayment = stripUndefined({ ...payment, creditSaleId });
-  const [result] = await db.insert(creditPayments).values(cleanedPayment);
+  return db.transaction(async (tx) => {
+    // Insert payment
+    const cleanedPayment = stripUndefined({ ...payment, creditSaleId });
+    const [result] = await tx.insert(creditPayments).values(cleanedPayment);
 
-  // Update credit_sales totals
-  const [credit] = await db.select().from(creditSales).where(eq(creditSales.id, creditSaleId));
-  if (credit) {
-    const newPaid = credit.paidAmount + payment.amount;
-    const newRemaining = credit.totalAmount - newPaid;
-    const newStatus = newRemaining <= 0 ? "lunas" : newPaid > 0 ? "cicilan" : "belum_lunas";
+    // Update credit_sales totals atomically
+    const [credit] = await tx.select().from(creditSales).where(eq(creditSales.id, creditSaleId));
+    if (credit) {
+      const newPaid = credit.paidAmount + payment.amount;
+      const newRemaining = credit.totalAmount - newPaid;
+      const newStatus = newRemaining <= 0 ? "lunas" : newPaid > 0 ? "cicilan" : "belum_lunas";
 
-    await db
-      .update(creditSales)
-      .set({
-        paidAmount: newPaid,
-        remainingAmount: Math.max(0, newRemaining),
-        status: newStatus,
-      })
-      .where(eq(creditSales.id, creditSaleId));
-  }
+      await tx
+        .update(creditSales)
+        .set({
+          paidAmount: newPaid,
+          remainingAmount: Math.max(0, newRemaining),
+          status: newStatus,
+        })
+        .where(eq(creditSales.id, creditSaleId));
+    }
 
-  return result.insertId;
+    return result.insertId;
+  });
 }
 
 export async function getCreditSalesReport(businessId: number, startDate?: string, endDate?: string, status?: string) {
@@ -5514,6 +5593,25 @@ export async function runProduction(
       stockBefore: currentProdStock,
       stockAfter: newProdStock,
     });
+
+    // ─── JOURNALIZE HPP: Create journal entry for production cost ───
+    // Debit: HPP (expense) — increases cost of goods
+    // Credit: Persediaan Bahan Baku (asset reduction) — raw materials consumed
+    if (Math.round(totalCost) > 0) {
+      const txCode = await generateTxCode(businessId);
+      await tx.insert(transactions).values({
+        businessId,
+        txCode,
+        date,
+        type: "pengeluaran",
+        category: "HPP Produksi",
+        description: `Biaya produksi ${product.name} x${qty}${notes ? ' — ' + notes : ''}`,
+        amount: Math.round(totalCost),
+        paymentMethod: "internal",
+        taxRelated: false,
+        notes: `Production Log #${logId} | HPP/unit: ${costPerUnit}`,
+      });
+    }
   });
 
   return {
@@ -5926,16 +6024,10 @@ export async function topUpDeposit(businessId: number, clientId: number, amount:
   const deposit = await getOrCreateDeposit(businessId, clientId);
 
   await db.transaction(async (tx) => {
-    // Re-read inside tx for consistency under concurrent access
-    const [current] = await tx
-      .select()
-      .from(customerDeposits)
-      .where(eq(customerDeposits.id, deposit.id));
-
-    const newBalance = (current.balance || 0) + amount;
+    // Atomic SQL increment to avoid race conditions
     await tx
       .update(customerDeposits)
-      .set({ balance: newBalance })
+      .set({ balance: sql`${customerDeposits.balance} + ${amount}` })
       .where(eq(customerDeposits.id, deposit.id));
 
     await tx.insert(depositTransactions).values({
@@ -5956,7 +6048,7 @@ export async function useDeposit(businessId: number, clientId: number, amount: n
   if ((deposit.balance || 0) < amount) throw new Error("Insufficient deposit balance");
 
   await db.transaction(async (tx) => {
-    // Re-read inside tx for consistency under concurrent access
+    // Re-read inside tx for consistency check before atomic decrement
     const [current] = await tx
       .select()
       .from(customerDeposits)
@@ -5964,10 +6056,10 @@ export async function useDeposit(businessId: number, clientId: number, amount: n
 
     if ((current.balance || 0) < amount) throw new Error("Insufficient deposit balance");
 
-    const newBalance = (current.balance || 0) - amount;
+    // Atomic SQL decrement to avoid race conditions
     await tx
       .update(customerDeposits)
-      .set({ balance: newBalance })
+      .set({ balance: sql`${customerDeposits.balance} - ${amount}` })
       .where(eq(customerDeposits.id, deposit.id));
 
     await tx.insert(depositTransactions).values({
@@ -5987,16 +6079,10 @@ export async function refundDeposit(businessId: number, clientId: number, amount
   const deposit = await getOrCreateDeposit(businessId, clientId);
 
   await db.transaction(async (tx) => {
-    // Re-read inside tx for consistency under concurrent access
-    const [current] = await tx
-      .select()
-      .from(customerDeposits)
-      .where(eq(customerDeposits.id, deposit.id));
-
-    const newBalance = (current.balance || 0) + amount;
+    // Atomic SQL increment to avoid race conditions
     await tx
       .update(customerDeposits)
-      .set({ balance: newBalance })
+      .set({ balance: sql`${customerDeposits.balance} + ${amount}` })
       .where(eq(customerDeposits.id, deposit.id));
 
     await tx.insert(depositTransactions).values({

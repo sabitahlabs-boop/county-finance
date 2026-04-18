@@ -5,7 +5,7 @@ import { publicProcedure, protectedProcedure, adminProcedure, router } from "./_
 import { z } from "zod";
 import { TRPCError } from "@trpc/server";
 import { eq, and, sql } from "drizzle-orm";
-import { transactions, posReceipts, posReceiptItems, discountCodes } from "../drizzle/schema";
+import { transactions, posReceipts, posReceiptItems, discountCodes, debtPayments, debts, creditPayments, creditSales } from "../drizzle/schema";
 import {
   getBusinessByOwnerId, getBusinessesByOwnerId, getBusinessByOwnerAndMode, getBusinessById, getBusinessBySlug, createBusiness, updateBusiness, getAllBusinesses,
   getActiveTaxRules, seedDefaultTaxRules, updateTaxRule,
@@ -71,7 +71,7 @@ import {
   getCommissionConfig, createStaffCommission, upsertCommissionConfig,
   createProductionLog, getProductionLogs, getProductionCostReport, runProduction, generateLabaRugiDetail,
   consumeStockFIFO, restoreStockFIFO,
-  getDb,
+  getDb, createAuditLog,
 } from "./db";
 import { PLAN_LIMITS, BULAN_INDONESIA, formatRupiah } from "../shared/finance";
 import { notifyOwner } from "./_core/notification";
@@ -1264,7 +1264,7 @@ export const appRouter = router({
     create: protectedProcedure.input(z.object({
       receiptId: z.number(),
       clientId: z.number(),
-      totalAmount: z.number(),
+      totalAmount: z.number().positive(),
       dueDate: z.string().optional(),
       notes: z.string().optional(),
     })).mutation(async ({ ctx, input }) => {
@@ -1285,7 +1285,7 @@ export const appRouter = router({
 
     addPayment: protectedProcedure.input(z.object({
       creditSaleId: z.number(),
-      amount: z.number(),
+      amount: z.number().positive(),
       paymentMethod: z.string().optional(),
       date: z.string(),
       notes: z.string().optional(),
@@ -1294,32 +1294,68 @@ export const appRouter = router({
       if (!resolved) throw new TRPCError({ code: "NOT_FOUND" });
       const bizId = resolved.business.id;
 
-      const id = await addCreditPayment(input.creditSaleId, {
-        creditSaleId: input.creditSaleId,
-        amount: input.amount,
-        paymentMethod: input.paymentMethod ?? "tunai",
-        date: input.date,
-        notes: input.notes,
+      const db = await getDb();
+      if (!db) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Database not available" });
+
+      const id = await db.transaction(async (tx) => {
+        // Insert payment inside transaction
+        const [result] = await tx.insert(creditPayments).values({
+          creditSaleId: input.creditSaleId,
+          amount: input.amount,
+          paymentMethod: input.paymentMethod ?? "tunai",
+          date: input.date,
+          notes: input.notes,
+        });
+
+        // Update credit_sales totals atomically
+        const [credit] = await tx.select().from(creditSales).where(eq(creditSales.id, input.creditSaleId));
+        if (credit) {
+          const newPaid = credit.paidAmount + input.amount;
+          const newRemaining = credit.totalAmount - newPaid;
+          const newStatus = newRemaining <= 0 ? "lunas" : newPaid > 0 ? "cicilan" : "belum_lunas";
+
+          await tx
+            .update(creditSales)
+            .set({
+              paidAmount: newPaid,
+              remainingAmount: Math.max(0, newRemaining),
+              status: newStatus,
+            })
+            .where(eq(creditSales.id, input.creditSaleId));
+        }
+
+        // Create journal entry for credit payment (pemasukan) inside same tx
+        const paymentMethod = input.paymentMethod ?? "tunai";
+        const txCode = await generateTxCode(bizId);
+
+        // Resolve bankAccountId from payment method
+        const posAccounts = await getBankAccountsByBusiness(bizId);
+        const bankAccountId = resolveBankAccountId(posAccounts, paymentMethod);
+
+        const txData: any = {
+          businessId: bizId,
+          txCode: String(txCode).trim(),
+          date: String(input.date).trim(),
+          type: "pemasukan",
+          category: "Pelunasan Kredit",
+          description: `Pelunasan kredit #${input.creditSaleId}${input.notes ? ` — ${input.notes}` : ""}`,
+          amount: input.amount,
+          paymentMethod,
+        };
+        if (bankAccountId) txData.bankAccountId = bankAccountId;
+        await tx.insert(transactions).values(txData);
+
+        return result.insertId;
       });
 
-      // ─── Create journal entry for credit payment (pemasukan) ───
-      const paymentMethod = input.paymentMethod ?? "tunai";
-      const txCode = await generateTxCode(bizId);
-
-      // Resolve bankAccountId from payment method
-      const posAccounts = await getBankAccountsByBusiness(bizId);
-      const bankAccountId = resolveBankAccountId(posAccounts, paymentMethod);
-
-      await safeInsertTransaction({
+      // ─── AUDIT LOG: Log successful credit payment ───
+      await createAuditLog({
         businessId: bizId,
-        txCode,
-        date: input.date,
-        type: "pemasukan",
-        category: "Pelunasan Kredit",
-        description: `Pelunasan kredit #${input.creditSaleId}${input.notes ? ` — ${input.notes}` : ""}`,
-        amount: input.amount,
-        paymentMethod,
-        bankAccountId,
+        userId: ctx.user.id,
+        action: "create",
+        entityType: "credit_payment",
+        entityId: id,
+        details: { creditSaleId: input.creditSaleId, amount: input.amount },
       });
 
       return { success: true, id };
@@ -1785,7 +1821,7 @@ Penting: Kembalikan HANYA JSON valid, tidak ada teks penjelasan.`,
     transfer: protectedProcedure.input(z.object({
       fromAccount: z.string(),
       toAccount: z.string(),
-      amount: z.number().min(1),
+      amount: z.number().positive(),
       date: z.string(),
       notes: z.string().optional(),
     })).mutation(async ({ ctx, input }) => {
@@ -1875,7 +1911,7 @@ Penting: Kembalikan HANYA JSON valid, tidak ada teks penjelasan.`,
       counterpartyName: z.string().min(1),
       clientId: z.number().optional(),
       description: z.string().optional(),
-      totalAmount: z.number().min(1),
+      totalAmount: z.number().positive(),
       dueDate: z.string().optional(),
       notes: z.string().optional(),
     })).mutation(async ({ ctx, input }) => {
@@ -1888,7 +1924,7 @@ Penting: Kembalikan HANYA JSON valid, tidak ada teks penjelasan.`,
       id: z.number(),
       counterpartyName: z.string().optional(),
       description: z.string().optional(),
-      totalAmount: z.number().optional(),
+      totalAmount: z.number().positive().optional(),
       dueDate: z.string().optional(),
       notes: z.string().optional(),
       status: z.enum(["belum_lunas", "lunas", "terlambat"]).optional(),
@@ -1918,7 +1954,7 @@ Penting: Kembalikan HANYA JSON valid, tidak ada teks penjelasan.`,
     }),
     addPayment: protectedProcedure.input(z.object({
       debtId: z.number(),
-      amount: z.number().min(1),
+      amount: z.number().positive(),
       paymentDate: z.string(),
       paymentMethod: z.string().default("tunai"),
       bankAccountName: z.string().optional(),
@@ -1930,50 +1966,87 @@ Penting: Kembalikan HANYA JSON valid, tidak ada teks penjelasan.`,
       if (!debt || debt.businessId !== biz.id) throw new TRPCError({ code: "NOT_FOUND" });
       const remaining = debt.totalAmount - debt.paidAmount;
       if (input.amount > remaining) throw new TRPCError({ code: "BAD_REQUEST", message: `Pembayaran melebihi sisa (${remaining})` });
-      const id = await createDebtPayment(input);
-      // Auto-create journal transaction
-      const txCode = await generateTxCode(biz.id);
-      const paymentAccount = input.bankAccountName || input.paymentMethod;
 
-      // Resolve bankAccountId from paymentMethod name
-      let bankAccountId: number | undefined;
-      const accounts = await getBankAccountsByBusiness(biz.id);
-      const matchedAccount = accounts.find(a => a.accountName === paymentAccount);
-      if (matchedAccount) {
-        bankAccountId = matchedAccount.id;
-      }
+      const db = await getDb();
+      if (!db) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Database not available" });
 
-      if (debt.type === "hutang") {
-        // Hutang: kita bayar hutang → pengeluaran dari rekening kita
-        await safeInsertTransaction({
-          businessId: biz.id,
-          txCode,
-          date: input.paymentDate,
-          type: "pengeluaran",
-          category: "Pembayaran Hutang",
-          description: `Bayar hutang ke ${debt.counterpartyName}`,
+      const id = await db.transaction(async (tx) => {
+        // Insert payment inside transaction
+        const [result] = await tx.insert(debtPayments).values({
+          debtId: input.debtId,
           amount: input.amount,
-          paymentMethod: paymentAccount,
-          taxRelated: false,
-          bankAccountId,
-          notes: `Hutang ke ${debt.counterpartyName} — sisa ${formatRupiah(remaining - input.amount)}${input.notes ? " | " + input.notes : ""}`,
+          paymentDate: input.paymentDate,
+          paymentMethod: input.paymentMethod,
+          notes: input.notes,
         });
-      } else {
-        // Piutang: orang bayar ke kita → pemasukan ke rekening kita
-        await safeInsertTransaction({
-          businessId: biz.id,
-          txCode,
-          date: input.paymentDate,
-          type: "pemasukan",
-          category: "Penerimaan Piutang",
-          description: `Terima pembayaran piutang dari ${debt.counterpartyName}`,
-          amount: input.amount,
-          paymentMethod: paymentAccount,
-          taxRelated: false,
-          bankAccountId,
-          notes: `Piutang dari ${debt.counterpartyName} — sisa ${formatRupiah(remaining - input.amount)}${input.notes ? " | " + input.notes : ""}`,
-        });
-      }
+
+        // Read and update parent debt atomically
+        const [debtRecord] = await tx.select().from(debts).where(eq(debts.id, input.debtId));
+        if (debtRecord) {
+          const newPaid = debtRecord.paidAmount + input.amount;
+          const newStatus = newPaid >= debtRecord.totalAmount ? "lunas" : "belum_lunas";
+          await tx.update(debts).set({ paidAmount: newPaid, status: newStatus }).where(eq(debts.id, input.debtId));
+        }
+
+        // Auto-create journal transaction inside same tx
+        const txCode = await generateTxCode(biz.id);
+        const paymentAccount = input.bankAccountName || input.paymentMethod;
+
+        // Resolve bankAccountId from paymentMethod name
+        let bankAccountId: number | undefined;
+        const accounts = await getBankAccountsByBusiness(biz.id);
+        const matchedAccount = accounts.find(a => a.accountName === paymentAccount);
+        if (matchedAccount) {
+          bankAccountId = matchedAccount.id;
+        }
+
+        if (debt.type === "hutang") {
+          // Hutang: kita bayar hutang → pengeluaran dari rekening kita
+          const txData: any = {
+            businessId: biz.id,
+            txCode: String(txCode).trim(),
+            date: String(input.paymentDate).trim(),
+            type: "pengeluaran",
+            category: "Pembayaran Hutang",
+            description: `Bayar hutang ke ${debt.counterpartyName}`,
+            amount: input.amount,
+            paymentMethod: paymentAccount,
+            taxRelated: false,
+            notes: `Hutang ke ${debt.counterpartyName} — sisa ${formatRupiah(remaining - input.amount)}${input.notes ? " | " + input.notes : ""}`,
+          };
+          if (bankAccountId) txData.bankAccountId = bankAccountId;
+          await tx.insert(transactions).values(txData);
+        } else {
+          // Piutang: orang bayar ke kita → pemasukan ke rekening kita
+          const txData: any = {
+            businessId: biz.id,
+            txCode: String(txCode).trim(),
+            date: String(input.paymentDate).trim(),
+            type: "pemasukan",
+            category: "Penerimaan Piutang",
+            description: `Terima pembayaran piutang dari ${debt.counterpartyName}`,
+            amount: input.amount,
+            paymentMethod: paymentAccount,
+            taxRelated: false,
+            notes: `Piutang dari ${debt.counterpartyName} — sisa ${formatRupiah(remaining - input.amount)}${input.notes ? " | " + input.notes : ""}`,
+          };
+          if (bankAccountId) txData.bankAccountId = bankAccountId;
+          await tx.insert(transactions).values(txData);
+        }
+
+        return result.insertId;
+      });
+
+      // ─── AUDIT LOG: Log successful debt payment ───
+      await createAuditLog({
+        businessId: biz.id,
+        userId: ctx.user.id,
+        action: "create",
+        entityType: "debt_payment",
+        entityId: id,
+        details: { debtId: input.debtId, amount: input.amount, debtType: debt.type },
+      });
+
       return { id };
     }),
     deletePayment: protectedProcedure.input(z.object({ id: z.number(), debtId: z.number() })).mutation(async ({ ctx, input }) => {
@@ -2223,8 +2296,12 @@ Penting: Kembalikan HANYA JSON valid, tidak ada teks penjelasan.`,
     // Get warehouse distribution for a product
     productDistribution: protectedProcedure
       .input(z.object({ productId: z.number() }))
-      .query(async ({ input }) => {
-        return getWarehouseStockByProduct(input.productId);
+      .query(async ({ ctx, input }) => {
+        const biz = (await resolveBusinessForUser(ctx.user.id, ctx.requestedBusinessId, ctx.user.role))?.business;
+        if (!biz) return [];
+        const product = await getProductById(input.productId);
+        if (!product || product.businessId !== biz.id) return [];
+        return getWarehouseStockByProduct(input.productId, biz.id);
       }),
 
     // Transfer stock between warehouses
@@ -2244,7 +2321,19 @@ Penting: Kembalikan HANYA JSON valid, tidak ada teks penjelasan.`,
           throw new TRPCError({ code: "BAD_REQUEST", message: "Gudang asal dan tujuan harus berbeda" });
         }
         try {
-          return await performStockTransfer({ businessId: biz.id, ...input });
+          const result = await performStockTransfer({ businessId: biz.id, ...input });
+
+          // ─── AUDIT LOG: Log successful stock transfer ───
+          await createAuditLog({
+            businessId: biz.id,
+            userId: ctx.user.id,
+            action: "create",
+            entityType: "stock_transfer",
+            entityId: result.transferId,
+            details: { fromWarehouse: input.fromWarehouseId, toWarehouse: input.toWarehouseId, productId: input.productId, qty: input.qty },
+          });
+
+          return result;
         } catch (e: any) {
           throw new TRPCError({ code: "BAD_REQUEST", message: e.message });
         }
@@ -2776,6 +2865,16 @@ Penting: Kembalikan HANYA JSON valid, tidak ada teks penjelasan.`,
         }
       }
 
+      // ─── AUDIT LOG: Log successful POS checkout ───
+      await createAuditLog({
+        businessId: bizId,
+        userId: ctx.user.id,
+        action: "create",
+        entityType: "pos_receipt",
+        entityId: receiptId,
+        details: { grandTotal: input.grandTotal, itemCount: input.items.length, paymentMethods: input.payments.length },
+      });
+
       return { receiptId, receiptCode };
     }),
 
@@ -2790,8 +2889,8 @@ Penting: Kembalikan HANYA JSON valid, tidak ada teks penjelasan.`,
       const bizId = resolved.business.id;
 
       // Pre-fetch data needed for the transaction
-      const receipt = await refundPosReceipt(input.receiptId, input.reason);
-      if (!receipt) throw new TRPCError({ code: "NOT_FOUND", message: "Struk tidak ditemukan atau sudah di-refund" });
+      const receipt = await getPosReceiptById(input.receiptId);
+      if (!receipt || receipt.isRefunded) throw new TRPCError({ code: "NOT_FOUND", message: "Struk tidak ditemukan atau sudah di-refund" });
 
       const receiptItems = await getPosReceiptItemsByReceipt(input.receiptId);
       const posAccounts = await getBankAccountsByBusiness(bizId);
@@ -2805,7 +2904,7 @@ Penting: Kembalikan HANYA JSON valid, tidak ada teks penjelasan.`,
         }
       }
 
-      // ─── ATOMIC: Reversal journals + soft-delete original tx in single transaction ───
+      // ─── ATOMIC: Reversal journals + refund marking + soft-delete original tx in single transaction ───
       const db = await getDb();
       if (!db) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Database not available" });
 
@@ -2842,6 +2941,16 @@ Penting: Kembalikan HANYA JSON valid, tidak ada teks penjelasan.`,
             eq(transactions.businessId, bizId),
             eq(transactions.isDeleted, false)
           ));
+
+        // Mark receipt as refunded inside transaction (only if everything above succeeds)
+        await tx.update(posReceipts)
+          .set({
+            isRefunded: true,
+            refundedAt: new Date(),
+            refundReason: input.reason,
+            refundAmount: receipt.grandTotal,
+          })
+          .where(eq(posReceipts.id, input.receiptId));
       });
 
       // ─── BEST-EFFORT: Stock restoration (outside tx — non-critical) ───
@@ -2886,6 +2995,16 @@ Penting: Kembalikan HANYA JSON valid, tidak ada teks penjelasan.`,
           }
         }
       }
+
+      // ─── AUDIT LOG: Log successful POS refund ───
+      await createAuditLog({
+        businessId: bizId,
+        userId: ctx.user.id,
+        action: "refund",
+        entityType: "pos_receipt",
+        entityId: input.receiptId,
+        details: { refundAmount: receipt.grandTotal, reason: input.reason },
+      });
 
       return { success: true, refundAmount: receipt.grandTotal };
     }),

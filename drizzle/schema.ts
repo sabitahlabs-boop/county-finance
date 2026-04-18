@@ -123,7 +123,7 @@ export type InsertProduct = typeof products.$inferInsert;
 // ─── Transactions ───
 export const transactions = mysqlTable("transactions", {
   id: int("id").autoincrement().primaryKey(),
-  businessId: int("businessId").notNull(),
+  businessId: int("businessId").notNull().references(() => businesses.id),
   txCode: varchar("txCode", { length: 30 }).notNull(), // TX-20260309-001
   date: varchar("date", { length: 10 }).notNull(), // yyyy-mm-dd
   type: mysqlEnum("type", ["pemasukan", "pengeluaran"]).notNull(),
@@ -139,8 +139,8 @@ export const transactions = mysqlTable("transactions", {
   isDeleted: boolean("isDeleted").notNull().default(false),
   notes: text("notes"),
   shiftId: int("shiftId"), // link to pos_shifts (for POS transactions)
-  receiptId: int("receiptId"), // link to pos_receipts (for grouped POS checkout)
-  bankAccountId: int("bankAccountId"), // FK to bank_accounts for balance tracking
+  receiptId: int("receiptId").references(() => posReceipts.id), // link to pos_receipts (for grouped POS checkout)
+  bankAccountId: int("bankAccountId").references(() => bankAccounts.id), // FK to bank_accounts for balance tracking
   createdAt: timestamp("createdAt").defaultNow().notNull(),
 });
 
@@ -150,8 +150,8 @@ export type InsertTransaction = typeof transactions.$inferInsert;
 // ─── Stock Log ───
 export const stockLogs = mysqlTable("stock_logs", {
   id: int("id").autoincrement().primaryKey(),
-  businessId: int("businessId").notNull(),
-  productId: int("productId").notNull(),
+  businessId: int("businessId").notNull().references(() => businesses.id),
+  productId: int("productId").notNull().references(() => products.id),
   date: varchar("date", { length: 10 }).notNull(),
   movementType: mysqlEnum("movementType", ["in", "out", "adjustment", "opening"]).notNull(),
   qty: int("qty").notNull(),
@@ -315,7 +315,7 @@ export type InsertDebt = typeof debts.$inferInsert;
 // ─── Debt Payments (Pembayaran Hutang/Piutang) ───
 export const debtPayments = mysqlTable("debt_payments", {
   id: int("id").autoincrement().primaryKey(),
-  debtId: int("debtId").notNull(),
+  debtId: int("debtId").notNull().references(() => debts.id),
   amount: bigint("amount", { mode: "number" }).notNull(),
   paymentDate: varchar("paymentDate", { length: 10 }).notNull(), // yyyy-mm-dd
   paymentMethod: varchar("paymentMethod", { length: 30 }).notNull().default("tunai"),
@@ -379,8 +379,8 @@ export type InsertWarehouse = typeof warehouses.$inferInsert;
 // ─── Warehouse Stock (Stok per Gudang per Produk) ───
 export const warehouseStock = mysqlTable("warehouse_stock", {
   id: int("id").autoincrement().primaryKey(),
-  warehouseId: int("warehouseId").notNull(),
-  productId: int("productId").notNull(),
+  warehouseId: int("warehouseId").notNull().references(() => warehouses.id),
+  productId: int("productId").notNull().references(() => products.id),
   quantity: int("quantity").notNull().default(0),
   updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
 });
@@ -391,7 +391,7 @@ export type InsertWarehouseStock = typeof warehouseStock.$inferInsert;
 // ─── Stock Transfers (Transfer Antar Gudang) ───
 export const stockTransfers = mysqlTable("stock_transfers", {
   id: int("id").autoincrement().primaryKey(),
-  businessId: int("businessId").notNull(),
+  businessId: int("businessId").notNull().references(() => businesses.id),
   fromWarehouseId: int("fromWarehouseId").notNull(),
   toWarehouseId: int("toWarehouseId").notNull(),
   productId: int("productId").notNull(),
@@ -523,7 +523,7 @@ export type InsertDiscountCode = typeof discountCodes.$inferInsert;
 // ─── POS Sale Receipts (Groups items in a single POS checkout) ───
 export const posReceipts = mysqlTable("pos_receipts", {
   id: int("id").autoincrement().primaryKey(),
-  businessId: int("businessId").notNull(),
+  businessId: int("businessId").notNull().references(() => businesses.id),
   receiptCode: varchar("receiptCode", { length: 30 }).notNull(), // RCP-YYYYMMDD-###
   shiftId: int("shiftId"), // link to pos_shifts
   subtotal: bigint("subtotal", { mode: "number" }).notNull(),
@@ -552,7 +552,7 @@ export type InsertPosReceipt = typeof posReceipts.$inferInsert;
 // ─── POS Receipt Items (Item-level detail for each receipt) ───
 export const posReceiptItems = mysqlTable("pos_receipt_items", {
   id: int("id").autoincrement().primaryKey(),
-  receiptId: int("receiptId").notNull(), // FK → pos_receipts.id
+  receiptId: int("receiptId").notNull().references(() => posReceipts.id), // FK → pos_receipts.id
   productId: int("productId").notNull(),
   productName: varchar("productName", { length: 255 }).notNull(),
   qty: int("qty").notNull(),
@@ -568,7 +568,7 @@ export type InsertPosReceiptItem = typeof posReceiptItems.$inferInsert;
 // ─── Credit Sales (Penjualan Kredit / Beli Sekarang Bayar Nanti) ───
 export const creditSales = mysqlTable("credit_sales", {
   id: int("id").autoincrement().primaryKey(),
-  businessId: int("businessId").notNull(),
+  businessId: int("businessId").notNull().references(() => businesses.id),
   receiptId: int("receiptId").notNull(), // FK → pos_receipts.id
   clientId: int("clientId").notNull(), // FK → clients.id (wajib untuk kredit)
   totalAmount: bigint("totalAmount", { mode: "number" }).notNull(), // total tagihan kredit
@@ -587,7 +587,7 @@ export type InsertCreditSale = typeof creditSales.$inferInsert;
 // ─── Credit Payments (Pelunasan Kredit) ───
 export const creditPayments = mysqlTable("credit_payments", {
   id: int("id").autoincrement().primaryKey(),
-  creditSaleId: int("creditSaleId").notNull(), // FK → credit_sales.id
+  creditSaleId: int("creditSaleId").notNull().references(() => creditSales.id), // FK → credit_sales.id
   amount: bigint("amount", { mode: "number" }).notNull(),
   paymentMethod: varchar("paymentMethod", { length: 30 }).notNull().default("tunai"),
   notes: text("notes"),
@@ -860,3 +860,19 @@ export const depositTransactions = mysqlTable("deposit_transactions", {
 });
 export type DepositTransaction = typeof depositTransactions.$inferSelect;
 export type InsertDepositTransaction = typeof depositTransactions.$inferInsert;
+
+// ─── Audit Logs (Financial Transaction Audit Trail) ───
+export const auditLogs = mysqlTable("audit_logs", {
+  id: int("id").autoincrement().primaryKey(),
+  businessId: int("businessId").notNull().references(() => businesses.id),
+  userId: int("userId"),
+  action: varchar("action", { length: 50 }).notNull(), // "create", "update", "delete", "refund"
+  entityType: varchar("entityType", { length: 50 }).notNull(), // "transaction", "receipt", "stock_transfer", etc.
+  entityId: int("entityId"),
+  details: json("details"), // JSON with before/after state
+  ipAddress: varchar("ipAddress", { length: 45 }),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+});
+
+export type AuditLog = typeof auditLogs.$inferSelect;
+export type InsertAuditLog = typeof auditLogs.$inferInsert;
