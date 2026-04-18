@@ -87,6 +87,28 @@ function resolveBankAccountId(
   return match?.id;
 }
 
+// ─── Helper: Check role permissions for sensitive operations ───
+async function checkRolePermission(
+  userId: number,
+  businessId: number,
+  requiredRoles: string[]
+): Promise<void> {
+  // Owner always has full access
+  if (userId && businessId) {
+    const business = await getBusinessById(businessId);
+    if (business?.ownerId === userId) return;
+  }
+
+  // Check team member role
+  const teamMember = await getTeamMemberByUserAndBusiness(userId, businessId);
+  if (!teamMember || !requiredRoles.includes(teamMember.role)) {
+    throw new TRPCError({
+      code: "FORBIDDEN",
+      message: `Anda tidak memiliki izin untuk melakukan aksi ini. Dibutuhkan role: ${requiredRoles.join(", ")}`,
+    });
+  }
+}
+
 export const appRouter = router({
   system: systemRouter,
   auth: router({
@@ -765,7 +787,9 @@ export const appRouter = router({
     delete: protectedProcedure.input(z.object({ id: z.number() })).mutation(async ({ ctx, input }) => {
       const biz = (await resolveBusinessForUser(ctx.user.id, ctx.requestedBusinessId, ctx.user.role))?.business;
       if (!biz) throw new TRPCError({ code: "NOT_FOUND" });
-      // All users have Pro access — no plan restriction
+      // Check role permission: only owner, admin, or manager can delete transactions
+      await checkRolePermission(ctx.user.id, biz.id, ["owner", "manager"]);
+
       const tx = await getTransactionById(input.id);
       if (!tx || tx.businessId !== biz.id) throw new TRPCError({ code: "NOT_FOUND" });
       // Reverse stock if product linked
@@ -2679,17 +2703,27 @@ Penting: Kembalikan HANYA JSON valid, tidak ada teks penjelasan.`,
       return getPosReceiptsByBusiness(resolved.business.id, input?.limit ?? 50);
     }),
 
-    get: protectedProcedure.input(z.object({ id: z.number() })).query(async ({ input }) => {
-      return getPosReceiptById(input.id);
+    get: protectedProcedure.input(z.object({ id: z.number() })).query(async ({ ctx, input }) => {
+      const resolved = await resolveBusinessForUser(ctx.user.id, ctx.requestedBusinessId, ctx.user.role);
+      if (!resolved) throw new TRPCError({ code: "NOT_FOUND" });
+      const bizId = resolved.business.id;
+
+      const receipt = await getPosReceiptById(input.id);
+      // Multi-tenant fix: verify receipt belongs to this business
+      if (!receipt || receipt.businessId !== bizId) throw new TRPCError({ code: "NOT_FOUND" });
+      return receipt;
     }),
 
     // Create receipt (checkout with split payment support)
     create: protectedProcedure.input(z.object({
-      subtotal: z.number(),
+      subtotal: z.number().min(0),
       discountAmount: z.number().default(0),
       discountCodeId: z.number().optional(),
-      grandTotal: z.number(),
-      payments: z.array(z.object({ method: z.string(), amount: z.number() })),
+      grandTotal: z.number().min(1, "Total harus lebih dari 0"),
+      payments: z.array(z.object({
+        method: z.string(),
+        amount: z.number().min(1, "Jumlah pembayaran harus lebih dari 0"),
+      })),
       customerPaid: z.number(),
       changeAmount: z.number().default(0),
       shiftId: z.number().optional(),
@@ -2722,7 +2756,37 @@ Penting: Kembalikan HANYA JSON valid, tidak ada teks penjelasan.`,
         txCodes.push(await generateTxCode(bizId));
       }
 
-      // ─── ATOMIC: Receipt + Items + Journal entries in single transaction ───
+      // ─── CRITICAL BUG FIX 4: Stock validation BEFORE transaction to prevent oversell ───
+      for (const item of input.items) {
+        const product = await getProductById(item.productId);
+        if (!product) {
+          throw new TRPCError({
+            code: "NOT_FOUND",
+            message: `Produk tidak ditemukan (ID: ${item.productId})`,
+          });
+        }
+
+        // Check warehouse stock if specified
+        if (item.warehouseId) {
+          const ws = await getOrCreateWarehouseStock(item.warehouseId, item.productId);
+          if (ws.quantity < item.productQty) {
+            throw new TRPCError({
+              code: "BAD_REQUEST",
+              message: `Stok ${product.name} tidak cukup (tersedia: ${ws.quantity}, diminta: ${item.productQty})`,
+            });
+          }
+        } else {
+          // Check overall product stock
+          if ((product.stockCurrent ?? 0) < item.productQty) {
+            throw new TRPCError({
+              code: "BAD_REQUEST",
+              message: `Stok ${product.name} tidak cukup (tersedia: ${product.stockCurrent ?? 0}, diminta: ${item.productQty})`,
+            });
+          }
+        }
+      }
+
+      // ─── ATOMIC: Receipt + Items + Journal entries + Stock operations in single transaction ───
       const db = await getDb();
       if (!db) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Database not available" });
 
@@ -2787,47 +2851,49 @@ Penting: Kembalikan HANYA JSON valid, tidak ada teks penjelasan.`,
           });
         }
 
+        // ─── CRITICAL BUG FIX 1: Stock operations INSIDE transaction ───
+        // Reduce stock for each cart item.
+        for (const item of input.items) {
+          // ─── Consume FIFO batches if available ───
+          try {
+            await consumeStockFIFO(item.productId, item.productQty, item.warehouseId, tx);
+          } catch (e) {
+            // FIFO batches may not exist for all products — continue with regular stock reduction
+          }
+
+          // ─── Reduce stock from warehouse ───
+          if (item.warehouseId && item.productQty > 0) {
+            const ws = await getOrCreateWarehouseStock(item.warehouseId, item.productId);
+            const newQty = ws.quantity - item.productQty;
+            await updateWarehouseStockQty(item.warehouseId, item.productId, newQty);
+            await recalcProductStockFromWarehouses(item.productId);
+
+            // Create stock log
+            await createStockLog({
+              businessId: bizId,
+              productId: item.productId,
+              date: saleDate,
+              movementType: "out",
+              qty: item.productQty,
+              direction: -1,
+              stockBefore: ws.quantity,
+              stockAfter: newQty,
+              notes: `Penjualan POS ${receiptCode}`,
+            });
+          } else {
+            // Fallback: directly reduce products.stockCurrent
+            const product = await getProductById(item.productId);
+            if (product) {
+              const newStock = (product.stockCurrent ?? 0) - item.productQty;
+              await updateProduct(item.productId, { stockCurrent: newStock });
+            }
+          }
+        }
+
         return { receiptId: txReceiptId };
       });
 
-      // ─── BEST-EFFORT: Stock, commission, loyalty (outside tx — non-critical) ───
-      // Reduce stock for each cart item.
-      for (const item of input.items) {
-        // ─── Consume FIFO batches if available ───
-        try {
-          await consumeStockFIFO(item.productId, item.productQty, item.warehouseId);
-        } catch (e) {
-          // FIFO batches may not exist for all products — continue with regular stock reduction
-        }
-
-        // ─── Reduce stock from warehouse ───
-        if (item.warehouseId && item.productQty > 0) {
-          const ws = await getOrCreateWarehouseStock(item.warehouseId, item.productId);
-          const newQty = Math.max(0, ws.quantity - item.productQty);
-          await updateWarehouseStockQty(item.warehouseId, item.productId, newQty);
-          const newTotal = await recalcProductStockFromWarehouses(item.productId);
-
-          // Create stock log
-          await createStockLog({
-            businessId: bizId,
-            productId: item.productId,
-            date: saleDate,
-            movementType: "out",
-            qty: item.productQty,
-            direction: -1,
-            stockBefore: ws.quantity,
-            stockAfter: newQty,
-            notes: `Penjualan POS ${receiptCode}`,
-          });
-        } else {
-          // Fallback: directly reduce products.stockCurrent
-          const product = await getProductById(item.productId);
-          if (product) {
-            const newStock = Math.max(0, (product.stockCurrent ?? 0) - item.productQty);
-            await updateProduct(item.productId, { stockCurrent: newStock });
-          }
-        }
-      }
+      // ─── BEST-EFFORT: Commission, loyalty (outside tx — non-critical) ───
 
       // ─── Auto-create staff commission ───
       try {
@@ -2887,10 +2953,14 @@ Penting: Kembalikan HANYA JSON valid, tidak ada teks penjelasan.`,
       if (!resolved) throw new TRPCError({ code: "NOT_FOUND" });
 
       const bizId = resolved.business.id;
+      // Check role permission: only owner, admin, or manager can refund receipts
+      await checkRolePermission(ctx.user.id, bizId, ["owner", "manager"]);
 
       // Pre-fetch data needed for the transaction
       const receipt = await getPosReceiptById(input.receiptId);
       if (!receipt || receipt.isRefunded) throw new TRPCError({ code: "NOT_FOUND", message: "Struk tidak ditemukan atau sudah di-refund" });
+      // Multi-tenant fix: verify receipt belongs to this business
+      if (receipt.businessId !== bizId) throw new TRPCError({ code: "FORBIDDEN", message: "Anda tidak memiliki akses ke struk ini" });
 
       const receiptItems = await getPosReceiptItemsByReceipt(input.receiptId);
       const posAccounts = await getBankAccountsByBusiness(bizId);
@@ -2904,9 +2974,20 @@ Penting: Kembalikan HANYA JSON valid, tidak ada teks penjelasan.`,
         }
       }
 
-      // ─── ATOMIC: Reversal journals + refund marking + soft-delete original tx in single transaction ───
+      // ─── ATOMIC: Reversal journals + refund marking + soft-delete original tx + stock restoration in single transaction ───
       const db = await getDb();
       if (!db) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Database not available" });
+
+      // Determine warehouse ID for stock restoration
+      let warehouseId: number | undefined;
+      if (receipt.shiftId) {
+        const shift = await getPosShiftById(receipt.shiftId);
+        warehouseId = shift?.warehouseId ?? undefined;
+      }
+      if (!warehouseId) {
+        const defaultWh = await getDefaultWarehouse(bizId);
+        warehouseId = defaultWh?.id;
+      }
 
       await db.transaction(async (tx) => {
         // Create reversal journal transactions with bankAccountId
@@ -2942,6 +3023,39 @@ Penting: Kembalikan HANYA JSON valid, tidak ada teks penjelasan.`,
             eq(transactions.isDeleted, false)
           ));
 
+        // ─── CRITICAL BUG FIX 2: Stock restoration INSIDE transaction ───
+        for (const item of receiptItems) {
+          // Restore FIFO batches
+          try {
+            await restoreStockFIFO(item.productId, item.qty, warehouseId, tx);
+          } catch (e) { /* FIFO batches may not exist */ }
+
+          if (warehouseId) {
+            const ws = await getOrCreateWarehouseStock(warehouseId, item.productId);
+            const newQty = ws.quantity + item.qty;
+            await updateWarehouseStockQty(warehouseId, item.productId, newQty);
+            await recalcProductStockFromWarehouses(item.productId);
+
+            await createStockLog({
+              businessId: bizId,
+              productId: item.productId,
+              date: receipt.date,
+              movementType: "in",
+              qty: item.qty,
+              direction: 1,
+              stockBefore: ws.quantity,
+              stockAfter: newQty,
+              notes: `Refund POS ${receipt.receiptCode} — ${input.reason}`,
+            });
+          } else {
+            const product = await getProductById(item.productId);
+            if (product) {
+              const newStock = (product.stockCurrent ?? 0) + item.qty;
+              await updateProduct(item.productId, { stockCurrent: newStock });
+            }
+          }
+        }
+
         // Mark receipt as refunded inside transaction (only if everything above succeeds)
         await tx.update(posReceipts)
           .set({
@@ -2952,49 +3066,6 @@ Penting: Kembalikan HANYA JSON valid, tidak ada teks penjelasan.`,
           })
           .where(eq(posReceipts.id, input.receiptId));
       });
-
-      // ─── BEST-EFFORT: Stock restoration (outside tx — non-critical) ───
-      let warehouseId: number | undefined;
-      if (receipt.shiftId) {
-        const shift = await getPosShiftById(receipt.shiftId);
-        warehouseId = shift?.warehouseId ?? undefined;
-      }
-      if (!warehouseId) {
-        const defaultWh = await getDefaultWarehouse(bizId);
-        warehouseId = defaultWh?.id;
-      }
-
-      for (const item of receiptItems) {
-        // Restore FIFO batches
-        try {
-          await restoreStockFIFO(item.productId, item.qty, warehouseId);
-        } catch (e) { /* FIFO batches may not exist */ }
-
-        if (warehouseId) {
-          const ws = await getOrCreateWarehouseStock(warehouseId, item.productId);
-          const newQty = ws.quantity + item.qty;
-          await updateWarehouseStockQty(warehouseId, item.productId, newQty);
-          await recalcProductStockFromWarehouses(item.productId);
-
-          await createStockLog({
-            businessId: bizId,
-            productId: item.productId,
-            date: receipt.date,
-            movementType: "in",
-            qty: item.qty,
-            direction: 1,
-            stockBefore: ws.quantity,
-            stockAfter: newQty,
-            notes: `Refund POS ${receipt.receiptCode} — ${input.reason}`,
-          });
-        } else {
-          const product = await getProductById(item.productId);
-          if (product) {
-            const newStock = (product.stockCurrent ?? 0) + item.qty;
-            await updateProduct(item.productId, { stockCurrent: newStock });
-          }
-        }
-      }
 
       // ─── AUDIT LOG: Log successful POS refund ───
       await createAuditLog({

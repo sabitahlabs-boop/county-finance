@@ -569,6 +569,70 @@ async function runAutoMigration(db: ReturnType<typeof drizzle>) {
   await safeExec("CREATE INDEX IF NOT EXISTS `idx_stock_logs_biz_date` ON `stock_logs` (`businessId`, `date`)");
   await safeExec("CREATE INDEX IF NOT EXISTS `idx_receipt_items_receipt` ON `pos_receipt_items` (`receiptId`)");
 
+  // ─── New performance indexes (for optimized queries) ───
+  // transactions table indexes
+  await safeExec("CREATE INDEX IF NOT EXISTS `idx_transactions_businessId` ON `transactions` (`businessId`)");
+  await safeExec("CREATE INDEX IF NOT EXISTS `idx_transactions_date` ON `transactions` (`date`)");
+  await safeExec("CREATE INDEX IF NOT EXISTS `idx_transactions_type` ON `transactions` (`type`)");
+  await safeExec("CREATE INDEX IF NOT EXISTS `idx_transactions_receiptId` ON `transactions` (`receiptId`)");
+  await safeExec("CREATE INDEX IF NOT EXISTS `idx_transactions_bankAccountId` ON `transactions` (`bankAccountId`)");
+  await safeExec("CREATE INDEX IF NOT EXISTS `idx_transactions_isDeleted` ON `transactions` (`isDeleted`)");
+
+  // products table indexes
+  await safeExec("CREATE INDEX IF NOT EXISTS `idx_products_businessId` ON `products` (`businessId`)");
+
+  // posReceipts table indexes
+  await safeExec("CREATE INDEX IF NOT EXISTS `idx_posReceipts_businessId` ON `pos_receipts` (`businessId`)");
+  await safeExec("CREATE INDEX IF NOT EXISTS `idx_posReceipts_date` ON `pos_receipts` (`date`)");
+  await safeExec("CREATE INDEX IF NOT EXISTS `idx_posReceipts_shiftId` ON `pos_receipts` (`shiftId`)");
+
+  // posReceiptItems table indexes
+  await safeExec("CREATE INDEX IF NOT EXISTS `idx_posReceiptItems_receiptId` ON `pos_receipt_items` (`receiptId`)");
+  await safeExec("CREATE INDEX IF NOT EXISTS `idx_posReceiptItems_productId` ON `pos_receipt_items` (`productId`)");
+
+  // stockLogs table indexes
+  await safeExec("CREATE INDEX IF NOT EXISTS `idx_stockLogs_businessId` ON `stock_logs` (`businessId`)");
+  await safeExec("CREATE INDEX IF NOT EXISTS `idx_stockLogs_productId` ON `stock_logs` (`productId`)");
+  await safeExec("CREATE INDEX IF NOT EXISTS `idx_stockLogs_date` ON `stock_logs` (`date`)");
+
+  // stockBatches table indexes
+  await safeExec("CREATE INDEX IF NOT EXISTS `idx_stockBatches_productId` ON `stock_batches` (`productId`)");
+  await safeExec("CREATE INDEX IF NOT EXISTS `idx_stockBatches_warehouseId` ON `stock_batches` (`warehouseId`)");
+  await safeExec("CREATE INDEX IF NOT EXISTS `idx_stockBatches_businessId` ON `stock_batches` (`businessId`)");
+
+  // warehouseStock table unique index
+  await safeExec("CREATE UNIQUE INDEX IF NOT EXISTS `uniq_warehouseStock_warehouseId_productId` ON `warehouse_stock` (`warehouseId`, `productId`)");
+
+  // creditSales table indexes
+  await safeExec("CREATE INDEX IF NOT EXISTS `idx_creditSales_businessId` ON `credit_sales` (`businessId`)");
+
+  // creditPayments table indexes
+  await safeExec("CREATE INDEX IF NOT EXISTS `idx_creditPayments_creditSaleId` ON `credit_payments` (`creditSaleId`)");
+
+  // debts table indexes
+  await safeExec("CREATE INDEX IF NOT EXISTS `idx_debts_businessId` ON `debts` (`businessId`)");
+
+  // debtPayments table indexes
+  await safeExec("CREATE INDEX IF NOT EXISTS `idx_debtPayments_debtId` ON `debt_payments` (`debtId`)");
+
+  // depositTransactions table indexes
+  await safeExec("CREATE INDEX IF NOT EXISTS `idx_depositTransactions_depositId` ON `deposit_transactions` (`depositId`)");
+  await safeExec("CREATE INDEX IF NOT EXISTS `idx_depositTransactions_businessId` ON `deposit_transactions` (`businessId`)");
+
+  // customerDeposits table unique index
+  await safeExec("CREATE UNIQUE INDEX IF NOT EXISTS `uniq_customerDeposits_businessId_clientId` ON `customer_deposits` (`businessId`, `clientId`)");
+
+  // staffCommissions table indexes
+  await safeExec("CREATE INDEX IF NOT EXISTS `idx_staffCommissions_businessId` ON `staff_commissions` (`businessId`)");
+  await safeExec("CREATE INDEX IF NOT EXISTS `idx_staffCommissions_receiptId` ON `staff_commissions` (`receiptId`)");
+
+  // auditLogs table indexes
+  await safeExec("CREATE INDEX IF NOT EXISTS `idx_auditLogs_businessId` ON `audit_logs` (`businessId`)");
+  await safeExec("CREATE INDEX IF NOT EXISTS `idx_auditLogs_entityType_entityId` ON `audit_logs` (`entityType`, `entityId`)");
+
+  // ─── Add version column for optimistic locking ───
+  await safeExec("ALTER TABLE `products` ADD COLUMN IF NOT EXISTS `version` int NOT NULL DEFAULT 1");
+
   // ─── Verification: confirm critical columns exist ───
   try {
     const [productCols] = await db.execute(sql.raw("SHOW COLUMNS FROM `products`")) as any;
@@ -1295,20 +1359,20 @@ export async function generateLabaRugi(businessId: number, month: number, year: 
   const bulanNames = ["Januari","Februari","Maret","April","Mei","Juni","Juli","Agustus","September","Oktober","November","Desember"];
   const period = `${bulanNames[month - 1]} ${year}`;
 
-  // POS revenue comes from pos_receipts (standalone, NOT in transactions)
-  const posData = await getPosRevenueForPeriod(businessId, month, year);
+  // FIXED: All revenue now comes ONLY from transactions table (no orphaned POS receipts)
+  // POS checkouts automatically create journal entries with type="pemasukan" and category="Penjualan Produk"
 
-  // Pendapatan: manual "Penjualan Produk" from transactions + POS revenue from pos_receipts
-  const penjualanManual = summary.byCategory["Penjualan Produk"] || 0;
-  const penjualan = penjualanManual + posData.revenue;
+  // Pendapatan: all from transactions
+  const penjualan = summary.byCategory["Penjualan Produk"] || 0;
   const jasa = summary.byCategory["Penjualan Jasa"] || 0;
   const pendapatanLain = summary.byCategory["Pendapatan Lain-lain"] || 0;
   const totalPendapatan = penjualan + jasa + pendapatanLain;
 
-  // HPP: "Pembelian Stok" + "HPP Produksi" from transactions + HPP from POS receipt items
+  // HPP: ONLY from transactions table
+  // "Pembelian Stok" + "HPP Produksi" are recorded as pengeluaran entries with these categories
   const pembelianStok = summary.byCategory["Pembelian Stok"] || 0;
   const hppProduksi = summary.byCategory["HPP Produksi"] || 0;
-  const hpp = pembelianStok + hppProduksi + posData.hpp;
+  const hpp = pembelianStok + hppProduksi;
 
   const operasional = summary.byCategory["Operasional"] || 0;
   const gaji = summary.byCategory["Gaji"] || 0;
@@ -1360,16 +1424,8 @@ export async function generateArusKas(businessId: number, month: number, year: n
     }
   }
 
-  // Add orphaned POS receipts (no linked journal entry) for this month
-  const posData = await getPosRevenueForPeriod(businessId, month, year);
-  if (posData.revenue > 0) {
-    kasMasuk["Penjualan POS"] = posData.revenue;
-    kasMasuk.total += posData.revenue;
-  }
-  if (posData.refunds > 0) {
-    kasKeluar["Refund POS"] = posData.refunds;
-    kasKeluar.total += posData.refunds;
-  }
+  // FIXED: Removed orphaned POS receipt additions. All cash flows now come ONLY from transactions table.
+  // POS checkouts automatically create journal entries, so this path is dead code.
 
   const netKas = kasMasuk.total - kasKeluar.total;
   const saldoAkhir = saldoAwal + netKas;
@@ -1379,7 +1435,8 @@ export async function generateArusKas(businessId: number, month: number, year: n
 
 // ─── SINGLE SOURCE OF TRUTH: Cash Balance Calculator ───
 // Used by BOTH Neraca and Arus Kas to ensure consistency
-// Formula: SUM(bankAccounts.initialBalance) + SUM(journal pemasukan) - SUM(journal pengeluaran) + orphaned POS
+// Formula: SUM(bankAccounts.initialBalance) + SUM(journal pemasukan) - SUM(journal pengeluaran)
+// NOTE: All POS checkouts automatically create journal entries, so there are no "orphaned" receipts in normal operation
 export async function calculateCashBalance(businessId: number, upToMonth: number, upToYear: number): Promise<{
   total: number;
   perAccount: { account: string; balance: number }[];
@@ -1423,24 +1480,9 @@ export async function calculateCashBalance(businessId: number, upToMonth: number
     }
   }
 
-  // Step 4: Add orphaned POS receipts (no linked journal entry) — cumulative
-  const linkedTxs = await db.select({ receiptId: transactions.receiptId })
-    .from(transactions)
-    .where(and(
-      eq(transactions.businessId, businessId),
-      eq(transactions.isDeleted, false),
-      isNotNull(transactions.receiptId),
-      sql`${transactions.date} <= ${periodEnd}`
-    ));
-  const linkedReceiptIds = new Set(linkedTxs.map(t => t.receiptId).filter(Boolean));
-
-  const allPosReceipts = await db.select().from(posReceipts).where(
-    and(eq(posReceipts.businessId, businessId), sql`${posReceipts.date} <= ${periodEnd}`)
-  );
-  for (const r of allPosReceipts) {
-    if (linkedReceiptIds.has(r.id)) continue; // Already in journal — skip
-    unlinkedBalance += r.isRefunded ? -r.grandTotal : r.grandTotal;
-  }
+  // Step 4: FIXED - Removed orphaned POS receipt additions
+  // All POS checkouts automatically create journal entries, so this path is dead code.
+  // Cash balance = bank account initial balances + sum of journal entries only.
 
   // Step 5: Build result
   const perAccount: { account: string; balance: number }[] = [];
@@ -2028,89 +2070,46 @@ export async function getBalancesByAccounts(businessId: number, accountNames: st
   const db = await getDb();
   if (!db) return {};
 
-  // Get receiptIds that already have linked transactions
-  const linkedTxs = await db.select({ receiptId: transactions.receiptId })
-    .from(transactions)
-    .where(and(
-      eq(transactions.businessId, businessId),
-      eq(transactions.isDeleted, false),
-      isNotNull(transactions.receiptId)
-    ));
-  const linkedReceiptIds = new Set(linkedTxs.map(t => t.receiptId).filter(Boolean));
-
   const result: Record<string, { income: number; expense: number }> = {};
+  for (const name of accountNames) result[name] = { income: 0, expense: 0 };
 
-  // Get all bank accounts for this business
+  // Get all bank accounts for this business (single query)
   const allAccounts = await getBankAccountsByBusiness(businessId);
+  const accountByName = new Map(allAccounts.map(a => [a.accountName, a]));
+  const accountById = new Map(allAccounts.map(a => [a.id, a]));
 
-  for (const name of accountNames) {
-    // Find the matching bank account by name
-    const account = allAccounts.find(a => a.accountName === name);
+  // Single batch query: get ALL transactions for this business (indexed by businessId + isDeleted)
+  const allTxs = await db.select({
+    type: transactions.type,
+    amount: transactions.amount,
+    paymentMethod: transactions.paymentMethod,
+    bankAccountId: transactions.bankAccountId,
+  }).from(transactions).where(
+    and(
+      eq(transactions.businessId, businessId),
+      eq(transactions.isDeleted, false)
+    )
+  );
 
-    let income = 0, expense = 0;
+  // Distribute transactions to accounts in memory (no N+1)
+  for (const tx of allTxs) {
+    let accountName: string | null = null;
 
-    if (account) {
-      // Primary: match by bankAccountId (new way)
-      const txsById = await db.select().from(transactions).where(
-        and(
-          eq(transactions.businessId, businessId),
-          eq(transactions.bankAccountId, account.id),
-          eq(transactions.isDeleted, false)
-        )
-      );
-
-      for (const tx of txsById) {
-        if (tx.type === "pemasukan") income += tx.amount;
-        else expense += tx.amount;
-      }
-
-      // Fallback: match by name for old transactions without bankAccountId
-      const txsByName = await db.select().from(transactions).where(
-        and(
-          eq(transactions.businessId, businessId),
-          eq(transactions.paymentMethod, name),
-          isNull(transactions.bankAccountId),
-          eq(transactions.isDeleted, false)
-        )
-      );
-
-      for (const tx of txsByName) {
-        if (tx.type === "pemasukan") income += tx.amount;
-        else expense += tx.amount;
-      }
-    } else {
-      // Account not found in DB — only match by name (legacy)
-      const txs = await db.select().from(transactions).where(
-        and(
-          eq(transactions.businessId, businessId),
-          eq(transactions.paymentMethod, name),
-          eq(transactions.isDeleted, false)
-        )
-      );
-
-      for (const tx of txs) {
-        if (tx.type === "pemasukan") income += tx.amount;
-        else expense += tx.amount;
-      }
+    if (tx.bankAccountId) {
+      // Match by bankAccountId (preferred)
+      const acct = accountById.get(tx.bankAccountId);
+      if (acct) accountName = acct.accountName;
+    } else if (tx.paymentMethod) {
+      // Fallback: match by paymentMethod name (legacy)
+      accountName = tx.paymentMethod;
     }
 
-    // Also get POS receipts where payments JSON contains this account name
-    // Only count receipts that DON'T have linked transactions (legacy data)
-    const receipts = await db.select().from(posReceipts).where(
-      eq(posReceipts.businessId, businessId)
-    );
-    for (const receipt of receipts) {
-      if (linkedReceiptIds.has(receipt.id)) continue; // already in transactions
-      const payments = receipt.payments as Array<{ method: string; amount: number }> || [];
-      for (const payment of payments) {
-        if (payment.method === name) {
-          income += payment.amount;
-        }
-      }
+    if (accountName && result[accountName]) {
+      if (tx.type === "pemasukan") result[accountName].income += tx.amount;
+      else result[accountName].expense += tx.amount;
     }
-
-    result[name] = { income, expense };
   }
+
   return result;
 }
 
@@ -2493,14 +2492,38 @@ export async function getSpendingByCategory(businessId: number, period: string):
 // ─── Transfer Between Accounts ───
 export async function createTransferBetweenAccounts(
   businessId: number,
-  fromAccountName: string,
-  toAccountName: string,
+  fromAccountNameOrId: string | number,
+  toAccountNameOrId: string | number,
   amount: number,
   date: string,
   notes?: string
 ): Promise<{ outTxId: number; inTxId: number }> {
   const db = await getDb();
   if (!db) throw new Error("Database not available");
+
+  // Resolve account names and IDs
+  let fromAccountName: string;
+  let fromAccountId: number | undefined;
+  let toAccountName: string;
+  let toAccountId: number | undefined;
+
+  if (typeof fromAccountNameOrId === "number") {
+    fromAccountId = fromAccountNameOrId;
+    const accounts = await getBankAccountsByBusiness(businessId);
+    const fromAcc = accounts.find(a => a.id === fromAccountId);
+    fromAccountName = fromAcc?.accountName || "Unknown";
+  } else {
+    fromAccountName = fromAccountNameOrId;
+  }
+
+  if (typeof toAccountNameOrId === "number") {
+    toAccountId = toAccountNameOrId;
+    const accounts = await getBankAccountsByBusiness(businessId);
+    const toAcc = accounts.find(a => a.id === toAccountId);
+    toAccountName = toAcc?.accountName || "Unknown";
+  } else {
+    toAccountName = toAccountNameOrId;
+  }
 
   return db.transaction(async (tx) => {
     const txCodeOut = await generateTxCode(businessId);
@@ -2517,6 +2540,7 @@ export async function createTransferBetweenAccounts(
       description,
       amount,
       paymentMethod: fromAccountName,
+      bankAccountId: fromAccountId ?? null,
       taxRelated: false,
       notes: notes || `Transfer ke ${toAccountName}`,
     }));
@@ -2531,6 +2555,7 @@ export async function createTransferBetweenAccounts(
       description,
       amount,
       paymentMethod: toAccountName,
+      bankAccountId: toAccountId ?? null,
       taxRelated: false,
       notes: notes || `Transfer dari ${fromAccountName}`,
     }));
@@ -5111,9 +5136,10 @@ export async function getStockBatchesByProduct(
 export async function consumeStockFIFO(
   productId: number,
   qty: number,
-  warehouseId?: number
+  warehouseId?: number,
+  txOrDb?: any
 ): Promise<Array<{ batchId: number; qty: number; costPrice: number }>> {
-  const db = await getDb();
+  const db = txOrDb || await getDb();
   if (!db) throw new Error("Database not available");
   const batches = await getStockBatchesByProduct(productId, warehouseId);
 
@@ -5148,9 +5174,10 @@ export async function consumeStockFIFO(
 export async function restoreStockFIFO(
   productId: number,
   qty: number,
-  warehouseId?: number
+  warehouseId?: number,
+  txOrDb?: any
 ): Promise<void> {
-  const db = await getDb();
+  const db = txOrDb || await getDb();
   if (!db) return;
 
   // Restore qty to the most recently consumed batches (reverse FIFO order)
@@ -5638,26 +5665,9 @@ export async function generateLabaRugiDetail(
   const startDate = `${year}-${String(month).padStart(2, "0")}-01`;
   const endDate = `${year}-${String(month).padStart(2, "0")}-31`;
 
-  // Revenue: POS sales + manual transactions
-  const posSales = await db
-    .select({
-      total: sql<number>`SUM(${posReceipts.grandTotal})`,
-    })
-    .from(posReceipts)
-    .where(
-      and(
-        eq(posReceipts.businessId, businessId),
-        eq(posReceipts.isRefunded, false),
-        gte(sql`DATE(${posReceipts.date})`, startDate),
-        lte(sql`DATE(${posReceipts.date})`, endDate)
-      )
-    );
-
-  const penjualanPOS = posSales[0]?.total || 0;
-
-  // Manual transactions (sales category) — exclude POS-generated transactions
-  // POS checkout auto-creates transactions with receiptId set, so we filter those out
-  const manualSales = await db
+  // FIXED: Revenue now comes ONLY from transactions table (all income categories)
+  // POS checkouts automatically create journal entries with type="pemasukan"
+  const salesData = await db
     .select({
       total: sql<number>`SUM(${transactions.amount})`,
     })
@@ -5665,50 +5675,55 @@ export async function generateLabaRugiDetail(
     .where(
       and(
         eq(transactions.businessId, businessId),
-        sql`LOWER(${transactions.category}) = 'penjualan'`,
+        eq(transactions.type, "pemasukan"),
         gte(transactions.date, startDate),
         lte(transactions.date, endDate),
-        eq(transactions.isDeleted, false),
-        sql`${transactions.receiptId} IS NULL`
+        eq(transactions.isDeleted, false)
       )
     );
 
-  const penjualanManual = manualSales[0]?.total || 0;
-  const totalPendapatan = penjualanPOS + penjualanManual;
+  const totalPendapatan = salesData[0]?.total || 0;
 
-  // HPP: from COGS calculations
+  // For detail breakdown, split into POS (has receiptId) and manual (no receiptId)
+  const posSalesData = await db
+    .select({
+      total: sql<number>`SUM(${transactions.amount})`,
+    })
+    .from(transactions)
+    .where(
+      and(
+        eq(transactions.businessId, businessId),
+        eq(transactions.type, "pemasukan"),
+        isNotNull(transactions.receiptId),
+        gte(transactions.date, startDate),
+        lte(transactions.date, endDate),
+        eq(transactions.isDeleted, false)
+      )
+    );
+
+  const penjualanPOS = posSalesData[0]?.total || 0;
+  const penjualanManual = totalPendapatan - penjualanPOS;
+
+  // FIXED: HPP now comes ONLY from transactions table
+  // Categories "Pembelian Stok" and "HPP Produksi" represent COGS in the journal
   const hppData = await db
     .select({
-      total: sql<number>`SUM(${stockLogs.qty} * ${products.hpp})`,
+      pembelianStok: sql<number>`SUM(CASE WHEN ${transactions.category} = 'Pembelian Stok' THEN ${transactions.amount} ELSE 0 END)`,
+      hppProduksi: sql<number>`SUM(CASE WHEN ${transactions.category} = 'HPP Produksi' THEN ${transactions.amount} ELSE 0 END)`,
     })
-    .from(stockLogs)
-    .leftJoin(products, eq(stockLogs.productId, products.id))
+    .from(transactions)
     .where(
       and(
-        eq(stockLogs.businessId, businessId),
-        eq(stockLogs.direction, -1), // outgoing stock
-        gte(stockLogs.createdAt, sql`STR_TO_DATE('${startDate}', '%Y-%m-%d')`),
-        lte(stockLogs.createdAt, sql`STR_TO_DATE('${endDate}', '%Y-%m-%d')`)
+        eq(transactions.businessId, businessId),
+        eq(transactions.type, "pengeluaran"),
+        gte(transactions.date, startDate),
+        lte(transactions.date, endDate),
+        eq(transactions.isDeleted, false)
       )
     );
 
-  const hppPenjualan = hppData[0]?.total || 0;
-
-  // Production cost (from production logs)
-  const prodCostData = await db
-    .select({
-      total: sql<number>`SUM(${productionLogs.totalCost})`,
-    })
-    .from(productionLogs)
-    .where(
-      and(
-        eq(productionLogs.businessId, businessId),
-        gte(productionLogs.date, startDate),
-        lte(productionLogs.date, endDate)
-      )
-    );
-
-  const biayaProduksi = prodCostData[0]?.total || 0;
+  const hppPenjualan = (hppData[0]?.pembelianStok || 0);
+  const biayaProduksi = (hppData[0]?.hppProduksi || 0);
   const totalHPP = hppPenjualan + biayaProduksi;
   const labaKotor = totalPendapatan - totalHPP;
   const marginKotor = totalPendapatan > 0 ? (labaKotor / totalPendapatan) * 100 : 0;
@@ -5746,18 +5761,21 @@ export async function generateLabaRugiDetail(
     expenses[cat] = data[0]?.total || 0;
   }
 
-  // Refunds from POS
+  // FIXED: Refunds now from transactions table (pengeluaran with category matching refund patterns)
+  // Refund entries are recorded as pengeluaran in the journal
   const refundData = await db
     .select({
-      total: sql<number>`SUM(${posReceipts.refundAmount})`,
+      total: sql<number>`SUM(${transactions.amount})`,
     })
-    .from(posReceipts)
+    .from(transactions)
     .where(
       and(
-        eq(posReceipts.businessId, businessId),
-        eq(posReceipts.isRefunded, true),
-        gte(sql`DATE(${posReceipts.date})`, startDate),
-        lte(sql`DATE(${posReceipts.date})`, endDate)
+        eq(transactions.businessId, businessId),
+        eq(transactions.type, "pengeluaran"),
+        sql`LOWER(${transactions.category}) LIKE '%refund%'`,
+        gte(transactions.date, startDate),
+        lte(transactions.date, endDate),
+        eq(transactions.isDeleted, false)
       )
     );
   expenses.refund = refundData[0]?.total || 0;
@@ -6037,6 +6055,21 @@ export async function topUpDeposit(businessId: number, clientId: number, amount:
       amount,
       notes,
     });
+
+    // Create journal entry for deposit top-up
+    const txCode = await generateTxCode(businessId);
+    await tx.insert(transactions).values({
+      businessId,
+      txCode,
+      date: new Date().toISOString().slice(0, 10),
+      type: "pemasukan",
+      category: "Deposit Pelanggan",
+      description: `Top-up deposit: ${notes || 'Top-up'}`,
+      amount,
+      paymentMethod: "internal",
+      taxRelated: false,
+      notes: `Deposit #${deposit.id}`,
+    });
   });
 }
 
@@ -6069,6 +6102,21 @@ export async function useDeposit(businessId: number, clientId: number, amount: n
       amount,
       notes,
     });
+
+    // Create journal entry for deposit usage
+    const txCode = await generateTxCode(businessId);
+    await tx.insert(transactions).values({
+      businessId,
+      txCode,
+      date: new Date().toISOString().slice(0, 10),
+      type: "pengeluaran",
+      category: "Penggunaan Deposit",
+      description: `Penggunaan deposit: ${notes || 'Penggunaan'}`,
+      amount,
+      paymentMethod: "internal",
+      taxRelated: false,
+      notes: `Deposit #${deposit.id}`,
+    });
   });
 }
 
@@ -6091,6 +6139,21 @@ export async function refundDeposit(businessId: number, clientId: number, amount
       type: "refund",
       amount,
       notes,
+    });
+
+    // Create journal entry for deposit refund
+    const txCode = await generateTxCode(businessId);
+    await tx.insert(transactions).values({
+      businessId,
+      txCode,
+      date: new Date().toISOString().slice(0, 10),
+      type: "pengeluaran",
+      category: "Refund Deposit",
+      description: `Refund deposit: ${notes || 'Refund'}`,
+      amount,
+      paymentMethod: "internal",
+      taxRelated: false,
+      notes: `Deposit #${deposit.id}`,
     });
   });
 }

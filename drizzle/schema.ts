@@ -9,6 +9,8 @@ import {
   decimal,
   bigint,
   json,
+  index,
+  uniqueIndex,
 } from "drizzle-orm/mysql-core";
 
 // ─── Users ───
@@ -113,9 +115,12 @@ export const products = mysqlTable("products", {
   safetyStock: int("safetyStock"), // minimum safety buffer
   leadTimeDays: int("leadTimeDays"), // supplier lead time in days
   isActive: boolean("isActive").notNull().default(true),
+  version: int("version").notNull().default(1), // optimistic locking
   createdAt: timestamp("createdAt").defaultNow().notNull(),
   updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
-});
+}, (table) => [
+  index("idx_products_businessId").on(table.businessId),
+]);
 
 export type Product = typeof products.$inferSelect;
 export type InsertProduct = typeof products.$inferInsert;
@@ -142,7 +147,14 @@ export const transactions = mysqlTable("transactions", {
   receiptId: int("receiptId").references(() => posReceipts.id), // link to pos_receipts (for grouped POS checkout)
   bankAccountId: int("bankAccountId").references(() => bankAccounts.id), // FK to bank_accounts for balance tracking
   createdAt: timestamp("createdAt").defaultNow().notNull(),
-});
+}, (table) => [
+  index("idx_transactions_businessId").on(table.businessId),
+  index("idx_transactions_date").on(table.date),
+  index("idx_transactions_type").on(table.type),
+  index("idx_transactions_receiptId").on(table.receiptId),
+  index("idx_transactions_bankAccountId").on(table.bankAccountId),
+  index("idx_transactions_isDeleted").on(table.isDeleted),
+]);
 
 export type Transaction = typeof transactions.$inferSelect;
 export type InsertTransaction = typeof transactions.$inferInsert;
@@ -161,7 +173,11 @@ export const stockLogs = mysqlTable("stock_logs", {
   stockBefore: int("stockBefore").notNull(),
   stockAfter: int("stockAfter").notNull(),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
-});
+}, (table) => [
+  index("idx_stockLogs_businessId").on(table.businessId),
+  index("idx_stockLogs_productId").on(table.productId),
+  index("idx_stockLogs_date").on(table.date),
+]);
 
 export type StockLog = typeof stockLogs.$inferSelect;
 export type InsertStockLog = typeof stockLogs.$inferInsert;
@@ -307,7 +323,9 @@ export const debts = mysqlTable("debts", {
   notes: text("notes"),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
   updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
-});
+}, (table) => [
+  index("idx_debts_businessId").on(table.businessId),
+]);
 
 export type Debt = typeof debts.$inferSelect;
 export type InsertDebt = typeof debts.$inferInsert;
@@ -321,7 +339,9 @@ export const debtPayments = mysqlTable("debt_payments", {
   paymentMethod: varchar("paymentMethod", { length: 30 }).notNull().default("tunai"),
   notes: text("notes"),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
-});
+}, (table) => [
+  index("idx_debtPayments_debtId").on(table.debtId),
+]);
 
 export type DebtPayment = typeof debtPayments.$inferSelect;
 export type InsertDebtPayment = typeof debtPayments.$inferInsert;
@@ -383,7 +403,9 @@ export const warehouseStock = mysqlTable("warehouse_stock", {
   productId: int("productId").notNull().references(() => products.id),
   quantity: int("quantity").notNull().default(0),
   updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
-});
+}, (table) => [
+  uniqueIndex("uniq_warehouseStock_warehouseId_productId").on(table.warehouseId, table.productId),
+]);
 
 export type WarehouseStock = typeof warehouseStock.$inferSelect;
 export type InsertWarehouseStock = typeof warehouseStock.$inferInsert;
@@ -544,7 +566,11 @@ export const posReceipts = mysqlTable("pos_receipts", {
   deviceInfo: varchar("deviceInfo", { length: 200 }),
   date: varchar("date", { length: 10 }).notNull(), // yyyy-mm-dd
   createdAt: timestamp("createdAt").defaultNow().notNull(),
-});
+}, (table) => [
+  index("idx_posReceipts_businessId").on(table.businessId),
+  index("idx_posReceipts_date").on(table.date),
+  index("idx_posReceipts_shiftId").on(table.shiftId),
+]);
 
 export type PosReceipt = typeof posReceipts.$inferSelect;
 export type InsertPosReceipt = typeof posReceipts.$inferInsert;
@@ -560,7 +586,10 @@ export const posReceiptItems = mysqlTable("pos_receipt_items", {
   totalPrice: bigint("totalPrice", { mode: "number" }).notNull(), // qty × unitPrice
   hppSnapshot: bigint("hppSnapshot", { mode: "number" }).notNull().default(0), // HPP per unit at time of sale
   createdAt: timestamp("createdAt").defaultNow().notNull(),
-});
+}, (table) => [
+  index("idx_posReceiptItems_receiptId").on(table.receiptId),
+  index("idx_posReceiptItems_productId").on(table.productId),
+]);
 
 export type PosReceiptItem = typeof posReceiptItems.$inferSelect;
 export type InsertPosReceiptItem = typeof posReceiptItems.$inferInsert;
@@ -579,7 +608,9 @@ export const creditSales = mysqlTable("credit_sales", {
   notes: text("notes"),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
   updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
-});
+}, (table) => [
+  index("idx_creditSales_businessId").on(table.businessId),
+]);
 
 export type CreditSale = typeof creditSales.$inferSelect;
 export type InsertCreditSale = typeof creditSales.$inferInsert;
@@ -593,7 +624,9 @@ export const creditPayments = mysqlTable("credit_payments", {
   notes: text("notes"),
   date: varchar("date", { length: 10 }).notNull(), // yyyy-mm-dd
   createdAt: timestamp("createdAt").defaultNow().notNull(),
-});
+}, (table) => [
+  index("idx_creditPayments_creditSaleId").on(table.creditSaleId),
+]);
 
 export type CreditPayment = typeof creditPayments.$inferSelect;
 export type InsertCreditPayment = typeof creditPayments.$inferInsert;
@@ -761,7 +794,10 @@ export const staffCommissions = mysqlTable("staff_commissions", {
   status: mysqlEnum("status", ["pending", "paid"]).notNull().default("pending"),
   paidAt: timestamp("paidAt"),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
-});
+}, (table) => [
+  index("idx_staffCommissions_businessId").on(table.businessId),
+  index("idx_staffCommissions_receiptId").on(table.receiptId),
+]);
 
 export type StaffCommission = typeof staffCommissions.$inferSelect;
 export type InsertStaffCommission = typeof staffCommissions.$inferInsert;
@@ -780,7 +816,11 @@ export const stockBatches = mysqlTable("stock_batches", {
   remainingQty: int("remainingQty").notNull(),
   isActive: boolean("isActive").notNull().default(true),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
-});
+}, (table) => [
+  index("idx_stockBatches_productId").on(table.productId),
+  index("idx_stockBatches_warehouseId").on(table.warehouseId),
+  index("idx_stockBatches_businessId").on(table.businessId),
+]);
 
 export type StockBatch = typeof stockBatches.$inferSelect;
 export type InsertStockBatch = typeof stockBatches.$inferInsert;
@@ -844,7 +884,9 @@ export const customerDeposits = mysqlTable("customer_deposits", {
   balance: bigint("balance", { mode: "number" }).default(0).notNull(),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
   updatedAt: timestamp("updatedAt").defaultNow().notNull(),
-});
+}, (table) => [
+  uniqueIndex("uniq_customerDeposits_businessId_clientId").on(table.businessId, table.clientId),
+]);
 export type CustomerDeposit = typeof customerDeposits.$inferSelect;
 export type InsertCustomerDeposit = typeof customerDeposits.$inferInsert;
 
@@ -857,7 +899,10 @@ export const depositTransactions = mysqlTable("deposit_transactions", {
   amount: bigint("amount", { mode: "number" }).notNull(),
   notes: text("notes"),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
-});
+}, (table) => [
+  index("idx_depositTransactions_depositId").on(table.depositId),
+  index("idx_depositTransactions_businessId").on(table.businessId),
+]);
 export type DepositTransaction = typeof depositTransactions.$inferSelect;
 export type InsertDepositTransaction = typeof depositTransactions.$inferInsert;
 
@@ -872,7 +917,10 @@ export const auditLogs = mysqlTable("audit_logs", {
   details: json("details"), // JSON with before/after state
   ipAddress: varchar("ipAddress", { length: 45 }),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
-});
+}, (table) => [
+  index("idx_auditLogs_businessId").on(table.businessId),
+  index("idx_auditLogs_entityType_entityId").on(table.entityType, table.entityId),
+]);
 
 export type AuditLog = typeof auditLogs.$inferSelect;
 export type InsertAuditLog = typeof auditLogs.$inferInsert;
