@@ -78,19 +78,34 @@ export default function POS() {
   const { data: warehouses = [] } = trpc.warehouse.list.useQuery();
   const { data: bankAccounts = [] } = trpc.bankAccount.list.useQuery();
 
-  // Build payment methods: Tunai first, then bank accounts, then Lainnya
+  // Payment categories: Tunai, Transfer, QRIS
+  const [paymentCategory, setPaymentCategory] = useState<"Tunai" | "Transfer" | "QRIS">("Tunai");
+
+  const bankTransferAccounts = useMemo(() =>
+    bankAccounts.filter((acc: any) => acc.accountType === "bank" && acc.isActive),
+  [bankAccounts]);
+
+  const qrisAccounts = useMemo(() =>
+    bankAccounts.filter((acc: any) => acc.accountType === "ewallet" && acc.isActive),
+  [bankAccounts]);
+
+  const cashAccounts = useMemo(() =>
+    bankAccounts.filter((acc: any) => acc.accountType === "cash" && acc.isActive),
+  [bankAccounts]);
+
+  // For split payment — build flat list of all methods
   const paymentMethods = useMemo(() => {
-    const methods: Array<{ value: string; icon: React.ComponentType<{ className?: string }>; label: string }> = [
-      { value: "Tunai", icon: Banknote, label: "Tunai" },
+    const methods: Array<{ value: string; icon: React.ComponentType<{ className?: string }>; label: string; category: string }> = [
+      { value: "Tunai", icon: Banknote, label: "Tunai", category: "Tunai" },
     ];
-    bankAccounts.forEach((acc: any) => {
+    bankAccounts.filter((a: any) => a.isActive).forEach((acc: any) => {
       methods.push({
         value: acc.accountName,
-        icon: acc.accountType === "cash" ? Banknote : acc.accountType === "ewallet" ? Wallet : CreditCard,
+        icon: acc.accountType === "ewallet" ? QrCode : CreditCard,
         label: acc.accountName,
+        category: acc.accountType === "ewallet" ? "QRIS" : "Transfer",
       });
     });
-    methods.push({ value: "Lainnya", icon: Wallet, label: "Lainnya" });
     return methods;
   }, [bankAccounts]);
 
@@ -175,6 +190,7 @@ export default function POS() {
     setCustomerPaid("");
     setNotes("");
     setSplitMode(false);
+    setPaymentCategory("Tunai");
     setPayments([{ method: "Tunai", amount: 0 }]);
     setAppliedDiscount(null);
     setDiscountCode("");
@@ -342,7 +358,7 @@ export default function POS() {
         toast.error(`Pembayaran kurang ${formatRupiah(grandTotal - paidTotal)}`);
         return;
       }
-    } else if (payments[0]?.method === "Tunai") {
+    } else if (paymentCategory === "Tunai") {
       const paid = parseInt(customerPaid) || 0;
       if (paid < grandTotal) {
         toast.error("Uang diterima kurang dari total");
@@ -722,33 +738,101 @@ export default function POS() {
             {!splitMode ? (
               /* ─── Single Payment Mode ─── */
               <>
-                <div className={`grid gap-2 ${paymentMethods.length > 6 ? "grid-cols-2" : "grid-cols-3"}`}>
-                  {paymentMethods.map(m => (
-                    <Button
-                      key={m.value}
-                      variant={payments[0]?.method === m.value ? "default" : "outline"}
-                      className="flex flex-col gap-1 h-auto py-3"
-                      onClick={() => setPayments([{ method: m.value, amount: 0 }])}
-                    >
-                      <m.icon className="h-5 w-5" />
-                      <span className="text-xs">{m.label}</span>
-                    </Button>
-                  ))}
+                {/* Category selector: Tunai / Transfer / QRIS */}
+                <div className="grid grid-cols-3 gap-2">
+                  <Button
+                    variant={paymentCategory === "Tunai" ? "default" : "outline"}
+                    className="flex flex-col gap-1 h-auto py-3"
+                    onClick={() => {
+                      setPaymentCategory("Tunai");
+                      setPayments([{ method: "Tunai", amount: 0 }]);
+                    }}
+                  >
+                    <Banknote className="h-5 w-5" />
+                    <span className="text-xs">Tunai</span>
+                  </Button>
+                  <Button
+                    variant={paymentCategory === "Transfer" ? "default" : "outline"}
+                    className="flex flex-col gap-1 h-auto py-3"
+                    onClick={() => {
+                      setPaymentCategory("Transfer");
+                      const first = bankTransferAccounts[0];
+                      setPayments([{ method: first?.accountName ?? "Transfer", amount: 0 }]);
+                    }}
+                  >
+                    <CreditCard className="h-5 w-5" />
+                    <span className="text-xs">Transfer</span>
+                  </Button>
+                  <Button
+                    variant={paymentCategory === "QRIS" ? "default" : "outline"}
+                    className="flex flex-col gap-1 h-auto py-3"
+                    onClick={() => {
+                      setPaymentCategory("QRIS");
+                      const first = qrisAccounts[0];
+                      setPayments([{ method: first?.accountName ?? "QRIS", amount: 0 }]);
+                    }}
+                  >
+                    <QrCode className="h-5 w-5" />
+                    <span className="text-xs">QRIS</span>
+                  </Button>
                 </div>
 
-                {payments[0]?.method === "Lainnya" && (
+                {/* Sub-selection: which bank account for Transfer */}
+                {paymentCategory === "Transfer" && bankTransferAccounts.length > 0 && (
                   <div className="space-y-1.5">
-                    <label className="text-xs font-medium text-muted-foreground">Nama Metode Pembayaran</label>
-                    <Input
-                      value={payments[0]?.customLabel || ""}
-                      onChange={(e) => updatePayment(0, "customLabel", e.target.value)}
-                      placeholder="Kredivo, ShopeePay, GoPay, OVO..."
-                      className="h-10"
-                    />
+                    <label className="text-xs font-medium text-muted-foreground">Pilih Rekening Bank</label>
+                    <div className="grid grid-cols-2 gap-2">
+                      {bankTransferAccounts.map((acc: any) => (
+                        <Button
+                          key={acc.id}
+                          variant={payments[0]?.method === acc.accountName ? "default" : "outline"}
+                          className="flex items-center gap-2 h-auto py-2.5 justify-start"
+                          onClick={() => setPayments([{ method: acc.accountName, amount: 0 }])}
+                        >
+                          <span>{acc.icon}</span>
+                          <span className="text-xs truncate">{acc.accountName}</span>
+                        </Button>
+                      ))}
+                    </div>
+                    {bankTransferAccounts.length === 0 && (
+                      <p className="text-xs text-muted-foreground text-center py-2">Belum ada rekening bank. Tambah di Manajemen Rekening.</p>
+                    )}
                   </div>
                 )}
 
-                {payments[0]?.method === "Tunai" && (
+                {/* Sub-selection: which e-wallet/QRIS account */}
+                {paymentCategory === "QRIS" && qrisAccounts.length > 0 && (
+                  <div className="space-y-1.5">
+                    <label className="text-xs font-medium text-muted-foreground">Pilih Akun QRIS/E-Wallet</label>
+                    <div className="grid grid-cols-2 gap-2">
+                      {qrisAccounts.map((acc: any) => (
+                        <Button
+                          key={acc.id}
+                          variant={payments[0]?.method === acc.accountName ? "default" : "outline"}
+                          className="flex items-center gap-2 h-auto py-2.5 justify-start"
+                          onClick={() => setPayments([{ method: acc.accountName, amount: 0 }])}
+                        >
+                          <span>{acc.icon}</span>
+                          <span className="text-xs truncate">{acc.accountName}</span>
+                        </Button>
+                      ))}
+                    </div>
+                    {qrisAccounts.length === 0 && (
+                      <p className="text-xs text-muted-foreground text-center py-2">Belum ada akun QRIS/e-wallet. Tambah di Manajemen Rekening.</p>
+                    )}
+                  </div>
+                )}
+
+                {paymentCategory === "Transfer" && bankTransferAccounts.length === 0 && (
+                  <p className="text-xs text-muted-foreground text-center py-2 border rounded-lg">Belum ada rekening bank. Tambah di Manajemen Rekening.</p>
+                )}
+
+                {paymentCategory === "QRIS" && qrisAccounts.length === 0 && (
+                  <p className="text-xs text-muted-foreground text-center py-2 border rounded-lg">Belum ada akun QRIS/e-wallet. Tambah di Manajemen Rekening.</p>
+                )}
+
+                {/* Tunai: cash input */}
+                {paymentCategory === "Tunai" && (
                   <div className="space-y-1.5">
                     <label className="text-xs font-medium text-muted-foreground">Uang Diterima</label>
                     <Input type="number" value={customerPaid} onChange={(e) => setCustomerPaid(e.target.value)} placeholder="0" className="text-lg font-bold h-12" />
@@ -768,8 +852,6 @@ export default function POS() {
                     </div>
                   </div>
                 )}
-
-                {payments[0]?.method === "Transfer/QRIS" && <QRISDisplay />}
               </>
             ) : (
               /* ─── Split Payment Mode ─── */
@@ -859,7 +941,7 @@ export default function POS() {
 
             <Button
               className="w-full h-12 text-base"
-              disabled={isPending || (splitMode ? totalPaid < grandTotal : (payments[0]?.method === "Tunai" && (parseInt(customerPaid) || 0) < grandTotal))}
+              disabled={isPending || (splitMode ? totalPaid < grandTotal : (paymentCategory === "Tunai" && (parseInt(customerPaid) || 0) < grandTotal))}
               onClick={handleCheckout}
             >
               {isPending ? (
