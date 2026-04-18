@@ -631,7 +631,7 @@ async function runAutoMigration(db: ReturnType<typeof drizzle>) {
   await safeExec("CREATE INDEX IF NOT EXISTS `idx_auditLogs_entityType_entityId` ON `audit_logs` (`entityType`, `entityId`)");
 
   // ─── Add version column for optimistic locking ───
-  await safeExec("ALTER TABLE `products` ADD COLUMN IF NOT EXISTS `version` int NOT NULL DEFAULT 1");
+  await safeExec("ALTER TABLE `products` ADD COLUMN `version` int NOT NULL DEFAULT 1");
 
   // ─── Verification: confirm critical columns exist ───
   try {
