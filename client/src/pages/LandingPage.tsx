@@ -36,11 +36,11 @@ const SALE_PRICE = 299000;
 const ORIGINAL_PRICE = 2000000;
 const WA_URL = "https://wa.me/6285693932042?text=Halo%2C%20saya%20tertarik%20dengan%20County";
 
-// Unsplash images — Indonesian UMKM / small business transactions
-const HERO_IMG = "https://images.unsplash.com/photo-1556742049-0cfed4f6a45d?w=800&q=80"; // person at cafe register
-const IMG_WARUNG = "https://images.unsplash.com/photo-1556740758-90de374c12ad?w=600&q=80"; // small shop transaction
-const IMG_MARKET = "https://images.unsplash.com/photo-1604719312566-8912e9227c6a?w=600&q=80"; // market seller
-const IMG_CAFE = "https://images.unsplash.com/photo-1559305616-3f99cd43e353?w=600&q=80"; // barista/cafe
+// Pexels images — Indonesian UMKM / orang Indonesia asli
+const HERO_IMG = "https://images.pexels.com/photos/18396509/pexels-photo-18396509.jpeg?auto=compress&cs=tinysrgb&w=800"; // Pasar tradisional Indonesia
+const IMG_WARUNG = "https://images.pexels.com/photos/18396402/pexels-photo-18396402.jpeg?auto=compress&cs=tinysrgb&w=600"; // Pasar tradisional Indonesia - ekonomi & perdagangan
+const IMG_MARKET = "https://images.pexels.com/photos/29530641/pexels-photo-29530641.jpeg?auto=compress&cs=tinysrgb&w=600"; // Traditional Indonesian market scene with vendors
+const IMG_CAFE = "https://images.pexels.com/photos/3965544/pexels-photo-3965544.jpeg?auto=compress&cs=tinysrgb&w=600"; // Asian woman working at small shop/cafe
 
 function formatRp(n: number) {
   return "Rp " + n.toLocaleString("id-ID");
