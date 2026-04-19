@@ -1,4 +1,4 @@
-import { eq, and, sql, desc, gte, lte, ne, inArray, isNotNull, isNull, asc } from "drizzle-orm";
+import { eq, and, or, sql, desc, gte, lte, ne, inArray, isNotNull, isNull, asc } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/mysql2";
 import {
   InsertUser, users,
@@ -632,6 +632,9 @@ async function runAutoMigration(db: ReturnType<typeof drizzle>) {
 
   // ─── Add version column for optimistic locking ───
   await safeExec("ALTER TABLE `products` ADD COLUMN `version` int NOT NULL DEFAULT 1");
+
+  // ─── Add defaultCashAccountId to team_members for POS kas per kasir ───
+  await safeExec("ALTER TABLE `team_members` ADD COLUMN `defaultCashAccountId` int DEFAULT NULL");
 
   // ─── Verification: confirm critical columns exist ───
   try {
@@ -2124,20 +2127,24 @@ export async function getRekeningKoranReport(
   const db = await getDb();
   if (!db) return [];
 
-  // Get initial balance from bank account
+  // Get the bank account — match by name or id
   const account = await db.select().from(bankAccounts).where(
     and(eq(bankAccounts.businessId, businessId), eq(bankAccounts.accountName, bankAccountName))
   ).limit(1);
   const initialBalance = account[0]?.initialBalance ?? 0;
+  const accountId = account[0]?.id;
 
   const entries: Array<{ date: string; description: string; debit: number; credit: number; runningBalance: number }> = [];
   let runningBalance = initialBalance;
 
   // Get transactions for this account in date range
+  // Match by bankAccountId (preferred) OR paymentMethod name (fallback for legacy data)
   const txs = await db.select().from(transactions).where(
     and(
       eq(transactions.businessId, businessId),
-      eq(transactions.paymentMethod, bankAccountName),
+      accountId
+        ? or(eq(transactions.bankAccountId, accountId), eq(transactions.paymentMethod, bankAccountName))
+        : eq(transactions.paymentMethod, bankAccountName),
       eq(transactions.isDeleted, false),
       gte(transactions.date, startDate),
       lte(transactions.date, endDate)
@@ -3070,6 +3077,7 @@ export async function getTeamMembershipsByUser(userId: number): Promise<(TeamMem
     userId: teamMembers.userId,
     role: teamMembers.role,
     permissions: teamMembers.permissions,
+    defaultCashAccountId: teamMembers.defaultCashAccountId,
     invitedBy: teamMembers.invitedBy,
     status: teamMembers.status,
     joinedAt: teamMembers.joinedAt,

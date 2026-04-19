@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useMemo } from "react";
 import { trpc } from "@/lib/trpc";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -1018,6 +1018,8 @@ function TeamManagementTab() {
   const { data: members = [], isLoading: membersLoading } = trpc.team.list.useQuery();
   const { data: invites = [], isLoading: invitesLoading } = trpc.team.invites.useQuery();
   const { data: roleData } = trpc.team.rolePermissions.useQuery();
+  const { data: bankAccounts = [] } = trpc.bankAccount.list.useQuery();
+  const cashAccounts = useMemo(() => bankAccounts.filter((a: any) => a.accountType === "cash" && a.isActive), [bankAccounts]);
 
   const [inviteOpen, setInviteOpen] = useState(false);
   const [inviteEmail, setInviteEmail] = useState("");
@@ -1027,6 +1029,7 @@ function TeamManagementTab() {
   const [editMember, setEditMember] = useState<any>(null);
   const [editRole, setEditRole] = useState<string>("");
   const [editPerms, setEditPerms] = useState<Record<string, boolean>>({});
+  const [editCashAccountId, setEditCashAccountId] = useState<number | null>(null);
 
   const inviteMut = trpc.team.invite.useMutation({
     onSuccess: (data) => {
@@ -1072,6 +1075,7 @@ function TeamManagementTab() {
     if (editMember) {
       setEditRole(editMember.role);
       setEditPerms(editMember.permissions ?? {});
+      setEditCashAccountId(editMember.defaultCashAccountId ?? null);
     }
   }, [editMember]);
 
@@ -1222,6 +1226,14 @@ function TeamManagementTab() {
                         <RoleIcon className="h-3 w-3 mr-1" />
                         {rd.label}
                       </Badge>
+                      {m.defaultCashAccountId && (() => {
+                        const cashAcc = cashAccounts.find((a: any) => a.id === m.defaultCashAccountId);
+                        return cashAcc ? (
+                          <Badge variant="outline" className="text-[10px] text-amber-600 border-amber-300">
+                            💰 {(cashAcc as any).accountName}
+                          </Badge>
+                        ) : null;
+                      })()}
                       {m.status === "suspended" && (
                         <Badge variant="destructive" className="text-[10px]">Suspended</Badge>
                       )}
@@ -1309,6 +1321,22 @@ function TeamManagementTab() {
                 })}
               </div>
             </div>
+            {/* Cash account assignment for kasir */}
+            {cashAccounts.length > 0 && (editRole === "kasir" || editRole === "manager") && (
+              <div className="space-y-1.5">
+                <Label className="text-xs">Kas Default (untuk POS Tunai)</Label>
+                <Select value={editCashAccountId ? String(editCashAccountId) : "none"} onValueChange={(v) => setEditCashAccountId(v === "none" ? null : Number(v))}>
+                  <SelectTrigger><SelectValue placeholder="Pilih akun kas..." /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="none">Otomatis (kas pertama)</SelectItem>
+                    {cashAccounts.map((acc: any) => (
+                      <SelectItem key={acc.id} value={String(acc.id)}>{acc.icon} {acc.accountName}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <p className="text-[10px] text-muted-foreground">Semua pembayaran tunai dari kasir ini akan masuk ke kas yang dipilih</p>
+              </div>
+            )}
             <Button
               className="w-full"
               disabled={updateMemberMut.isPending}
@@ -1318,6 +1346,7 @@ function TeamManagementTab() {
                     memberId: editMember.id,
                     role: editRole as any,
                     permissions: editPerms,
+                    defaultCashAccountId: editCashAccountId,
                   });
                 }
               }}

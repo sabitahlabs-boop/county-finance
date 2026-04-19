@@ -95,10 +95,17 @@ export default function POS() {
 
   // For split payment — build flat list of all methods
   const paymentMethods = useMemo(() => {
-    const methods: Array<{ value: string; icon: React.ComponentType<{ className?: string }>; label: string; category: string }> = [
-      { value: "Tunai", icon: Banknote, label: "Tunai", category: "Tunai" },
-    ];
-    bankAccounts.filter((a: any) => a.isActive).forEach((acc: any) => {
+    const methods: Array<{ value: string; icon: React.ComponentType<{ className?: string }>; label: string; category: string }> = [];
+    // Add cash accounts as Tunai options
+    const activeCash = bankAccounts.filter((a: any) => a.accountType === "cash" && a.isActive);
+    if (activeCash.length > 0) {
+      activeCash.forEach((acc: any) => {
+        methods.push({ value: acc.accountName, icon: Banknote, label: acc.accountName, category: "Tunai" });
+      });
+    } else {
+      methods.push({ value: "Tunai", icon: Banknote, label: "Tunai", category: "Tunai" });
+    }
+    bankAccounts.filter((a: any) => a.isActive && a.accountType !== "cash").forEach((acc: any) => {
       methods.push({
         value: acc.accountName,
         icon: acc.accountType === "ewallet" ? QrCode : CreditCard,
@@ -745,7 +752,8 @@ export default function POS() {
                     className="flex flex-col gap-1 h-auto py-3"
                     onClick={() => {
                       setPaymentCategory("Tunai");
-                      setPayments([{ method: "Tunai", amount: 0 }]);
+                      const firstCash = cashAccounts[0] as any;
+                      setPayments([{ method: firstCash?.accountName ?? "Tunai", amount: 0 }]);
                     }}
                   >
                     <Banknote className="h-5 w-5" />
@@ -831,7 +839,31 @@ export default function POS() {
                   <p className="text-xs text-muted-foreground text-center py-2 border rounded-lg">Belum ada akun QRIS/e-wallet. Tambah di Manajemen Rekening.</p>
                 )}
 
-                {/* Tunai: cash input */}
+                {/* Tunai: select cash account + cash input */}
+                {paymentCategory === "Tunai" && cashAccounts.length > 1 && (
+                  <div className="space-y-1.5">
+                    <label className="text-xs font-medium text-muted-foreground">Kas Tujuan</label>
+                    <div className="grid grid-cols-2 gap-2">
+                      {cashAccounts.map((acc: any) => (
+                        <Button
+                          key={acc.id}
+                          variant={payments[0]?.method === acc.accountName ? "default" : "outline"}
+                          className="flex items-center gap-2 h-auto py-2.5 justify-start"
+                          onClick={() => setPayments([{ method: acc.accountName, amount: 0 }])}
+                        >
+                          <span>{acc.icon}</span>
+                          <span className="text-xs truncate">{acc.accountName}</span>
+                        </Button>
+                      ))}
+                    </div>
+                  </div>
+                )}
+                {paymentCategory === "Tunai" && cashAccounts.length === 1 && (
+                  <div className="flex items-center gap-2 text-xs text-muted-foreground bg-muted/50 rounded-lg px-3 py-2">
+                    <span>{(cashAccounts[0] as any).icon}</span>
+                    <span>Kas: <strong className="text-foreground">{(cashAccounts[0] as any).accountName}</strong></span>
+                  </div>
+                )}
                 {paymentCategory === "Tunai" && (
                   <div className="space-y-1.5">
                     <label className="text-xs font-medium text-muted-foreground">Uang Diterima</label>

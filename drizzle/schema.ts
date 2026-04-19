@@ -434,6 +434,7 @@ export const teamMembers = mysqlTable("team_members", {
   role: mysqlEnum("role", ["owner", "manager", "kasir", "gudang", "viewer"]).notNull().default("viewer"),
   // Granular permissions as JSON: { dashboard, transaksi, stok, gudang, pos, client, hutang, anggaran, analitik, laporan, pajak, pengaturan }
   permissions: json("permissions").$type<Record<string, boolean>>().notNull(),
+  defaultCashAccountId: int("defaultCashAccountId"), // FK → bank_accounts.id (accountType=cash) for POS Tunai
   invitedBy: int("invitedBy"), // userId who invited
   status: mysqlEnum("status", ["active", "suspended"]).notNull().default("active"),
   joinedAt: timestamp("joinedAt").defaultNow().notNull(),

@@ -2400,6 +2400,7 @@ Penting: Kembalikan HANYA JSON valid, tidak ada teks penjelasan.`,
           role: m.role,
           permissions: m.permissions,
           status: m.status,
+          defaultCashAccountId: m.defaultCashAccountId ?? null,
         })),
       };
     }),
@@ -2517,6 +2518,7 @@ Penting: Kembalikan HANYA JSON valid, tidak ada teks penjelasan.`,
       role: z.enum(["manager", "kasir", "gudang", "viewer"]).optional(),
       permissions: z.record(z.string(), z.boolean()).optional(),
       status: z.enum(["active", "suspended"]).optional(),
+      defaultCashAccountId: z.number().nullable().optional(),
     })).mutation(async ({ ctx, input }) => {
       const biz = (await resolveBusinessForUser(ctx.user.id, ctx.requestedBusinessId, ctx.user.role))?.business;
       if (!biz) throw new TRPCError({ code: "NOT_FOUND" });
@@ -2526,6 +2528,7 @@ Penting: Kembalikan HANYA JSON valid, tidak ada teks penjelasan.`,
       if (input.role) updates.role = input.role;
       if (input.permissions) updates.permissions = input.permissions;
       if (input.status) updates.status = input.status;
+      if (input.defaultCashAccountId !== undefined) updates.defaultCashAccountId = input.defaultCashAccountId;
       await updateTeamMember(input.memberId, updates);
       return { success: true };
     }),
@@ -2750,6 +2753,27 @@ Penting: Kembalikan HANYA JSON valid, tidak ada teks penjelasan.`,
       const receiptCode = await generateReceiptCode(bizId);
       const posAccounts = await getBankAccountsByBusiness(bizId);
 
+      // Resolve kasir's default cash account for "Tunai" payments
+      const teamMemberInfo = await getTeamMemberByUserAndBusiness(ctx.user.id, bizId);
+      let kasirCashAccountId: number | null = teamMemberInfo?.defaultCashAccountId ?? null;
+      let kasirCashAccountName: string | null = null;
+      if (kasirCashAccountId) {
+        const cashAcct = posAccounts.find(a => a.id === kasirCashAccountId);
+        if (cashAcct) {
+          kasirCashAccountName = cashAcct.accountName;
+        } else {
+          kasirCashAccountId = null; // account was deleted/deactivated
+        }
+      }
+      // Fallback: if no default set, find any active cash account
+      if (!kasirCashAccountId) {
+        const anyCash = posAccounts.find(a => a.accountType === "cash");
+        if (anyCash) {
+          kasirCashAccountId = anyCash.id;
+          kasirCashAccountName = anyCash.accountName;
+        }
+      }
+
       // Pre-generate tx codes for each payment (avoid sequential generation inside tx)
       const txCodes: string[] = [];
       for (let i = 0; i < input.payments.length; i++) {
@@ -2832,7 +2856,18 @@ Penting: Kembalikan HANYA JSON valid, tidak ada teks penjelasan.`,
         // Create journal transaction per payment method
         for (let i = 0; i < input.payments.length; i++) {
           const payment = input.payments[i];
-          const bankAccountId = resolveBankAccountId(posAccounts, payment.method);
+          const isTunai = payment.method.toLowerCase() === "tunai";
+
+          // Resolve bankAccountId: Tunai → kasir's cash account, others → by name match
+          let resolvedBankAccountId: number | undefined;
+          let resolvedPaymentMethod = payment.method;
+
+          if (isTunai && kasirCashAccountId) {
+            resolvedBankAccountId = kasirCashAccountId;
+            resolvedPaymentMethod = kasirCashAccountName || payment.method;
+          } else {
+            resolvedBankAccountId = resolveBankAccountId(posAccounts, payment.method);
+          }
 
           await tx.insert(transactions).values({
             businessId: bizId,
@@ -2842,11 +2877,11 @@ Penting: Kembalikan HANYA JSON valid, tidak ada teks penjelasan.`,
             category: "Penjualan POS",
             description: `Penjualan POS ${receiptCode}`,
             amount: payment.amount,
-            paymentMethod: payment.method,
+            paymentMethod: resolvedPaymentMethod,
             clientId: input.clientId ?? null,
             shiftId: input.shiftId ?? null,
             receiptId: txReceiptId,
-            bankAccountId: bankAccountId ?? null,
+            bankAccountId: resolvedBankAccountId ?? null,
             notes: input.notes ?? null,
           });
         }
