@@ -16,6 +16,7 @@ import {
 import { formatRupiah } from "../../../shared/finance";
 import { getProxiedImageUrl } from "@/lib/utils";
 import { toast } from "sonner";
+import { POSReceiptPrint } from "@/components/POSReceiptPrint";
 
 type CartItem = {
   productId: number;
@@ -77,6 +78,10 @@ export default function POS() {
   const { data: products, isLoading } = trpc.product.list.useQuery(undefined, { retry: false });
   const { data: warehouses = [] } = trpc.warehouse.list.useQuery();
   const { data: bankAccounts = [] } = trpc.bankAccount.list.useQuery();
+  const { data: business } = trpc.business.mine.useQuery(undefined, { retry: false });
+
+  // Receipt print dialog state
+  const [receiptPrintOpen, setReceiptPrintOpen] = useState(false);
 
   // Payment categories: Tunai, Transfer, QRIS
   const [paymentCategory, setPaymentCategory] = useState<"Tunai" | "Transfer" | "QRIS">("Tunai");
@@ -1017,87 +1022,25 @@ export default function POS() {
       {/* Success Dialog */}
       <Dialog open={successOpen} onOpenChange={setSuccessOpen}>
         <DialogContent className="max-w-sm">
-          <div id="pos-receipt" className="py-4 space-y-4">
+          <div className="py-4 space-y-4">
             <div className="text-center">
               <div className="h-14 w-14 rounded-full bg-success/10 flex items-center justify-center mx-auto mb-3">
                 <CheckCircle2 className="h-7 w-7 text-success" />
               </div>
               <h3 className="text-xl font-bold">Pembayaran Berhasil!</h3>
               {lastReceiptCode && <p className="text-xs font-mono text-muted-foreground mt-1">{lastReceiptCode}</p>}
+              <p className="text-lg font-bold mt-2">{formatRupiah(lastTotal)}</p>
             </div>
 
-            {lastCart.length > 0 && (
-              <div className="border rounded-lg overflow-hidden">
-                <div className="bg-muted/50 px-3 py-2">
-                  <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Detail Transaksi</p>
-                </div>
-                <div className="divide-y">
-                  {lastCart.map((item) => (
-                    <div key={item.productId} className="flex items-center justify-between px-3 py-2 text-sm">
-                      <div>
-                        <p className="font-medium">{item.name}</p>
-                        <p className="text-xs text-muted-foreground">{item.qty} x {formatRupiah(item.price)}</p>
-                      </div>
-                      <p className="font-semibold">{formatRupiah(item.price * item.qty)}</p>
-                    </div>
-                  ))}
-                </div>
-                <div className="border-t bg-muted/30 px-3 py-2 space-y-1">
-                  {lastDiscount > 0 && (
-                    <div className="flex justify-between text-xs text-success">
-                      <span>Diskon</span>
-                      <span>-{formatRupiah(lastDiscount)}</span>
-                    </div>
-                  )}
-                  <div className="flex justify-between text-sm font-bold">
-                    <span>Total</span>
-                    <span>{formatRupiah(lastTotal)}</span>
-                  </div>
-                  {/* Show split payment details */}
-                  {lastPayments.length > 1 && (
-                    <div className="pt-1 border-t space-y-0.5">
-                      <p className="text-[10px] text-muted-foreground uppercase tracking-wide font-medium">Split Payment</p>
-                      {lastPayments.map((p, i) => (
-                        <div key={i} className="flex justify-between text-xs text-muted-foreground">
-                          <span>{p.method}</span>
-                          <span>{formatRupiah(p.amount)}</span>
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                  {lastPayments.length === 1 && (
-                    <>
-                      {lastPayments[0].method === "Tunai" && lastPaid > lastTotal && (
-                        <>
-                          <div className="flex justify-between text-xs text-muted-foreground">
-                            <span>Bayar</span>
-                            <span>{formatRupiah(lastPaid)}</span>
-                          </div>
-                          <div className="flex justify-between text-xs text-success font-semibold">
-                            <span>Kembalian</span>
-                            <span>{formatRupiah(lastPaid - lastTotal)}</span>
-                          </div>
-                        </>
-                      )}
-                      <div className="flex justify-between text-xs text-muted-foreground">
-                        <span>Metode</span>
-                        <span>{lastPayments[0].method}</span>
-                      </div>
-                    </>
-                  )}
-                </div>
+            {lastPaid > lastTotal && lastPayments.length === 1 && (
+              <div className="flex justify-between items-center rounded-lg bg-success/10 p-3">
+                <span className="text-sm text-success">Kembalian</span>
+                <span className="text-lg font-bold text-success">{formatRupiah(lastPaid - lastTotal)}</span>
               </div>
             )}
 
             <div className="flex gap-2">
-              <Button variant="outline" className="flex-1" onClick={() => {
-                const el = document.getElementById("pos-receipt");
-                if (!el) return;
-                const w = window.open("", "_blank");
-                if (!w) return;
-                w.document.write(`<html><head><title>Struk</title><style>body{font-family:monospace;padding:16px;max-width:300px;margin:auto}hr{border:1px dashed #ccc}table{width:100%}td{padding:2px 0}.total{font-weight:bold;font-size:1.1em}</style></head><body>${el.innerHTML}<script>window.onload=()=>{window.print();window.close()}<\/script></body></html>`);
-                w.document.close();
-              }}>
+              <Button variant="outline" className="flex-1" onClick={() => setReceiptPrintOpen(true)}>
                 <Printer className="h-4 w-4 mr-1.5" /> Cetak Struk
               </Button>
               <Button className="flex-1" onClick={() => setSuccessOpen(false)}>
@@ -1107,6 +1050,33 @@ export default function POS() {
           </div>
         </DialogContent>
       </Dialog>
+
+      {/* Receipt Print Dialog — thermal 80mm format */}
+      {business && (
+        <POSReceiptPrint
+          open={receiptPrintOpen}
+          onClose={() => setReceiptPrintOpen(false)}
+          receiptCode={lastReceiptCode}
+          date={saleDate}
+          items={lastCart.map(c => ({ name: c.name, qty: c.qty, price: c.price }))}
+          subtotal={lastCart.reduce((sum, c) => sum + c.price * c.qty, 0)}
+          discount={lastDiscount}
+          grandTotal={lastTotal}
+          payments={lastPayments}
+          customerPaid={lastPaid}
+          changeAmount={lastPaid > lastTotal ? lastPaid - lastTotal : 0}
+          customerName={selectedClientName || undefined}
+          cashierName={undefined}
+          business={{
+            businessName: business.businessName || "Toko",
+            address: business.address,
+            phone: business.phone,
+            brandColor: (business as any).brandColor,
+            logoUrl: (business as any).logoUrl,
+            invoiceFooter: business.invoiceFooter,
+          }}
+        />
+      )}
     </div>
   );
 }

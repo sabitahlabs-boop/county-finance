@@ -56,7 +56,7 @@ export function InvoicePrintDialog({ open, onClose, transaction, business }: Inv
       @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
       * { margin: 0; padding: 0; box-sizing: border-box; }
       body { font-family: 'Inter', sans-serif; background: white; color: #1a1a1a; }
-      @page { size: A5; margin: 0; }
+      @page { size: 80mm auto; margin: 0; }
       @media print {
         body { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
       }
