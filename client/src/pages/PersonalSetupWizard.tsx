@@ -28,6 +28,7 @@ const STEPS = [
   { num: 7, title: "Aset Kekayaan", desc: "Properti, kendaraan, dll", icon: Home, color: "#0EA5E9" },
   { num: 8, title: "Liabilitas", desc: "Utang dan cicilan", icon: CreditCard, color: "#F97316" },
   { num: 9, title: "Warisan", desc: "Legacy planning", icon: GraduationCap, color: "#14B8A6" },
+  { num: 10, title: "Akun Keuangan", desc: "Bank, e-wallet, dan kas", icon: Landmark, color: "#2563EB" },
 ];
 
 // ─── Types ───
@@ -55,19 +56,53 @@ function Counter({ value, onChange, min = 0, max = 100, label }: { value: number
   );
 }
 
-// ─── Rupiah Input ───
+// ─── Rupiah Input (formatted with thousand separators) ───
+function formatThousands(n: number): string {
+  if (!n) return "";
+  return n.toLocaleString("id-ID");
+}
+function parseRupiahInput(str: string): number {
+  // Remove dots (thousand separators) and parse
+  const cleaned = str.replace(/\./g, "").replace(/,/g, "");
+  return Math.max(0, Math.floor(Number(cleaned) || 0));
+}
 function RupiahInput({ value, onChange, label, placeholder }: { value: number; onChange: (v: number) => void; label: string; placeholder?: string }) {
+  const [displayValue, setDisplayValue] = useState(value ? formatThousands(value) : "");
+
+  // Sync when value changes externally
+  const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const raw = e.target.value;
+    // Allow only digits and dots
+    const sanitized = raw.replace(/[^\d.]/g, "");
+    const parsed = parseRupiahInput(sanitized);
+    setDisplayValue(parsed ? formatThousands(parsed) : sanitized);
+    onChange(parsed);
+  };
+
+  const handleFocus = () => {
+    // Show raw number on focus for easy editing
+    if (value) setDisplayValue(value.toString());
+  };
+
+  const handleBlur = () => {
+    // Reformat on blur
+    setDisplayValue(value ? formatThousands(value) : "");
+  };
+
   return (
     <div>
-      <Label className="text-xs font-medium text-muted-foreground mb-1.5 block">{label}</Label>
+      {label && <Label className="text-xs font-medium text-muted-foreground mb-1.5 block">{label}</Label>}
       <div className="relative">
         <span className="absolute left-3 top-1/2 -translate-y-1/2 text-sm text-muted-foreground font-medium">Rp</span>
         <Input
-          type="number"
+          type="text"
+          inputMode="numeric"
           className="pl-10"
           placeholder={placeholder || "0"}
-          value={value || ""}
-          onChange={(e) => onChange(Number(e.target.value) || 0)}
+          value={displayValue}
+          onChange={handleChange}
+          onFocus={handleFocus}
+          onBlur={handleBlur}
         />
       </div>
     </div>
@@ -153,6 +188,10 @@ export default function PersonalSetupWizard({ onComplete }: { onComplete: () => 
   // ─── Step 9: Warisan ───
   const [heritageStatus, setHeritageStatus] = useState<string>("belum_siap");
 
+  // ─── Step 10: Akun Keuangan ───
+  interface BankAccountEntry { accountName: string; accountType: "bank" | "ewallet" | "cash"; icon: string; color: string; initialBalance: number; }
+  const [bankAccounts, setBankAccounts] = useState<BankAccountEntry[]>([]);
+
   // ─── Mutations ───
   const upsertProfileMut = trpc.personalFinance.upsertProfile.useMutation();
   const upsertIncomeMut = trpc.personalFinance.upsertIncomeSource.useMutation();
@@ -163,6 +202,7 @@ export default function PersonalSetupWizard({ onComplete }: { onComplete: () => 
   const upsertHeritageMut = trpc.personalFinance.upsertHeritage.useMutation();
   const upsertGoalMut = trpc.personalFinance.upsertGoal.useMutation();
   const completePersonalSetupMut = trpc.business.completePersonalSetup.useMutation();
+  const createBankAccountMut = trpc.bankAccount.create.useMutation();
 
   // ─── Computed ───
   const totalIncome = useMemo(() => incomes.reduce((s, i) => s + i.amount, 0), [incomes]);
@@ -188,7 +228,7 @@ export default function PersonalSetupWizard({ onComplete }: { onComplete: () => 
         occupation: profile.occupation,
         monthlyIncome: totalIncome,
         setupCompleted: true,
-        setupStep: 9,
+        setupStep: 10,
       });
 
       // Save incomes
@@ -247,6 +287,19 @@ export default function PersonalSetupWizard({ onComplete }: { onComplete: () => 
       await upsertGoalMut.mutateAsync({ name: "Dana Pensiun", goalType: "dana_pensiun", targetAmount: totalIncome * 12 * 20, currentAmount: 0, priority: 2, icon: "🏖️", color: "#F59E0B" });
       await upsertGoalMut.mutateAsync({ name: "Investasi Umum", goalType: "investasi", targetAmount: totalIncome * 12 * 5, currentAmount: investments.reduce((s, i) => s + i.currentValue, 0), priority: 3, icon: "📈", color: "#10B981" });
 
+      // Save bank accounts
+      for (const ba of bankAccounts) {
+        if (ba.accountName.trim()) {
+          await createBankAccountMut.mutateAsync({
+            accountName: ba.accountName,
+            accountType: ba.accountType,
+            icon: ba.icon,
+            color: ba.color,
+            initialBalance: ba.initialBalance,
+          });
+        }
+      }
+
       // Mark business as personal setup done (updates businesses table)
       await completePersonalSetupMut.mutateAsync();
 
@@ -274,6 +327,7 @@ export default function PersonalSetupWizard({ onComplete }: { onComplete: () => 
       case 6: return renderAsetKekayaan();
       case 7: return renderLiabilitas();
       case 8: return renderWarisan();
+      case 9: return renderAkunKeuangan();
       default: return null;
     }
   };
@@ -383,11 +437,8 @@ export default function PersonalSetupWizard({ onComplete }: { onComplete: () => 
             <p className="text-sm font-medium truncate">{exp.name}</p>
             <Badge variant="secondary" className="text-[10px]">{exp.category}</Badge>
           </div>
-          <div className="w-36">
-            <div className="relative">
-              <span className="absolute left-2 top-1/2 -translate-y-1/2 text-xs text-muted-foreground">Rp</span>
-              <Input type="number" className="pl-8 h-8 text-sm" value={exp.budgetAmount || ""} onChange={(e) => { const n = [...expenses]; n[i].budgetAmount = Number(e.target.value) || 0; setExpenses(n); }} />
-            </div>
+          <div className="w-40">
+            <RupiahInput label="" value={exp.budgetAmount} onChange={(v) => { const n = [...expenses]; n[i].budgetAmount = v; setExpenses(n); }} />
           </div>
           <Button variant="ghost" size="sm" className="h-8 w-8 p-0 text-red-500 shrink-0" onClick={() => setExpenses(expenses.filter((_, j) => j !== i))}>
             <Trash2 className="h-3.5 w-3.5" />
@@ -522,11 +573,8 @@ export default function PersonalSetupWizard({ onComplete }: { onComplete: () => 
             <div key={i} className="flex items-center gap-3 p-3 rounded-xl bg-muted/30 border">
               <span className="text-lg">{inv.icon}</span>
               <span className="text-sm font-medium flex-1">{inv.name}</span>
-              <div className="w-40">
-                <div className="relative">
-                  <span className="absolute left-2 top-1/2 -translate-y-1/2 text-xs text-muted-foreground">Rp</span>
-                  <Input type="number" className="pl-8 h-8 text-sm" value={inv.currentValue || ""} onChange={(e) => { const n = [...investments]; n[i].currentValue = Number(e.target.value) || 0; setInvestments(n); }} />
-                </div>
+              <div className="w-44">
+                <RupiahInput label="" value={inv.currentValue} onChange={(v) => { const n = [...investments]; n[i].currentValue = v; setInvestments(n); }} />
               </div>
               <Button variant="ghost" size="sm" className="h-8 w-8 p-0 text-red-500" onClick={() => setInvestments(investments.filter((_, j) => j !== i))}>
                 <Trash2 className="h-3.5 w-3.5" />
@@ -582,11 +630,8 @@ export default function PersonalSetupWizard({ onComplete }: { onComplete: () => 
             <p className="text-sm font-medium truncate">{asset.name}</p>
             <Badge variant="secondary" className="text-[10px]">{asset.assetType === "likuid" ? "Likuid" : "Aset Guna"}</Badge>
           </div>
-          <div className="w-40">
-            <div className="relative">
-              <span className="absolute left-2 top-1/2 -translate-y-1/2 text-xs text-muted-foreground">Rp</span>
-              <Input type="number" className="pl-8 h-8 text-sm" value={asset.currentValue || ""} onChange={(e) => { const n = [...assets]; n[i].currentValue = Number(e.target.value) || 0; setAssets(n); }} />
-            </div>
+          <div className="w-44">
+            <RupiahInput label="" value={asset.currentValue} onChange={(v) => { const n = [...assets]; n[i].currentValue = v; setAssets(n); }} />
           </div>
           <Button variant="ghost" size="sm" className="h-8 w-8 p-0 text-red-500" onClick={() => setAssets(assets.filter((_, j) => j !== i))}>
             <Trash2 className="h-3.5 w-3.5" />
@@ -697,6 +742,77 @@ export default function PersonalSetupWizard({ onComplete }: { onComplete: () => 
           </div>
         ))}
       </div>
+    </div>
+  );
+
+  // ─── Step 10: Akun Keuangan ───
+  const ACCOUNT_PRESETS: { name: string; type: "bank" | "ewallet" | "cash"; icon: string; color: string }[] = [
+    { name: "Kas / Dompet", type: "cash", icon: "💵", color: "#10B981" },
+    { name: "BCA", type: "bank", icon: "🏦", color: "#003D79" },
+    { name: "Mandiri", type: "bank", icon: "🏦", color: "#003B70" },
+    { name: "BRI", type: "bank", icon: "🏦", color: "#00529C" },
+    { name: "BNI", type: "bank", icon: "🏦", color: "#F15A22" },
+    { name: "GoPay", type: "ewallet", icon: "📱", color: "#00AED6" },
+    { name: "OVO", type: "ewallet", icon: "📱", color: "#4C2A86" },
+    { name: "ShopeePay", type: "ewallet", icon: "📱", color: "#EE4D2D" },
+    { name: "DANA", type: "ewallet", icon: "📱", color: "#108EE9" },
+  ];
+
+  const renderAkunKeuangan = () => (
+    <div className="space-y-4">
+      <div className="text-center p-4 rounded-xl bg-gradient-to-br from-blue-50 to-indigo-50 dark:from-blue-950/30 dark:to-indigo-950/30 border border-blue-200 dark:border-blue-800">
+        <Landmark className="h-8 w-8 mx-auto mb-2 text-blue-500" />
+        <p className="text-sm font-medium text-blue-800 dark:text-blue-200">Tambahkan akun keuangan Anda</p>
+        <p className="text-xs text-blue-600/70 dark:text-blue-400/70 mt-1">Bank, e-wallet, atau kas yang Anda gunakan sehari-hari</p>
+      </div>
+
+      {/* Quick add presets */}
+      <div>
+        <Label className="text-xs font-medium text-muted-foreground mb-2 block">Tambah cepat:</Label>
+        <div className="flex flex-wrap gap-1.5">
+          {ACCOUNT_PRESETS.filter(p => !bankAccounts.find(ba => ba.accountName === p.name)).map(p => (
+            <Button key={p.name} variant="outline" size="sm" className="text-xs h-7 gap-1 rounded-lg" onClick={() => setBankAccounts([...bankAccounts, { accountName: p.name, accountType: p.type, icon: p.icon, color: p.color, initialBalance: 0 }])}>
+              {p.icon} {p.name}
+            </Button>
+          ))}
+        </div>
+      </div>
+
+      {bankAccounts.map((ba, i) => (
+        <div key={i} className="flex items-center gap-3 p-3 rounded-xl bg-muted/30 border">
+          <div className="h-9 w-9 rounded-lg flex items-center justify-center text-base" style={{ backgroundColor: ba.color + "20" }}>
+            {ba.icon}
+          </div>
+          <div className="flex-1 min-w-0">
+            <p className="text-sm font-medium truncate">{ba.accountName}</p>
+            <Badge variant="secondary" className="text-[10px]">
+              {ba.accountType === "bank" ? "Bank" : ba.accountType === "ewallet" ? "E-Wallet" : "Kas"}
+            </Badge>
+          </div>
+          <div className="w-40">
+            <RupiahInput label="" value={ba.initialBalance} onChange={(v) => { const n = [...bankAccounts]; n[i].initialBalance = v; setBankAccounts(n); }} placeholder="Saldo awal" />
+          </div>
+          <Button variant="ghost" size="sm" className="h-8 w-8 p-0 text-red-500 shrink-0" onClick={() => setBankAccounts(bankAccounts.filter((_, j) => j !== i))}>
+            <Trash2 className="h-3.5 w-3.5" />
+          </Button>
+        </div>
+      ))}
+
+      {bankAccounts.length === 0 && (
+        <div className="text-center py-6 text-muted-foreground">
+          <Landmark className="h-10 w-10 mx-auto mb-2 opacity-20" />
+          <p className="text-sm">Pilih akun di atas untuk mulai menambahkan</p>
+        </div>
+      )}
+
+      {bankAccounts.length > 0 && (
+        <div className="p-3 rounded-xl bg-blue-50 dark:bg-blue-950/30 border border-blue-200 dark:border-blue-800">
+          <div className="flex justify-between text-sm">
+            <span className="text-blue-700 dark:text-blue-300">Total Saldo Awal</span>
+            <span className="font-bold text-blue-600 dark:text-blue-400">{formatRupiah(bankAccounts.reduce((s, ba) => s + ba.initialBalance, 0))}</span>
+          </div>
+        </div>
+      )}
     </div>
   );
 
