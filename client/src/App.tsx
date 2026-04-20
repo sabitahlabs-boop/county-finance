@@ -199,6 +199,7 @@ function Router() {
       <Route path="/stok-kedaluwarsa">{() => <AuthenticatedRoute component={StokKedaluwarsa} />}</Route>
       <Route path="/usia-stok">{() => <AuthenticatedRoute component={UsiaStok} />}</Route>
       <Route path="/peringatan-stok">{() => <AuthenticatedRoute component={PeringatanStok} />}</Route>
+      <Route path="/onboarding" component={Home} />
       <Route path="/landing" component={LandingPage} />
       <Route path="/accept-invite" component={AcceptInvite} />
       <Route path="/panduan" component={Panduan} />

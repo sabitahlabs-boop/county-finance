@@ -5,11 +5,11 @@ export { COOKIE_NAME, ONE_YEAR_MS } from "@shared/const";
  * Returns Clerk's hosted sign-in page with redirect back to current origin
  */
 export const getLoginUrl = () => {
-  const redirectUrl = `${window.location.origin}/onboarding`;
+  const redirectUrl = `${window.location.origin}/`;
   return `/sign-in?redirect_url=${encodeURIComponent(redirectUrl)}`;
 };
 
 export const getSignUpUrl = () => {
-  const redirectUrl = `${window.location.origin}/onboarding`;
+  const redirectUrl = `${window.location.origin}/`;
   return `/sign-up?redirect_url=${encodeURIComponent(redirectUrl)}`;
 };
