@@ -780,7 +780,143 @@ async function runAutoMigration(db: ReturnType<typeof drizzle>) {
     console.error("[Migration] transactions verification failed:", e.message);
   }
 
-  console.log("[Migration] Auto-migration complete.");
+  // ══════════════════════════════════════════════════════════════════════════
+  // ═══ PERSONAL FINANCE (pf_) TABLES — 100% ISOLATED FROM UMKM ═══════════
+  // ══════════════════════════════════════════════════════════════════════════
+
+  // pf_profiles: User's personal financial profile (from onboarding wizard)
+  await safeExec(`CREATE TABLE IF NOT EXISTS \`pf_profiles\` (
+    \`id\` int NOT NULL AUTO_INCREMENT PRIMARY KEY,
+    \`businessId\` int NOT NULL,
+    \`fullName\` varchar(255) NOT NULL DEFAULT '',
+    \`age\` int NOT NULL DEFAULT 25,
+    \`maritalStatus\` enum('single','married','divorced','widowed') NOT NULL DEFAULT 'single',
+    \`dependents\` int NOT NULL DEFAULT 0,
+    \`occupation\` varchar(255) DEFAULT NULL,
+    \`monthlyIncome\` bigint NOT NULL DEFAULT 0,
+    \`setupCompleted\` boolean NOT NULL DEFAULT false,
+    \`setupStep\` int NOT NULL DEFAULT 0,
+    \`createdAt\` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    \`updatedAt\` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    UNIQUE INDEX \`uniq_pf_profiles_businessId\` (\`businessId\`)
+  )`);
+
+  // pf_income_sources: Arus pemasukan (gaji, bonus, freelance, dll)
+  await safeExec(`CREATE TABLE IF NOT EXISTS \`pf_income_sources\` (
+    \`id\` int NOT NULL AUTO_INCREMENT PRIMARY KEY,
+    \`businessId\` int NOT NULL,
+    \`name\` varchar(255) NOT NULL,
+    \`category\` enum('gaji','bonus','freelance','investasi','bisnis','lainnya') NOT NULL DEFAULT 'gaji',
+    \`amount\` bigint NOT NULL DEFAULT 0,
+    \`frequency\` enum('bulanan','tahunan','sekali') NOT NULL DEFAULT 'bulanan',
+    \`isActive\` boolean NOT NULL DEFAULT true,
+    \`createdAt\` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    INDEX \`idx_pf_income_businessId\` (\`businessId\`)
+  )`);
+
+  // pf_expense_categories: Arus pengeluaran per kategori (kebutuhan, keinginan, tabungan, cicilan, asuransi)
+  await safeExec(`CREATE TABLE IF NOT EXISTS \`pf_expense_categories\` (
+    \`id\` int NOT NULL AUTO_INCREMENT PRIMARY KEY,
+    \`businessId\` int NOT NULL,
+    \`name\` varchar(255) NOT NULL,
+    \`category\` enum('kebutuhan','keinginan','tabungan','cicilan','asuransi','lainnya') NOT NULL DEFAULT 'kebutuhan',
+    \`budgetAmount\` bigint NOT NULL DEFAULT 0,
+    \`icon\` varchar(10) NOT NULL DEFAULT '📋',
+    \`color\` varchar(10) NOT NULL DEFAULT '#6B7280',
+    \`isActive\` boolean NOT NULL DEFAULT true,
+    \`createdAt\` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    INDEX \`idx_pf_expense_businessId\` (\`businessId\`)
+  )`);
+
+  // pf_assets: Aset kekayaan (investasi, likuid, guna)
+  await safeExec(`CREATE TABLE IF NOT EXISTS \`pf_assets\` (
+    \`id\` int NOT NULL AUTO_INCREMENT PRIMARY KEY,
+    \`businessId\` int NOT NULL,
+    \`name\` varchar(255) NOT NULL,
+    \`assetType\` enum('investasi','likuid','guna') NOT NULL DEFAULT 'likuid',
+    \`subType\` varchar(100) DEFAULT NULL,
+    \`currentValue\` bigint NOT NULL DEFAULT 0,
+    \`purchaseValue\` bigint NOT NULL DEFAULT 0,
+    \`purchaseDate\` varchar(10) DEFAULT NULL,
+    \`notes\` text DEFAULT NULL,
+    \`icon\` varchar(10) NOT NULL DEFAULT '💰',
+    \`isActive\` boolean NOT NULL DEFAULT true,
+    \`createdAt\` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    \`updatedAt\` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    INDEX \`idx_pf_assets_businessId\` (\`businessId\`),
+    INDEX \`idx_pf_assets_type\` (\`businessId\`, \`assetType\`)
+  )`);
+
+  // pf_liabilities: Utang/cicilan (KPR, KPA, KTA, kartu kredit, dll)
+  await safeExec(`CREATE TABLE IF NOT EXISTS \`pf_liabilities\` (
+    \`id\` int NOT NULL AUTO_INCREMENT PRIMARY KEY,
+    \`businessId\` int NOT NULL,
+    \`name\` varchar(255) NOT NULL,
+    \`liabilityType\` enum('kpr','kpa','kta','kartu_kredit','pinjaman_online','cicilan','lainnya') NOT NULL DEFAULT 'lainnya',
+    \`totalAmount\` bigint NOT NULL DEFAULT 0,
+    \`remainingAmount\` bigint NOT NULL DEFAULT 0,
+    \`monthlyPayment\` bigint NOT NULL DEFAULT 0,
+    \`interestRate\` decimal(5,2) NOT NULL DEFAULT 0,
+    \`startDate\` varchar(10) DEFAULT NULL,
+    \`endDate\` varchar(10) DEFAULT NULL,
+    \`notes\` text DEFAULT NULL,
+    \`isActive\` boolean NOT NULL DEFAULT true,
+    \`createdAt\` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    \`updatedAt\` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    INDEX \`idx_pf_liabilities_businessId\` (\`businessId\`)
+  )`);
+
+  // pf_insurances: Polis asuransi
+  await safeExec(`CREATE TABLE IF NOT EXISTS \`pf_insurances\` (
+    \`id\` int NOT NULL AUTO_INCREMENT PRIMARY KEY,
+    \`businessId\` int NOT NULL,
+    \`name\` varchar(255) NOT NULL,
+    \`insuranceType\` enum('jiwa','kesehatan','kendaraan','properti','pendidikan','lainnya') NOT NULL DEFAULT 'lainnya',
+    \`provider\` varchar(255) DEFAULT NULL,
+    \`premiumAmount\` bigint NOT NULL DEFAULT 0,
+    \`premiumFrequency\` enum('bulanan','triwulan','semesteran','tahunan') NOT NULL DEFAULT 'bulanan',
+    \`coverageAmount\` bigint NOT NULL DEFAULT 0,
+    \`isActive\` boolean NOT NULL DEFAULT true,
+    \`createdAt\` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    INDEX \`idx_pf_insurances_businessId\` (\`businessId\`)
+  )`);
+
+  // pf_heritage: Warisan/legacy planning
+  await safeExec(`CREATE TABLE IF NOT EXISTS \`pf_heritage\` (
+    \`id\` int NOT NULL AUTO_INCREMENT PRIMARY KEY,
+    \`businessId\` int NOT NULL,
+    \`hasWill\` boolean NOT NULL DEFAULT false,
+    \`hasInsuranceBeneficiary\` boolean NOT NULL DEFAULT false,
+    \`heritageStatus\` enum('sudah_siap','belum_siap','sedang_proses') NOT NULL DEFAULT 'belum_siap',
+    \`notes\` text DEFAULT NULL,
+    \`createdAt\` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    \`updatedAt\` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    UNIQUE INDEX \`uniq_pf_heritage_businessId\` (\`businessId\`)
+  )`);
+
+  // pf_goals: Financial goals (dana darurat, pensiun, rumah, kendaraan, dll)
+  await safeExec(`CREATE TABLE IF NOT EXISTS \`pf_goals\` (
+    \`id\` int NOT NULL AUTO_INCREMENT PRIMARY KEY,
+    \`businessId\` int NOT NULL,
+    \`name\` varchar(255) NOT NULL,
+    \`goalType\` enum('dana_darurat','dana_pensiun','investasi','rumah','kendaraan','pendidikan','liburan','lainnya') NOT NULL DEFAULT 'lainnya',
+    \`targetAmount\` bigint NOT NULL DEFAULT 0,
+    \`currentAmount\` bigint NOT NULL DEFAULT 0,
+    \`targetDate\` varchar(10) DEFAULT NULL,
+    \`priority\` int NOT NULL DEFAULT 1,
+    \`icon\` varchar(10) NOT NULL DEFAULT '🎯',
+    \`color\` varchar(10) NOT NULL DEFAULT '#3b82f6',
+    \`isCompleted\` boolean NOT NULL DEFAULT false,
+    \`notes\` text DEFAULT NULL,
+    \`createdAt\` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    \`updatedAt\` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    INDEX \`idx_pf_goals_businessId\` (\`businessId\`)
+  )`);
+
+  // PF indexes
+  await safeExec("CREATE INDEX IF NOT EXISTS `idx_pf_profiles_businessId` ON `pf_profiles` (`businessId`)");
+
+  console.log("[Migration] Auto-migration complete (including pf_ tables).");
 }
 
 // ─── Audit Logging Helper ───
@@ -7407,5 +7543,260 @@ export async function getBukuBesarGL(
     entries,
     openingBalance,
     closingBalance: runningBalance,
+  };
+}
+
+// ══════════════════════════════════════════════════════════════════════════════
+// ═══ PERSONAL FINANCE (pf_) DB FUNCTIONS — 100% ISOLATED FROM UMKM ══════════
+// ══════════════════════════════════════════════════════════════════════════════
+
+// ─── Profile ───
+export async function getPfProfile(businessId: number) {
+  const db = await getDb();
+  if (!db) return null;
+  const [rows] = await db.execute(sql.raw(`SELECT * FROM pf_profiles WHERE businessId = ${businessId} LIMIT 1`)) as any;
+  return rows?.[0] || null;
+}
+
+export async function upsertPfProfile(businessId: number, data: {
+  fullName?: string; age?: number; maritalStatus?: string; dependents?: number;
+  occupation?: string; monthlyIncome?: number; setupCompleted?: boolean; setupStep?: number;
+}) {
+  const db = await getDb();
+  if (!db) return;
+  const existing = await getPfProfile(businessId);
+  if (existing) {
+    const sets: string[] = [];
+    if (data.fullName !== undefined) sets.push(`fullName = '${data.fullName.replace(/'/g, "''")}'`);
+    if (data.age !== undefined) sets.push(`age = ${data.age}`);
+    if (data.maritalStatus !== undefined) sets.push(`maritalStatus = '${data.maritalStatus}'`);
+    if (data.dependents !== undefined) sets.push(`dependents = ${data.dependents}`);
+    if (data.occupation !== undefined) sets.push(`occupation = '${data.occupation?.replace(/'/g, "''") || ""}'`);
+    if (data.monthlyIncome !== undefined) sets.push(`monthlyIncome = ${data.monthlyIncome}`);
+    if (data.setupCompleted !== undefined) sets.push(`setupCompleted = ${data.setupCompleted ? 1 : 0}`);
+    if (data.setupStep !== undefined) sets.push(`setupStep = ${data.setupStep}`);
+    if (sets.length > 0) {
+      await db.execute(sql.raw(`UPDATE pf_profiles SET ${sets.join(", ")} WHERE businessId = ${businessId}`));
+    }
+  } else {
+    await db.execute(sql.raw(`INSERT INTO pf_profiles (businessId, fullName, age, maritalStatus, dependents, occupation, monthlyIncome, setupCompleted, setupStep) VALUES (${businessId}, '${(data.fullName || "").replace(/'/g, "''")}', ${data.age || 25}, '${data.maritalStatus || "single"}', ${data.dependents || 0}, '${(data.occupation || "").replace(/'/g, "''")}', ${data.monthlyIncome || 0}, ${data.setupCompleted ? 1 : 0}, ${data.setupStep || 0})`));
+  }
+}
+
+// ─── Income Sources ───
+export async function getPfIncomeSources(businessId: number) {
+  const db = await getDb();
+  if (!db) return [];
+  const [rows] = await db.execute(sql.raw(`SELECT * FROM pf_income_sources WHERE businessId = ${businessId} AND isActive = 1 ORDER BY id`)) as any;
+  return rows || [];
+}
+
+export async function upsertPfIncomeSource(businessId: number, data: { id?: number; name: string; category: string; amount: number; frequency?: string }) {
+  const db = await getDb();
+  if (!db) return;
+  if (data.id) {
+    await db.execute(sql.raw(`UPDATE pf_income_sources SET name = '${data.name.replace(/'/g, "''")}', category = '${data.category}', amount = ${data.amount}, frequency = '${data.frequency || "bulanan"}' WHERE id = ${data.id} AND businessId = ${businessId}`));
+  } else {
+    await db.execute(sql.raw(`INSERT INTO pf_income_sources (businessId, name, category, amount, frequency) VALUES (${businessId}, '${data.name.replace(/'/g, "''")}', '${data.category}', ${data.amount}, '${data.frequency || "bulanan"}')`));
+  }
+}
+
+export async function deletePfIncomeSource(businessId: number, id: number) {
+  const db = await getDb();
+  if (!db) return;
+  await db.execute(sql.raw(`UPDATE pf_income_sources SET isActive = 0 WHERE id = ${id} AND businessId = ${businessId}`));
+}
+
+// ─── Expense Categories ───
+export async function getPfExpenseCategories(businessId: number) {
+  const db = await getDb();
+  if (!db) return [];
+  const [rows] = await db.execute(sql.raw(`SELECT * FROM pf_expense_categories WHERE businessId = ${businessId} AND isActive = 1 ORDER BY id`)) as any;
+  return rows || [];
+}
+
+export async function upsertPfExpenseCategory(businessId: number, data: { id?: number; name: string; category: string; budgetAmount: number; icon?: string; color?: string }) {
+  const db = await getDb();
+  if (!db) return;
+  if (data.id) {
+    await db.execute(sql.raw(`UPDATE pf_expense_categories SET name = '${data.name.replace(/'/g, "''")}', category = '${data.category}', budgetAmount = ${data.budgetAmount}, icon = '${data.icon || "📋"}', color = '${data.color || "#6B7280"}' WHERE id = ${data.id} AND businessId = ${businessId}`));
+  } else {
+    await db.execute(sql.raw(`INSERT INTO pf_expense_categories (businessId, name, category, budgetAmount, icon, color) VALUES (${businessId}, '${data.name.replace(/'/g, "''")}', '${data.category}', ${data.budgetAmount}, '${data.icon || "📋"}', '${data.color || "#6B7280"}')`));
+  }
+}
+
+export async function deletePfExpenseCategory(businessId: number, id: number) {
+  const db = await getDb();
+  if (!db) return;
+  await db.execute(sql.raw(`UPDATE pf_expense_categories SET isActive = 0 WHERE id = ${id} AND businessId = ${businessId}`));
+}
+
+// ─── Assets ───
+export async function getPfAssets(businessId: number) {
+  const db = await getDb();
+  if (!db) return [];
+  const [rows] = await db.execute(sql.raw(`SELECT * FROM pf_assets WHERE businessId = ${businessId} AND isActive = 1 ORDER BY assetType, id`)) as any;
+  return rows || [];
+}
+
+export async function upsertPfAsset(businessId: number, data: { id?: number; name: string; assetType: string; subType?: string; currentValue: number; purchaseValue?: number; notes?: string; icon?: string }) {
+  const db = await getDb();
+  if (!db) return;
+  if (data.id) {
+    await db.execute(sql.raw(`UPDATE pf_assets SET name = '${data.name.replace(/'/g, "''")}', assetType = '${data.assetType}', subType = ${data.subType ? `'${data.subType}'` : "NULL"}, currentValue = ${data.currentValue}, purchaseValue = ${data.purchaseValue || 0}, notes = ${data.notes ? `'${data.notes.replace(/'/g, "''")}'` : "NULL"}, icon = '${data.icon || "💰"}' WHERE id = ${data.id} AND businessId = ${businessId}`));
+  } else {
+    await db.execute(sql.raw(`INSERT INTO pf_assets (businessId, name, assetType, subType, currentValue, purchaseValue, notes, icon) VALUES (${businessId}, '${data.name.replace(/'/g, "''")}', '${data.assetType}', ${data.subType ? `'${data.subType}'` : "NULL"}, ${data.currentValue}, ${data.purchaseValue || 0}, ${data.notes ? `'${data.notes.replace(/'/g, "''")}'` : "NULL"}, '${data.icon || "💰"}')`));
+  }
+}
+
+export async function deletePfAsset(businessId: number, id: number) {
+  const db = await getDb();
+  if (!db) return;
+  await db.execute(sql.raw(`UPDATE pf_assets SET isActive = 0 WHERE id = ${id} AND businessId = ${businessId}`));
+}
+
+// ─── Liabilities ───
+export async function getPfLiabilities(businessId: number) {
+  const db = await getDb();
+  if (!db) return [];
+  const [rows] = await db.execute(sql.raw(`SELECT * FROM pf_liabilities WHERE businessId = ${businessId} AND isActive = 1 ORDER BY id`)) as any;
+  return rows || [];
+}
+
+export async function upsertPfLiability(businessId: number, data: { id?: number; name: string; liabilityType: string; totalAmount: number; remainingAmount: number; monthlyPayment: number; interestRate?: number; notes?: string }) {
+  const db = await getDb();
+  if (!db) return;
+  if (data.id) {
+    await db.execute(sql.raw(`UPDATE pf_liabilities SET name = '${data.name.replace(/'/g, "''")}', liabilityType = '${data.liabilityType}', totalAmount = ${data.totalAmount}, remainingAmount = ${data.remainingAmount}, monthlyPayment = ${data.monthlyPayment}, interestRate = ${data.interestRate || 0}, notes = ${data.notes ? `'${data.notes.replace(/'/g, "''")}'` : "NULL"} WHERE id = ${data.id} AND businessId = ${businessId}`));
+  } else {
+    await db.execute(sql.raw(`INSERT INTO pf_liabilities (businessId, name, liabilityType, totalAmount, remainingAmount, monthlyPayment, interestRate, notes) VALUES (${businessId}, '${data.name.replace(/'/g, "''")}', '${data.liabilityType}', ${data.totalAmount}, ${data.remainingAmount}, ${data.monthlyPayment}, ${data.interestRate || 0}, ${data.notes ? `'${data.notes.replace(/'/g, "''")}'` : "NULL"})`));
+  }
+}
+
+export async function deletePfLiability(businessId: number, id: number) {
+  const db = await getDb();
+  if (!db) return;
+  await db.execute(sql.raw(`UPDATE pf_liabilities SET isActive = 0 WHERE id = ${id} AND businessId = ${businessId}`));
+}
+
+// ─── Insurances ───
+export async function getPfInsurances(businessId: number) {
+  const db = await getDb();
+  if (!db) return [];
+  const [rows] = await db.execute(sql.raw(`SELECT * FROM pf_insurances WHERE businessId = ${businessId} AND isActive = 1 ORDER BY id`)) as any;
+  return rows || [];
+}
+
+export async function upsertPfInsurance(businessId: number, data: { id?: number; name: string; insuranceType: string; provider?: string; premiumAmount: number; premiumFrequency?: string; coverageAmount: number }) {
+  const db = await getDb();
+  if (!db) return;
+  if (data.id) {
+    await db.execute(sql.raw(`UPDATE pf_insurances SET name = '${data.name.replace(/'/g, "''")}', insuranceType = '${data.insuranceType}', provider = ${data.provider ? `'${data.provider.replace(/'/g, "''")}'` : "NULL"}, premiumAmount = ${data.premiumAmount}, premiumFrequency = '${data.premiumFrequency || "bulanan"}', coverageAmount = ${data.coverageAmount} WHERE id = ${data.id} AND businessId = ${businessId}`));
+  } else {
+    await db.execute(sql.raw(`INSERT INTO pf_insurances (businessId, name, insuranceType, provider, premiumAmount, premiumFrequency, coverageAmount) VALUES (${businessId}, '${data.name.replace(/'/g, "''")}', '${data.insuranceType}', ${data.provider ? `'${data.provider.replace(/'/g, "''")}'` : "NULL"}, ${data.premiumAmount}, '${data.premiumFrequency || "bulanan"}', ${data.coverageAmount})`));
+  }
+}
+
+export async function deletePfInsurance(businessId: number, id: number) {
+  const db = await getDb();
+  if (!db) return;
+  await db.execute(sql.raw(`UPDATE pf_insurances SET isActive = 0 WHERE id = ${id} AND businessId = ${businessId}`));
+}
+
+// ─── Heritage ───
+export async function getPfHeritage(businessId: number) {
+  const db = await getDb();
+  if (!db) return null;
+  const [rows] = await db.execute(sql.raw(`SELECT * FROM pf_heritage WHERE businessId = ${businessId} LIMIT 1`)) as any;
+  return rows?.[0] || null;
+}
+
+export async function upsertPfHeritage(businessId: number, data: { hasWill?: boolean; hasInsuranceBeneficiary?: boolean; heritageStatus?: string; notes?: string }) {
+  const db = await getDb();
+  if (!db) return;
+  const existing = await getPfHeritage(businessId);
+  if (existing) {
+    const sets: string[] = [];
+    if (data.hasWill !== undefined) sets.push(`hasWill = ${data.hasWill ? 1 : 0}`);
+    if (data.hasInsuranceBeneficiary !== undefined) sets.push(`hasInsuranceBeneficiary = ${data.hasInsuranceBeneficiary ? 1 : 0}`);
+    if (data.heritageStatus !== undefined) sets.push(`heritageStatus = '${data.heritageStatus}'`);
+    if (data.notes !== undefined) sets.push(`notes = ${data.notes ? `'${data.notes.replace(/'/g, "''")}'` : "NULL"}`);
+    if (sets.length > 0) await db.execute(sql.raw(`UPDATE pf_heritage SET ${sets.join(", ")} WHERE businessId = ${businessId}`));
+  } else {
+    await db.execute(sql.raw(`INSERT INTO pf_heritage (businessId, hasWill, hasInsuranceBeneficiary, heritageStatus, notes) VALUES (${businessId}, ${data.hasWill ? 1 : 0}, ${data.hasInsuranceBeneficiary ? 1 : 0}, '${data.heritageStatus || "belum_siap"}', ${data.notes ? `'${data.notes.replace(/'/g, "''")}'` : "NULL"})`));
+  }
+}
+
+// ─── Goals ───
+export async function getPfGoals(businessId: number) {
+  const db = await getDb();
+  if (!db) return [];
+  const [rows] = await db.execute(sql.raw(`SELECT * FROM pf_goals WHERE businessId = ${businessId} AND isCompleted = 0 ORDER BY priority, id`)) as any;
+  return rows || [];
+}
+
+export async function upsertPfGoal(businessId: number, data: { id?: number; name: string; goalType: string; targetAmount: number; currentAmount?: number; targetDate?: string; priority?: number; icon?: string; color?: string }) {
+  const db = await getDb();
+  if (!db) return;
+  if (data.id) {
+    await db.execute(sql.raw(`UPDATE pf_goals SET name = '${data.name.replace(/'/g, "''")}', goalType = '${data.goalType}', targetAmount = ${data.targetAmount}, currentAmount = ${data.currentAmount || 0}, targetDate = ${data.targetDate ? `'${data.targetDate}'` : "NULL"}, priority = ${data.priority || 1}, icon = '${data.icon || "🎯"}', color = '${data.color || "#3b82f6"}' WHERE id = ${data.id} AND businessId = ${businessId}`));
+  } else {
+    await db.execute(sql.raw(`INSERT INTO pf_goals (businessId, name, goalType, targetAmount, currentAmount, targetDate, priority, icon, color) VALUES (${businessId}, '${data.name.replace(/'/g, "''")}', '${data.goalType}', ${data.targetAmount}, ${data.currentAmount || 0}, ${data.targetDate ? `'${data.targetDate}'` : "NULL"}, ${data.priority || 1}, '${data.icon || "🎯"}', '${data.color || "#3b82f6"}')`));
+  }
+}
+
+export async function deletePfGoal(businessId: number, id: number) {
+  const db = await getDb();
+  if (!db) return;
+  await db.execute(sql.raw(`DELETE FROM pf_goals WHERE id = ${id} AND businessId = ${businessId}`));
+}
+
+// ─── Dashboard Summary (aggregated) ───
+export async function getPfDashboardSummary(businessId: number) {
+  const db = await getDb();
+  if (!db) return { totalAssets: 0, totalLiabilities: 0, netWorth: 0, totalIncome: 0, totalExpenses: 0, cashflow: 0, goals: [], financialRatios: {} };
+
+  const assets = await getPfAssets(businessId);
+  const liabilities = await getPfLiabilities(businessId);
+  const incomes = await getPfIncomeSources(businessId);
+  const expenses = await getPfExpenseCategories(businessId);
+  const goals = await getPfGoals(businessId);
+  const insurances = await getPfInsurances(businessId);
+  const profile = await getPfProfile(businessId);
+
+  const totalAssets = assets.reduce((s: number, a: any) => s + Number(a.currentValue || 0), 0);
+  const totalLiabilities = liabilities.reduce((s: number, l: any) => s + Number(l.remainingAmount || 0), 0);
+  const netWorth = totalAssets - totalLiabilities;
+
+  const totalIncome = incomes.reduce((s: number, i: any) => s + Number(i.amount || 0), 0);
+  const totalExpenseBudget = expenses.reduce((s: number, e: any) => s + Number(e.budgetAmount || 0), 0);
+  const cashflow = totalIncome - totalExpenseBudget;
+
+  const totalMonthlyDebt = liabilities.reduce((s: number, l: any) => s + Number(l.monthlyPayment || 0), 0);
+  const totalInsuranceCoverage = insurances.filter((i: any) => i.insuranceType === "jiwa").reduce((s: number, i: any) => s + Number(i.coverageAmount || 0), 0);
+  const emergencyFund = assets.filter((a: any) => a.subType === "dana_darurat").reduce((s: number, a: any) => s + Number(a.currentValue || 0), 0);
+  const totalInvestment = assets.filter((a: any) => a.assetType === "investasi").reduce((s: number, a: any) => s + Number(a.currentValue || 0), 0);
+  const savingsBudget = expenses.filter((e: any) => e.category === "tabungan").reduce((s: number, e: any) => s + Number(e.budgetAmount || 0), 0);
+
+  // Financial health ratios (PINA-style)
+  const financialRatios = {
+    liquidity: totalExpenseBudget > 0 ? emergencyFund / (totalExpenseBudget * 6) : 0, // Dana darurat / 6 bulan pengeluaran
+    savingsRate: totalIncome > 0 ? savingsBudget / totalIncome : 0, // Tabungan / Penghasilan
+    debtRatio: totalIncome > 0 ? totalMonthlyDebt / totalIncome : 0, // Cicilan / Penghasilan
+    insuranceCoverage: totalIncome > 0 ? totalInsuranceCoverage / (totalIncome * 12) : 0, // Coverage / Annual Income
+    investmentRatio: totalIncome > 0 ? totalInvestment / (totalIncome * 12) : 0, // Investasi / Annual Income
+  };
+
+  return {
+    totalAssets, totalLiabilities, netWorth,
+    totalIncome, totalExpenses: totalExpenseBudget, cashflow,
+    goals: goals.map((g: any) => ({
+      ...g,
+      targetAmount: Number(g.targetAmount),
+      currentAmount: Number(g.currentAmount),
+      progress: g.targetAmount > 0 ? Math.min(100, Math.round((Number(g.currentAmount) / Number(g.targetAmount)) * 100)) : 0,
+    })),
+    financialRatios,
+    profile,
   };
 }

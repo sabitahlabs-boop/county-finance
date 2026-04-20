@@ -76,6 +76,7 @@ import {
   Wallet,
   Star,
   Coins,
+  Target,
 } from "lucide-react";
 import { useTheme } from "@/contexts/ThemeContext";
 import { CSSProperties, useEffect, useMemo, useRef, useState } from "react";
@@ -114,6 +115,7 @@ const PERSONAL_MENU: MenuItem[] = [
   { icon: LayoutDashboard, label: "Dashboard", path: "/" },
   { icon: BookOpen, label: "Jurnal Keuangan", path: "/jurnal" },
   { icon: ArrowLeftRight, label: "Transaksi", path: "/transaksi" },
+  { icon: Target, label: "Target Keuangan", path: "/pf-goals" },
   { icon: HandCoins, label: "Hutang & Piutang", path: "/hutang-piutang" },
   { icon: PiggyBank, label: "Tagihan & Anggaran", path: "/anggaran" },
   { icon: FileText, label: "Laporan", path: "/laporan" },

@@ -79,6 +79,16 @@ import {
   resolveAccountsForProduction, resolveAccountsForBankTransfer, resolveAccountsForTaxPayment,
   resolveAccountsForCommission, resolveAccountsForBillPayment,
   getTrialBalanceGL, getLabaRugiGL, getNeracaGL, getBukuBesarGL,
+  // Personal Finance (pf_)
+  getPfProfile, upsertPfProfile,
+  getPfIncomeSources, upsertPfIncomeSource, deletePfIncomeSource,
+  getPfExpenseCategories, upsertPfExpenseCategory, deletePfExpenseCategory,
+  getPfAssets, upsertPfAsset, deletePfAsset,
+  getPfLiabilities, upsertPfLiability, deletePfLiability,
+  getPfInsurances, upsertPfInsurance, deletePfInsurance,
+  getPfHeritage, upsertPfHeritage,
+  getPfGoals, upsertPfGoal, deletePfGoal,
+  getPfDashboardSummary,
 } from "./db";
 import { PLAN_LIMITS, BULAN_INDONESIA, formatRupiah } from "../shared/finance";
 import { notifyOwner } from "./_core/notification";
@@ -4168,6 +4178,221 @@ Penting: Kembalikan HANYA JSON valid, tidak ada teks penjelasan.`,
       }
 
       return { success: true };
+    }),
+  }),
+
+  // ══════════════════════════════════════════════════════════════════════════
+  // ═══ PERSONAL FINANCE (pf_) ROUTER — 100% ISOLATED FROM UMKM ═══════════
+  // ══════════════════════════════════════════════════════════════════════════
+  personalFinance: router({
+    // ─── Profile ───
+    getProfile: protectedProcedure.query(async ({ ctx }) => {
+      const resolved = await resolveBusinessForUser(ctx.user.id, ctx.requestedBusinessId, ctx.user.role);
+      if (!resolved) return null;
+      return getPfProfile(resolved.business.id);
+    }),
+    upsertProfile: protectedProcedure.input(z.object({
+      fullName: z.string().optional(),
+      age: z.number().min(1).max(120).optional(),
+      maritalStatus: z.enum(["single", "married", "divorced", "widowed"]).optional(),
+      dependents: z.number().min(0).optional(),
+      occupation: z.string().optional(),
+      monthlyIncome: z.number().min(0).optional(),
+      setupCompleted: z.boolean().optional(),
+      setupStep: z.number().min(0).max(9).optional(),
+    })).mutation(async ({ ctx, input }) => {
+      const resolved = await resolveBusinessForUser(ctx.user.id, ctx.requestedBusinessId, ctx.user.role);
+      if (!resolved) throw new TRPCError({ code: "NOT_FOUND", message: "Personal finance profile not found. Please set up personal mode first." });
+      await upsertPfProfile(resolved.business.id, input);
+      return { success: true };
+    }),
+
+    // ─── Income Sources ───
+    getIncomeSources: protectedProcedure.query(async ({ ctx }) => {
+      const resolved = await resolveBusinessForUser(ctx.user.id, ctx.requestedBusinessId, ctx.user.role);
+      if (!resolved) return [];
+      return getPfIncomeSources(resolved.business.id);
+    }),
+    upsertIncomeSource: protectedProcedure.input(z.object({
+      id: z.number().optional(),
+      name: z.string().min(1),
+      category: z.enum(["gaji", "bonus", "freelance", "investasi", "bisnis", "lainnya"]),
+      amount: z.number().min(0),
+      frequency: z.enum(["bulanan", "tahunan", "sekali"]).optional(),
+    })).mutation(async ({ ctx, input }) => {
+      const resolved = await resolveBusinessForUser(ctx.user.id, ctx.requestedBusinessId, ctx.user.role);
+      if (!resolved) throw new TRPCError({ code: "NOT_FOUND", message: "Personal finance profile not found." });
+      await upsertPfIncomeSource(resolved.business.id, input);
+      return { success: true };
+    }),
+    deleteIncomeSource: protectedProcedure.input(z.object({ id: z.number() })).mutation(async ({ ctx, input }) => {
+      const resolved = await resolveBusinessForUser(ctx.user.id, ctx.requestedBusinessId, ctx.user.role);
+      if (!resolved) throw new TRPCError({ code: "NOT_FOUND" });
+      await deletePfIncomeSource(resolved.business.id, input.id);
+      return { success: true };
+    }),
+
+    // ─── Expense Categories ───
+    getExpenseCategories: protectedProcedure.query(async ({ ctx }) => {
+      const resolved = await resolveBusinessForUser(ctx.user.id, ctx.requestedBusinessId, ctx.user.role);
+      if (!resolved) return [];
+      return getPfExpenseCategories(resolved.business.id);
+    }),
+    upsertExpenseCategory: protectedProcedure.input(z.object({
+      id: z.number().optional(),
+      name: z.string().min(1),
+      category: z.enum(["kebutuhan", "keinginan", "tabungan", "cicilan", "asuransi", "lainnya"]),
+      budgetAmount: z.number().min(0),
+      icon: z.string().optional(),
+      color: z.string().optional(),
+    })).mutation(async ({ ctx, input }) => {
+      const resolved = await resolveBusinessForUser(ctx.user.id, ctx.requestedBusinessId, ctx.user.role);
+      if (!resolved) throw new TRPCError({ code: "NOT_FOUND" });
+      await upsertPfExpenseCategory(resolved.business.id, input);
+      return { success: true };
+    }),
+    deleteExpenseCategory: protectedProcedure.input(z.object({ id: z.number() })).mutation(async ({ ctx, input }) => {
+      const resolved = await resolveBusinessForUser(ctx.user.id, ctx.requestedBusinessId, ctx.user.role);
+      if (!resolved) throw new TRPCError({ code: "NOT_FOUND" });
+      await deletePfExpenseCategory(resolved.business.id, input.id);
+      return { success: true };
+    }),
+
+    // ─── Assets ───
+    getAssets: protectedProcedure.query(async ({ ctx }) => {
+      const resolved = await resolveBusinessForUser(ctx.user.id, ctx.requestedBusinessId, ctx.user.role);
+      if (!resolved) return [];
+      return getPfAssets(resolved.business.id);
+    }),
+    upsertAsset: protectedProcedure.input(z.object({
+      id: z.number().optional(),
+      name: z.string().min(1),
+      assetType: z.enum(["investasi", "likuid", "guna"]),
+      subType: z.string().optional(),
+      currentValue: z.number().min(0),
+      purchaseValue: z.number().min(0).optional(),
+      notes: z.string().optional(),
+      icon: z.string().optional(),
+    })).mutation(async ({ ctx, input }) => {
+      const resolved = await resolveBusinessForUser(ctx.user.id, ctx.requestedBusinessId, ctx.user.role);
+      if (!resolved) throw new TRPCError({ code: "NOT_FOUND" });
+      await upsertPfAsset(resolved.business.id, input);
+      return { success: true };
+    }),
+    deleteAsset: protectedProcedure.input(z.object({ id: z.number() })).mutation(async ({ ctx, input }) => {
+      const resolved = await resolveBusinessForUser(ctx.user.id, ctx.requestedBusinessId, ctx.user.role);
+      if (!resolved) throw new TRPCError({ code: "NOT_FOUND" });
+      await deletePfAsset(resolved.business.id, input.id);
+      return { success: true };
+    }),
+
+    // ─── Liabilities ───
+    getLiabilities: protectedProcedure.query(async ({ ctx }) => {
+      const resolved = await resolveBusinessForUser(ctx.user.id, ctx.requestedBusinessId, ctx.user.role);
+      if (!resolved) return [];
+      return getPfLiabilities(resolved.business.id);
+    }),
+    upsertLiability: protectedProcedure.input(z.object({
+      id: z.number().optional(),
+      name: z.string().min(1),
+      liabilityType: z.enum(["kpr", "kpa", "kta", "kartu_kredit", "pinjaman_online", "cicilan", "lainnya"]),
+      totalAmount: z.number().min(0),
+      remainingAmount: z.number().min(0),
+      monthlyPayment: z.number().min(0),
+      interestRate: z.number().min(0).optional(),
+      notes: z.string().optional(),
+    })).mutation(async ({ ctx, input }) => {
+      const resolved = await resolveBusinessForUser(ctx.user.id, ctx.requestedBusinessId, ctx.user.role);
+      if (!resolved) throw new TRPCError({ code: "NOT_FOUND" });
+      await upsertPfLiability(resolved.business.id, input);
+      return { success: true };
+    }),
+    deleteLiability: protectedProcedure.input(z.object({ id: z.number() })).mutation(async ({ ctx, input }) => {
+      const resolved = await resolveBusinessForUser(ctx.user.id, ctx.requestedBusinessId, ctx.user.role);
+      if (!resolved) throw new TRPCError({ code: "NOT_FOUND" });
+      await deletePfLiability(resolved.business.id, input.id);
+      return { success: true };
+    }),
+
+    // ─── Insurances ───
+    getInsurances: protectedProcedure.query(async ({ ctx }) => {
+      const resolved = await resolveBusinessForUser(ctx.user.id, ctx.requestedBusinessId, ctx.user.role);
+      if (!resolved) return [];
+      return getPfInsurances(resolved.business.id);
+    }),
+    upsertInsurance: protectedProcedure.input(z.object({
+      id: z.number().optional(),
+      name: z.string().min(1),
+      insuranceType: z.enum(["jiwa", "kesehatan", "kendaraan", "properti", "pendidikan", "lainnya"]),
+      provider: z.string().optional(),
+      premiumAmount: z.number().min(0),
+      premiumFrequency: z.enum(["bulanan", "triwulan", "semesteran", "tahunan"]).optional(),
+      coverageAmount: z.number().min(0),
+    })).mutation(async ({ ctx, input }) => {
+      const resolved = await resolveBusinessForUser(ctx.user.id, ctx.requestedBusinessId, ctx.user.role);
+      if (!resolved) throw new TRPCError({ code: "NOT_FOUND" });
+      await upsertPfInsurance(resolved.business.id, input);
+      return { success: true };
+    }),
+    deleteInsurance: protectedProcedure.input(z.object({ id: z.number() })).mutation(async ({ ctx, input }) => {
+      const resolved = await resolveBusinessForUser(ctx.user.id, ctx.requestedBusinessId, ctx.user.role);
+      if (!resolved) throw new TRPCError({ code: "NOT_FOUND" });
+      await deletePfInsurance(resolved.business.id, input.id);
+      return { success: true };
+    }),
+
+    // ─── Heritage ───
+    getHeritage: protectedProcedure.query(async ({ ctx }) => {
+      const resolved = await resolveBusinessForUser(ctx.user.id, ctx.requestedBusinessId, ctx.user.role);
+      if (!resolved) return null;
+      return getPfHeritage(resolved.business.id);
+    }),
+    upsertHeritage: protectedProcedure.input(z.object({
+      hasWill: z.boolean().optional(),
+      hasInsuranceBeneficiary: z.boolean().optional(),
+      heritageStatus: z.enum(["sudah_siap", "belum_siap", "sedang_proses"]).optional(),
+      notes: z.string().optional(),
+    })).mutation(async ({ ctx, input }) => {
+      const resolved = await resolveBusinessForUser(ctx.user.id, ctx.requestedBusinessId, ctx.user.role);
+      if (!resolved) throw new TRPCError({ code: "NOT_FOUND" });
+      await upsertPfHeritage(resolved.business.id, input);
+      return { success: true };
+    }),
+
+    // ─── Goals ───
+    getGoals: protectedProcedure.query(async ({ ctx }) => {
+      const resolved = await resolveBusinessForUser(ctx.user.id, ctx.requestedBusinessId, ctx.user.role);
+      if (!resolved) return [];
+      return getPfGoals(resolved.business.id);
+    }),
+    upsertGoal: protectedProcedure.input(z.object({
+      id: z.number().optional(),
+      name: z.string().min(1),
+      goalType: z.enum(["dana_darurat", "dana_pensiun", "investasi", "rumah", "kendaraan", "pendidikan", "liburan", "lainnya"]),
+      targetAmount: z.number().min(0),
+      currentAmount: z.number().min(0).optional(),
+      targetDate: z.string().optional(),
+      priority: z.number().min(1).max(10).optional(),
+      icon: z.string().optional(),
+      color: z.string().optional(),
+    })).mutation(async ({ ctx, input }) => {
+      const resolved = await resolveBusinessForUser(ctx.user.id, ctx.requestedBusinessId, ctx.user.role);
+      if (!resolved) throw new TRPCError({ code: "NOT_FOUND" });
+      await upsertPfGoal(resolved.business.id, input);
+      return { success: true };
+    }),
+    deleteGoal: protectedProcedure.input(z.object({ id: z.number() })).mutation(async ({ ctx, input }) => {
+      const resolved = await resolveBusinessForUser(ctx.user.id, ctx.requestedBusinessId, ctx.user.role);
+      if (!resolved) throw new TRPCError({ code: "NOT_FOUND" });
+      await deletePfGoal(resolved.business.id, input.id);
+      return { success: true };
+    }),
+
+    // ─── Dashboard Summary ───
+    getDashboard: protectedProcedure.query(async ({ ctx }) => {
+      const resolved = await resolveBusinessForUser(ctx.user.id, ctx.requestedBusinessId, ctx.user.role);
+      if (!resolved) return null;
+      return getPfDashboardSummary(resolved.business.id);
     }),
   }),
 });

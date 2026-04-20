@@ -4,6 +4,7 @@ import { trpc } from "@/lib/trpc";
 import { useLocation } from "wouter";
 import DashboardLayout from "@/components/DashboardLayout";
 import Dashboard from "./Dashboard";
+import PersonalDashboard from "./PersonalDashboard";
 import Onboarding from "./Onboarding";
 import LandingPage from "./LandingPage";
 import { DashboardLayoutSkeleton } from "@/components/DashboardLayoutSkeleton";
@@ -58,9 +59,13 @@ export default function Home() {
   }
 
   // Logged in with business — show dashboard
+  // Personal mode with setup done → show PINA-style dashboard
+  const isPersonal = business.appMode === "personal";
+  const pfSetupDone = business.personalSetupDone;
+
   return (
     <DashboardLayout>
-      <Dashboard />
+      {isPersonal && pfSetupDone ? <PersonalDashboard /> : <Dashboard />}
     </DashboardLayout>
   );
 }

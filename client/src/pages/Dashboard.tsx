@@ -363,7 +363,7 @@ function groupByDate(transactions: any[]) {
 
 // ─── Personal Dashboard ───
 
-import PersonalSetupWizard from "@/components/PersonalSetupWizard";
+import PersonalSetupWizard from "@/pages/PersonalSetupWizard";
 
 function PersonalDashboard() {
   const [, setLocation] = useLocation();
