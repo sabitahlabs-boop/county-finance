@@ -6821,3 +6821,91 @@ export async function resolveAccountsForManualTx(businessId: number, category: s
     counterAccountId: counterAccount.id,
   };
 }
+
+// ─── GL Resolver: POS Refund ───
+// Reversal of POS checkout: DR Retur Penjualan, CR Kas/Bank, DR Persediaan, CR HPP
+export async function resolveAccountsForPOSRefund(businessId: number, bankAccountId: number | null): Promise<{
+  cashAccountId: number;
+  returAccountId: number;
+  cogsAccountId: number;
+  inventoryAccountId: number;
+}> {
+  await initializeCoA(businessId);
+
+  let cashAccount: Account | null = null;
+  if (bankAccountId) {
+    cashAccount = await getAccountByBankAccountId(businessId, bankAccountId);
+  }
+  if (!cashAccount) {
+    cashAccount = await getAccountByCode(businessId, "1101");
+  }
+  if (!cashAccount) throw new Error("Cash account not found in CoA");
+
+  const returAccount = await getAccountByCode(businessId, "4201"); // Retur Penjualan
+  const cogsAccount = await getAccountByCode(businessId, "5101");  // HPP Barang Dagang
+  const inventoryAccount = await getAccountByCode(businessId, "1301"); // Persediaan
+
+  if (!returAccount || !cogsAccount || !inventoryAccount) {
+    throw new Error("Required accounts for POS refund not found in CoA");
+  }
+
+  return {
+    cashAccountId: cashAccount.id,
+    returAccountId: returAccount.id,
+    cogsAccountId: cogsAccount.id,
+    inventoryAccountId: inventoryAccount.id,
+  };
+}
+
+// ─── GL Resolver: Credit Sale ───
+// DR Piutang Usaha, CR Penjualan, DR HPP, CR Persediaan
+export async function resolveAccountsForCreditSale(businessId: number): Promise<{
+  receivableAccountId: number;
+  salesAccountId: number;
+  cogsAccountId: number;
+  inventoryAccountId: number;
+}> {
+  await initializeCoA(businessId);
+
+  const receivableAccount = await getAccountByCode(businessId, "1201"); // Piutang Usaha
+  const salesAccount = await getAccountByCode(businessId, "4101");      // Penjualan
+  const cogsAccount = await getAccountByCode(businessId, "5101");       // HPP
+  const inventoryAccount = await getAccountByCode(businessId, "1301");  // Persediaan
+
+  if (!receivableAccount || !salesAccount || !cogsAccount || !inventoryAccount) {
+    throw new Error("Required accounts for credit sale not found in CoA");
+  }
+
+  return {
+    receivableAccountId: receivableAccount.id,
+    salesAccountId: salesAccount.id,
+    cogsAccountId: cogsAccount.id,
+    inventoryAccountId: inventoryAccount.id,
+  };
+}
+
+// ─── GL Resolver: Credit Payment ───
+// DR Kas/Bank, CR Piutang Usaha
+export async function resolveAccountsForCreditPayment(businessId: number, bankAccountId: number | null): Promise<{
+  cashAccountId: number;
+  receivableAccountId: number;
+}> {
+  await initializeCoA(businessId);
+
+  let cashAccount: Account | null = null;
+  if (bankAccountId) {
+    cashAccount = await getAccountByBankAccountId(businessId, bankAccountId);
+  }
+  if (!cashAccount) {
+    cashAccount = await getAccountByCode(businessId, "1101");
+  }
+  if (!cashAccount) throw new Error("Cash account not found in CoA");
+
+  const receivableAccount = await getAccountByCode(businessId, "1201"); // Piutang Usaha
+  if (!receivableAccount) throw new Error("Receivable account not found in CoA");
+
+  return {
+    cashAccountId: cashAccount.id,
+    receivableAccountId: receivableAccount.id,
+  };
+}

@@ -74,6 +74,7 @@ import {
   getDb, createAuditLog,
   // GL Double-Entry
   createJournalEntry, resolveAccountsForPOS, resolveAccountsForManualTx, initializeCoA,
+  resolveAccountsForPOSRefund, resolveAccountsForCreditSale, resolveAccountsForCreditPayment,
 } from "./db";
 import { PLAN_LIMITS, BULAN_INDONESIA, formatRupiah } from "../shared/finance";
 import { notifyOwner } from "./_core/notification";
@@ -893,7 +894,55 @@ export const appRouter = router({
         }
       }
 
-      // 4. Audit log
+      // 4. GL Journal: Void Transaction (best-effort, non-blocking)
+      try {
+        const voidAccounts = await resolveAccountsForManualTx(biz.id, tx.category, tx.type as "pemasukan" | "pengeluaran", tx.bankAccountId);
+
+        const journalLines: Array<{ accountId: number; description: string; debitAmount: number; creditAmount: number }> = [];
+
+        if (tx.type === "pemasukan") {
+          // Original was: DR Kas, CR Counter → Void reverses: DR Counter, CR Kas
+          journalLines.push({
+            accountId: voidAccounts.counterAccountId,
+            description: `Void: ${tx.category}`,
+            debitAmount: Number(tx.amount),
+            creditAmount: 0,
+          });
+          journalLines.push({
+            accountId: voidAccounts.cashAccountId,
+            description: `Void ${tx.txCode}`,
+            debitAmount: 0,
+            creditAmount: Number(tx.amount),
+          });
+        } else {
+          // Original was: DR Counter, CR Kas → Void reverses: DR Kas, CR Counter
+          journalLines.push({
+            accountId: voidAccounts.cashAccountId,
+            description: `Void ${tx.txCode}`,
+            debitAmount: Number(tx.amount),
+            creditAmount: 0,
+          });
+          journalLines.push({
+            accountId: voidAccounts.counterAccountId,
+            description: `Void: ${tx.category}`,
+            debitAmount: 0,
+            creditAmount: Number(tx.amount),
+          });
+        }
+
+        await createJournalEntry({
+          businessId: biz.id,
+          date: new Date().toISOString().substring(0, 10),
+          description: `Void ${tx.txCode} — ${input.reason}`,
+          sourceType: "void",
+          sourceId: tx.id,
+          lines: journalLines,
+        });
+      } catch (glErr) {
+        console.error("[GL] Void journal failed (non-blocking):", glErr);
+      }
+
+      // 5. Audit log
       await createAuditLog({
         businessId: biz.id,
         userId: ctx.user.id,
@@ -1411,6 +1460,61 @@ export const appRouter = router({
         dueDate: input.dueDate,
         notes: input.notes,
       });
+
+      // ─── GL JOURNAL: Credit Sale (best-effort, non-blocking) ───
+      try {
+        const creditAccounts = await resolveAccountsForCreditSale(biz.id);
+
+        // Calculate HPP from receipt items
+        const receiptItems = await getPosReceiptItemsByReceipt(input.receiptId);
+        const totalHPP = receiptItems.reduce((sum, item) => sum + (Number(item.hppSnapshot) * Number(item.qty)), 0);
+
+        const journalLines: Array<{ accountId: number; description: string; debitAmount: number; creditAmount: number }> = [];
+
+        // DR Piutang Usaha
+        journalLines.push({
+          accountId: creditAccounts.receivableAccountId,
+          description: `Piutang kredit #${id}`,
+          debitAmount: Number(input.totalAmount),
+          creditAmount: 0,
+        });
+
+        // CR Penjualan
+        journalLines.push({
+          accountId: creditAccounts.salesAccountId,
+          description: `Penjualan kredit #${id}`,
+          debitAmount: 0,
+          creditAmount: Number(input.totalAmount),
+        });
+
+        // HPP + Persediaan (if any)
+        if (totalHPP > 0) {
+          journalLines.push({
+            accountId: creditAccounts.cogsAccountId,
+            description: "Harga Pokok Penjualan",
+            debitAmount: totalHPP,
+            creditAmount: 0,
+          });
+          journalLines.push({
+            accountId: creditAccounts.inventoryAccountId,
+            description: "Pengurangan persediaan",
+            debitAmount: 0,
+            creditAmount: totalHPP,
+          });
+        }
+
+        await createJournalEntry({
+          businessId: biz.id,
+          date: new Date().toISOString().substring(0, 10),
+          description: `Penjualan Kredit #${id} — Rp ${input.totalAmount.toLocaleString("id-ID")}`,
+          sourceType: "credit_sale",
+          sourceId: id,
+          lines: journalLines,
+        });
+      } catch (glErr) {
+        console.error("[GL] Credit Sale journal failed (non-blocking):", glErr);
+      }
+
       return { success: true, id };
     }),
 
@@ -1478,6 +1582,37 @@ export const appRouter = router({
 
         return result.insertId;
       });
+
+      // ─── GL JOURNAL: Credit Payment (best-effort, non-blocking) ───
+      try {
+        const posAccounts = await getBankAccountsByBusiness(bizId);
+        const bankAccountId = resolveBankAccountId(posAccounts, input.paymentMethod ?? "tunai");
+        const cpAccounts = await resolveAccountsForCreditPayment(bizId, bankAccountId ?? null);
+
+        await createJournalEntry({
+          businessId: bizId,
+          date: input.date,
+          description: `Pelunasan Kredit #${input.creditSaleId} — Rp ${input.amount.toLocaleString("id-ID")}`,
+          sourceType: "credit_payment",
+          sourceId: id,
+          lines: [
+            {
+              accountId: cpAccounts.cashAccountId,
+              description: `Terima pelunasan kredit #${input.creditSaleId}`,
+              debitAmount: Number(input.amount),
+              creditAmount: 0,
+            },
+            {
+              accountId: cpAccounts.receivableAccountId,
+              description: `Pelunasan piutang kredit #${input.creditSaleId}`,
+              debitAmount: 0,
+              creditAmount: Number(input.amount),
+            },
+          ],
+        });
+      } catch (glErr) {
+        console.error("[GL] Credit Payment journal failed (non-blocking):", glErr);
+      }
 
       // ─── AUDIT LOG: Log successful credit payment ───
       await createAuditLog({
@@ -3302,6 +3437,70 @@ Penting: Kembalikan HANYA JSON valid, tidak ada teks penjelasan.`,
           })
           .where(eq(posReceipts.id, input.receiptId));
       });
+
+      // ─── GL JOURNAL: POS Refund (best-effort, non-blocking) ───
+      try {
+        const totalHPP = receiptItems.reduce((sum, item) => sum + (Number(item.hppSnapshot) * Number(item.qty)), 0);
+        const refundAccounts = await resolveAccountsForPOSRefund(bizId, null);
+
+        const journalLines: Array<{ accountId: number; description: string; debitAmount: number; creditAmount: number }> = [];
+
+        // Per-payment reversal: CR Kas/Bank for each payment method
+        if (Array.isArray(payments)) {
+          for (const payment of payments) {
+            const bankAccountId = resolveBankAccountId(posAccounts, payment.method);
+            let cashAccountId = refundAccounts.cashAccountId;
+            if (bankAccountId) {
+              try {
+                const { getAccountByBankAccountId } = await import("./db");
+                const bankCoA = await getAccountByBankAccountId(bizId, bankAccountId);
+                if (bankCoA) cashAccountId = bankCoA.id;
+              } catch {}
+            }
+            journalLines.push({
+              accountId: cashAccountId,
+              description: `Refund ${payment.method} — ${receipt.receiptCode}`,
+              debitAmount: 0,
+              creditAmount: Number(payment.amount),
+            });
+          }
+        }
+
+        // DR Retur Penjualan (grandTotal)
+        journalLines.push({
+          accountId: refundAccounts.returAccountId,
+          description: `Retur Penjualan ${receipt.receiptCode}`,
+          debitAmount: Number(receipt.grandTotal),
+          creditAmount: 0,
+        });
+
+        // HPP reversal (if any)
+        if (totalHPP > 0) {
+          journalLines.push({
+            accountId: refundAccounts.inventoryAccountId,
+            description: "Pengembalian persediaan",
+            debitAmount: totalHPP,
+            creditAmount: 0,
+          });
+          journalLines.push({
+            accountId: refundAccounts.cogsAccountId,
+            description: "Reversal HPP",
+            debitAmount: 0,
+            creditAmount: totalHPP,
+          });
+        }
+
+        await createJournalEntry({
+          businessId: bizId,
+          date: new Date().toISOString().substring(0, 10),
+          description: `Refund POS ${receipt.receiptCode} — ${input.reason} — ${receiptItems.length} item`,
+          sourceType: "pos_refund",
+          sourceId: input.receiptId,
+          lines: journalLines,
+        });
+      } catch (glErr) {
+        console.error("[GL] POS Refund journal failed (non-blocking):", glErr);
+      }
 
       // ─── AUDIT LOG: Log successful POS refund ───
       await createAuditLog({
