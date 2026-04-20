@@ -224,7 +224,7 @@ export default function Pengaturan() {
                   onClick={() => setModeMut.mutate({ appMode: "umkm" })}
                   className={`text-left rounded-xl border-2 p-4 transition-all ${
                     business?.appMode === "umkm" || !business?.appMode
-                      ? "border-blue-500 bg-blue-50/50 dark:bg-blue-900/10"
+                      ? "border-blue-500 bg-blue-50 dark:bg-blue-950/50 dark:bg-blue-900/10"
                       : "border-transparent bg-muted/50 hover:bg-muted"
                   }`}
                 >
@@ -887,7 +887,7 @@ function KategoriProdukTab() {
                   </div>
                   {/* Subcategories */}
                   {subOf(cat.id).map((sub: any) => (
-                    <div key={sub.id} className="flex items-center justify-between px-3 py-2 border-t bg-white dark:bg-card">
+                    <div key={sub.id} className="flex items-center justify-between px-3 py-2 border-t bg-white dark:bg-gray-900 dark:bg-card">
                       <div className="flex items-center gap-2 pl-4">
                         <ChevronRight className="h-3 w-3 text-muted-foreground" />
                         {editItem?.id === sub.id ? (
@@ -1006,11 +1006,11 @@ function FiturTab({ business, updateBiz }: { business: any; updateBiz: any }) {
 
 // ─── Role labels & icons ───
 const ROLE_DISPLAY: Record<string, { label: string; color: string; icon: any }> = {
-  owner: { label: "Owner", color: "bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-300", icon: Crown },
-  manager: { label: "Manager", color: "bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-300", icon: Shield },
-  kasir: { label: "Kasir", color: "bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-300", icon: ShoppingCart },
-  gudang: { label: "Gudang", color: "bg-orange-100 text-orange-800 dark:bg-orange-900/30 dark:text-orange-300", icon: Warehouse },
-  viewer: { label: "Viewer", color: "bg-gray-100 text-gray-800 dark:bg-gray-800/50 dark:text-gray-300", icon: Eye },
+  owner: { label: "Owner", color: "bg-amber-100 dark:bg-amber-900 text-amber-800 dark:text-amber-200 dark:bg-amber-900/30 dark:text-amber-300", icon: Crown },
+  manager: { label: "Manager", color: "bg-blue-100 dark:bg-blue-900 text-blue-800 dark:text-blue-200 dark:bg-blue-900/30 dark:text-blue-300", icon: Shield },
+  kasir: { label: "Kasir", color: "bg-green-100 dark:bg-green-900 text-green-800 dark:text-green-200 dark:bg-green-900/30 dark:text-green-300", icon: ShoppingCart },
+  gudang: { label: "Gudang", color: "bg-orange-100 dark:bg-orange-900 text-orange-800 dark:text-orange-200 dark:bg-orange-900/30 dark:text-orange-300", icon: Warehouse },
+  viewer: { label: "Viewer", color: "bg-gray-100 dark:bg-gray-800 text-gray-800 dark:text-gray-200 dark:bg-gray-800/50 dark:text-gray-300", icon: Eye },
 };
 
 function TeamManagementTab() {
@@ -1229,7 +1229,7 @@ function TeamManagementTab() {
                       {m.defaultCashAccountId && (() => {
                         const cashAcc = cashAccounts.find((a: any) => a.id === m.defaultCashAccountId);
                         return cashAcc ? (
-                          <Badge variant="outline" className="text-[10px] text-amber-600 border-amber-300">
+                          <Badge variant="outline" className="text-[10px] text-amber-600 dark:text-amber-400 border-amber-300 dark:border-amber-700">
                             💰 {(cashAcc as any).accountName}
                           </Badge>
                         ) : null;
@@ -1416,7 +1416,7 @@ function TeamManagementTab() {
       )}
 
       {/* How it works info */}
-      <Card className="border-0 shadow-md shadow-black/5 bg-blue-50/50 dark:bg-blue-950/20">
+      <Card className="border-0 shadow-md shadow-black/5 bg-blue-50 dark:bg-blue-950/50 dark:bg-blue-950/20">
         <CardContent className="p-4">
           <h4 className="font-medium text-sm mb-2">Cara Kerja Multi-Akun</h4>
           <ol className="text-xs text-muted-foreground space-y-1.5 list-decimal list-inside">

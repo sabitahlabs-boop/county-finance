@@ -294,7 +294,7 @@ function TooltipSpotlight({
         animate={{ opacity: 1, y: 0, scale: 1 }}
         exit={{ opacity: 0, y: -10, scale: 0.95 }}
         transition={{ duration: 0.3, type: "spring" }}
-        className="fixed z-[10000] w-[380px] max-w-[90vw] rounded-2xl bg-white dark:bg-slate-800 shadow-2xl border border-border/50 overflow-hidden"
+        className="fixed z-[10000] w-[380px] max-w-[90vw] rounded-2xl bg-white dark:bg-gray-900 dark:bg-slate-800 shadow-2xl border border-border/50 overflow-hidden"
         style={getTooltipStyle()}
       >
         {/* Progress bar */}
@@ -308,7 +308,7 @@ function TooltipSpotlight({
         <div className="p-5">
           {/* Step counter */}
           <div className="flex items-center justify-between mb-3">
-            <span className="text-xs font-bold text-blue-600 dark:text-blue-400 bg-blue-50 dark:bg-blue-900/30 px-2.5 py-1 rounded-full">
+            <span className="text-xs font-bold text-blue-600 dark:text-blue-400 bg-blue-50 dark:bg-blue-950 dark:bg-blue-900/30 px-2.5 py-1 rounded-full">
               Langkah {currentIndex + 1} dari {totalSteps}
             </span>
             <button 
@@ -325,11 +325,11 @@ function TooltipSpotlight({
 
           {/* Why Important - always visible */}
           {step.whyImportant && (
-            <div className="bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-xl p-3 mb-3">
+            <div className="bg-amber-50 dark:bg-amber-950 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-xl p-3 mb-3">
               <div className="flex items-start gap-2">
                 <Lightbulb className="h-4 w-4 text-amber-600 dark:text-amber-400 mt-0.5 shrink-0" />
                 <div>
-                  <p className="text-xs font-semibold text-amber-800 dark:text-amber-300 mb-0.5">Kenapa ini penting?</p>
+                  <p className="text-xs font-semibold text-amber-800 dark:text-amber-200 dark:text-amber-300 mb-0.5">Kenapa ini penting?</p>
                   <p className="text-xs text-amber-700 dark:text-amber-400 leading-relaxed">{step.whyImportant}</p>
                 </div>
               </div>
@@ -341,7 +341,7 @@ function TooltipSpotlight({
             <div className="mb-3">
               <button
                 onClick={() => setShowTips(!showTips)}
-                className="flex items-center gap-1.5 text-xs font-medium text-blue-600 dark:text-blue-400 hover:text-blue-700 transition-colors"
+                className="flex items-center gap-1.5 text-xs font-medium text-blue-600 dark:text-blue-400 hover:text-blue-700 dark:text-blue-300 transition-colors"
               >
                 <Info className="h-3.5 w-3.5" />
                 {showTips ? "Sembunyikan tips" : `Lihat ${step.tips.length} tips praktis`}
@@ -356,7 +356,7 @@ function TooltipSpotlight({
                     transition={{ duration: 0.2 }}
                     className="overflow-hidden"
                   >
-                    <div className="mt-2 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-xl p-3 space-y-1.5">
+                    <div className="mt-2 bg-blue-50 dark:bg-blue-950 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-xl p-3 space-y-1.5">
                       {step.tips.map((tip, i) => (
                         <div key={i} className="flex items-start gap-2">
                           <span className="text-blue-500 text-xs mt-0.5 shrink-0">💡</span>
@@ -416,14 +416,14 @@ function WelcomeModal({ onStart, onSkip, mode }: { onStart: () => void; onSkip: 
         animate={{ opacity: 1, scale: 1, y: 0 }}
         exit={{ opacity: 0, scale: 0.9, y: 20 }}
         transition={{ duration: 0.4, type: "spring" }}
-        className="fixed z-[9999] top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[440px] max-w-[90vw] rounded-3xl bg-white dark:bg-slate-800 shadow-2xl overflow-hidden"
+        className="fixed z-[9999] top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[440px] max-w-[90vw] rounded-3xl bg-white dark:bg-gray-900 dark:bg-slate-800 shadow-2xl overflow-hidden"
       >
         {/* Gradient header */}
         <div className={`p-8 text-center ${isPersonal 
           ? "bg-gradient-to-br from-emerald-600 via-teal-600 to-cyan-600" 
           : "bg-gradient-to-br from-blue-600 via-indigo-600 to-purple-600"
         }`}>
-          <div className="h-16 w-16 mx-auto rounded-2xl bg-white/20 backdrop-blur flex items-center justify-center mb-4">
+          <div className="h-16 w-16 mx-auto rounded-2xl bg-white dark:bg-gray-900/20 backdrop-blur flex items-center justify-center mb-4">
             <Sparkles className="h-8 w-8 text-white" />
           </div>
           <h2 className="text-2xl font-bold text-white mb-2">
@@ -446,22 +446,22 @@ function WelcomeModal({ onStart, onSkip, mode }: { onStart: () => void; onSkip: 
                   <p className="text-lg mb-0.5">💰</p>
                   <p className="text-xs font-medium text-emerald-700 dark:text-emerald-300">Catat Keuangan</p>
                 </div>
-                <div className="bg-blue-50 dark:bg-blue-900/20 rounded-xl p-3 text-center">
+                <div className="bg-blue-50 dark:bg-blue-950 dark:bg-blue-900/20 rounded-xl p-3 text-center">
                   <p className="text-lg mb-0.5">📊</p>
                   <p className="text-xs font-medium text-blue-700 dark:text-blue-300">Laporan Otomatis</p>
                 </div>
-                <div className="bg-purple-50 dark:bg-purple-900/20 rounded-xl p-3 text-center">
+                <div className="bg-purple-50 dark:bg-purple-950 dark:bg-purple-900/20 rounded-xl p-3 text-center">
                   <p className="text-lg mb-0.5">🎯</p>
                   <p className="text-xs font-medium text-purple-700 dark:text-purple-300">Tabungan Impian</p>
                 </div>
-                <div className="bg-amber-50 dark:bg-amber-900/20 rounded-xl p-3 text-center">
+                <div className="bg-amber-50 dark:bg-amber-950 dark:bg-amber-900/20 rounded-xl p-3 text-center">
                   <p className="text-lg mb-0.5">🤖</p>
                   <p className="text-xs font-medium text-amber-700 dark:text-amber-300">AI Analisis</p>
                 </div>
               </>
             ) : (
               <>
-                <div className="bg-blue-50 dark:bg-blue-900/20 rounded-xl p-3 text-center">
+                <div className="bg-blue-50 dark:bg-blue-950 dark:bg-blue-900/20 rounded-xl p-3 text-center">
                   <p className="text-lg mb-0.5">🏪</p>
                   <p className="text-xs font-medium text-blue-700 dark:text-blue-300">Kasir POS</p>
                 </div>
@@ -469,11 +469,11 @@ function WelcomeModal({ onStart, onSkip, mode }: { onStart: () => void; onSkip: 
                   <p className="text-lg mb-0.5">📦</p>
                   <p className="text-xs font-medium text-emerald-700 dark:text-emerald-300">Stok & Gudang</p>
                 </div>
-                <div className="bg-purple-50 dark:bg-purple-900/20 rounded-xl p-3 text-center">
+                <div className="bg-purple-50 dark:bg-purple-950 dark:bg-purple-900/20 rounded-xl p-3 text-center">
                   <p className="text-lg mb-0.5">📊</p>
                   <p className="text-xs font-medium text-purple-700 dark:text-purple-300">Laporan Bisnis</p>
                 </div>
-                <div className="bg-amber-50 dark:bg-amber-900/20 rounded-xl p-3 text-center">
+                <div className="bg-amber-50 dark:bg-amber-950 dark:bg-amber-900/20 rounded-xl p-3 text-center">
                   <p className="text-lg mb-0.5">🤖</p>
                   <p className="text-xs font-medium text-amber-700 dark:text-amber-300">AI Analisis</p>
                 </div>

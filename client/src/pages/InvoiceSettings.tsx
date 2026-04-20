@@ -321,7 +321,7 @@ export default function InvoiceSettings() {
 
               {signatureUrl ? (
                 <div className="space-y-3">
-                  <div className="rounded-lg border border-slate-600 bg-white p-4 text-center">
+                  <div className="rounded-lg border border-slate-600 bg-white dark:bg-gray-900 p-4 text-center">
                     <img
                       src={proxiedSignatureUrl || signatureUrl}
                       alt="Tanda Tangan"
@@ -409,7 +409,7 @@ export default function InvoiceSettings() {
                         <img
                           src={logoUrl}
                           alt="Logo"
-                          className="h-10 w-auto rounded-lg bg-white p-1"
+                          className="h-10 w-auto rounded-lg bg-white dark:bg-gray-900 p-1"
                           onError={() => setLogoError(true)}
                         />
                       ) : settings.showLogo ? (
@@ -442,7 +442,7 @@ export default function InvoiceSettings() {
                 </div>
 
                 {/* Invoice Body — white background */}
-                <div className="bg-white text-slate-900">
+                <div className="bg-white dark:bg-gray-900 text-slate-900">
                   {/* Date & Payment Info */}
                   {(settings.showPurchaseDate || settings.showDueDate || settings.showPaymentMethod) && (
                     <div className="px-7 py-4 border-b border-slate-100">

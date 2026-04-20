@@ -136,7 +136,7 @@ export default function PenjualanOutlet() {
         {/* Header */}
         <div className="mb-8">
           <div className="flex items-center gap-3 mb-2">
-            <TrendingUp className="w-8 h-8 text-green-600" />
+            <TrendingUp className="w-8 h-8 text-green-600 dark:text-green-400" />
             <h1 className="text-3xl font-bold text-slate-900">
               Laporan Penjualan Per Outlet
             </h1>
@@ -219,7 +219,7 @@ export default function PenjualanOutlet() {
                 </CardTitle>
               </CardHeader>
               <CardContent>
-                <p className="text-2xl font-bold text-green-600">
+                <p className="text-2xl font-bold text-green-600 dark:text-green-400">
                   {formatRupiah(summary.totalPenjualan)}
                 </p>
               </CardContent>
@@ -231,7 +231,7 @@ export default function PenjualanOutlet() {
                 </CardTitle>
               </CardHeader>
               <CardContent>
-                <p className="text-2xl font-bold text-blue-600">
+                <p className="text-2xl font-bold text-blue-600 dark:text-blue-400">
                   {reportData?.length || 0}
                 </p>
               </CardContent>
@@ -243,7 +243,7 @@ export default function PenjualanOutlet() {
                 </CardTitle>
               </CardHeader>
               <CardContent>
-                <p className="text-2xl font-bold text-blue-600">
+                <p className="text-2xl font-bold text-blue-600 dark:text-blue-400">
                   {summary.totalTransaksi}
                 </p>
               </CardContent>
@@ -255,7 +255,7 @@ export default function PenjualanOutlet() {
                 </CardTitle>
               </CardHeader>
               <CardContent>
-                <p className="text-2xl font-bold text-purple-600">
+                <p className="text-2xl font-bold text-purple-600 dark:text-purple-400">
                   {formatRupiah(summary.avgPerTx)}
                 </p>
               </CardContent>

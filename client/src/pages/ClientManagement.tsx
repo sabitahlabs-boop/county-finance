@@ -285,7 +285,7 @@ export default function ClientManagement() {
                           <div className="font-medium">{tx.description || tx.category}</div>
                           <div className="text-xs text-muted-foreground">{tx.date}</div>
                         </div>
-                        <span className={tx.type === "pemasukan" ? "text-green-600 font-semibold" : "text-red-500 font-semibold"}>
+                        <span className={tx.type === "pemasukan" ? "text-green-600 dark:text-green-400 font-semibold" : "text-red-500 font-semibold"}>
                           {tx.type === "pemasukan" ? "+" : "-"}{formatRupiah(tx.amount)}
                         </span>
                       </div>
@@ -299,7 +299,7 @@ export default function ClientManagement() {
                 <div className="grid grid-cols-2 gap-3">
                   <Card className="border-0 bg-green-50 dark:bg-green-950/20">
                     <CardContent className="p-3 text-center">
-                      <div className="text-lg font-bold text-green-600">
+                      <div className="text-lg font-bold text-green-600 dark:text-green-400">
                         {formatRupiah(clientTxs.filter(t => t.type === "pemasukan").reduce((s, t) => s + t.amount, 0))}
                       </div>
                       <div className="text-xs text-muted-foreground">Total Pemasukan</div>

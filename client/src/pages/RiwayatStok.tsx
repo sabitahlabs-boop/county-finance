@@ -9,10 +9,10 @@ import { Search, TrendingUp, TrendingDown, RefreshCw, Package } from "lucide-rea
 import { formatRupiah } from "../../../shared/finance";
 
 const MOVEMENT_LABELS: Record<string, { label: string; color: string; icon: React.ReactNode }> = {
-  in: { label: "Stok Masuk", color: "bg-green-100 text-green-700 border-green-200", icon: <TrendingUp className="h-3 w-3" /> },
-  out: { label: "Stok Keluar", color: "bg-red-100 text-red-700 border-red-200", icon: <TrendingDown className="h-3 w-3" /> },
-  adjustment: { label: "Penyesuaian", color: "bg-orange-100 text-orange-700 border-orange-200", icon: <RefreshCw className="h-3 w-3" /> },
-  opening: { label: "Stok Awal", color: "bg-blue-100 text-blue-700 border-blue-200", icon: <Package className="h-3 w-3" /> },
+  in: { label: "Stok Masuk", color: "bg-green-100 dark:bg-green-900 text-green-700 dark:text-green-300 border-green-200 dark:border-green-800", icon: <TrendingUp className="h-3 w-3" /> },
+  out: { label: "Stok Keluar", color: "bg-red-100 dark:bg-red-900 text-red-700 dark:text-red-300 border-red-200 dark:border-red-800", icon: <TrendingDown className="h-3 w-3" /> },
+  adjustment: { label: "Penyesuaian", color: "bg-orange-100 dark:bg-orange-900 text-orange-700 dark:text-orange-300 border-orange-200 dark:border-orange-800", icon: <RefreshCw className="h-3 w-3" /> },
+  opening: { label: "Stok Awal", color: "bg-blue-100 dark:bg-blue-900 text-blue-700 dark:text-blue-300 border-blue-200 dark:border-blue-800", icon: <Package className="h-3 w-3" /> },
 };
 
 export default function RiwayatStok() {
@@ -70,12 +70,12 @@ export default function RiwayatStok() {
         <Card>
           <CardContent className="pt-4 pb-4">
             <div className="flex items-center gap-3">
-              <div className="p-2 rounded-lg bg-green-100">
-                <TrendingUp className="h-4 w-4 text-green-600" />
+              <div className="p-2 rounded-lg bg-green-100 dark:bg-green-900">
+                <TrendingUp className="h-4 w-4 text-green-600 dark:text-green-400" />
               </div>
               <div>
                 <p className="text-xs text-muted-foreground">Total Masuk</p>
-                <p className="text-xl font-bold text-green-600">+{stats.in.toLocaleString("id-ID")}</p>
+                <p className="text-xl font-bold text-green-600 dark:text-green-400">+{stats.in.toLocaleString("id-ID")}</p>
               </div>
             </div>
           </CardContent>
@@ -83,12 +83,12 @@ export default function RiwayatStok() {
         <Card>
           <CardContent className="pt-4 pb-4">
             <div className="flex items-center gap-3">
-              <div className="p-2 rounded-lg bg-red-100">
-                <TrendingDown className="h-4 w-4 text-red-600" />
+              <div className="p-2 rounded-lg bg-red-100 dark:bg-red-900">
+                <TrendingDown className="h-4 w-4 text-red-600 dark:text-red-400" />
               </div>
               <div>
                 <p className="text-xs text-muted-foreground">Total Keluar</p>
-                <p className="text-xl font-bold text-red-600">-{stats.out.toLocaleString("id-ID")}</p>
+                <p className="text-xl font-bold text-red-600 dark:text-red-400">-{stats.out.toLocaleString("id-ID")}</p>
               </div>
             </div>
           </CardContent>
@@ -96,12 +96,12 @@ export default function RiwayatStok() {
         <Card>
           <CardContent className="pt-4 pb-4">
             <div className="flex items-center gap-3">
-              <div className="p-2 rounded-lg bg-orange-100">
-                <RefreshCw className="h-4 w-4 text-orange-600" />
+              <div className="p-2 rounded-lg bg-orange-100 dark:bg-orange-900">
+                <RefreshCw className="h-4 w-4 text-orange-600 dark:text-orange-400" />
               </div>
               <div>
                 <p className="text-xs text-muted-foreground">Penyesuaian</p>
-                <p className="text-xl font-bold text-orange-600">{stats.adjustment}x</p>
+                <p className="text-xl font-bold text-orange-600 dark:text-orange-400">{stats.adjustment}x</p>
               </div>
             </div>
           </CardContent>
@@ -166,7 +166,7 @@ export default function RiwayatStok() {
                   {filtered.map((log) => {
                     const mv = MOVEMENT_LABELS[log.movementType] ?? MOVEMENT_LABELS.adjustment;
                     const qtyDisplay = log.direction > 0 ? `+${log.qty}` : `-${log.qty}`;
-                    const qtyColor = log.direction > 0 ? "text-green-600 font-semibold" : "text-red-600 font-semibold";
+                    const qtyColor = log.direction > 0 ? "text-green-600 dark:text-green-400 font-semibold" : "text-red-600 dark:text-red-400 font-semibold";
                     return (
                       <tr key={log.id} className="border-b hover:bg-muted/30 transition-colors">
                         <td className="p-3 whitespace-nowrap">

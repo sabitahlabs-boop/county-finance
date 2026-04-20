@@ -231,7 +231,7 @@ export default function TransaksiTunai() {
       <div className="flex items-center justify-between flex-wrap gap-3">
         <div>
           <h1 className="text-xl font-bold flex items-center gap-2">
-            <Banknote className="h-5 w-5 text-amber-600" />
+            <Banknote className="h-5 w-5 text-amber-600 dark:text-amber-400" />
             Rekonsiliasi Kas Tunai
           </h1>
           <p className="text-sm text-muted-foreground mt-0.5">
@@ -307,8 +307,8 @@ export default function TransaksiTunai() {
       ) : (
         <>
           {/* KAS MASUK Section */}
-          <Card className="border-green-200">
-            <CardHeader className="bg-green-50 border-b border-green-200">
+          <Card className="border-green-200 dark:border-green-800">
+            <CardHeader className="bg-green-50 dark:bg-green-950 border-b border-green-200 dark:border-green-800">
               <CardTitle className="text-base text-green-900">KAS MASUK</CardTitle>
             </CardHeader>
             <CardContent className="pt-6 space-y-4">
@@ -320,7 +320,7 @@ export default function TransaksiTunai() {
                     {kasData.posTransactionCount} transaksi
                   </p>
                 </div>
-                <p className="text-xl font-bold text-green-700">
+                <p className="text-xl font-bold text-green-700 dark:text-green-300">
                   {formatRupiah(kasData.pendapatanTunaiPOS)}
                 </p>
               </div>
@@ -333,15 +333,15 @@ export default function TransaksiTunai() {
                     {kasData.manualInCount} entri
                   </p>
                 </div>
-                <p className="text-xl font-bold text-green-700">
+                <p className="text-xl font-bold text-green-700 dark:text-green-300">
                   {formatRupiah(kasData.pendapatanTunaiManual)}
                 </p>
               </div>
 
               {/* Total Kas Masuk */}
-              <div className="flex justify-between items-start pt-2 bg-green-50 p-4 rounded-lg">
+              <div className="flex justify-between items-start pt-2 bg-green-50 dark:bg-green-950 p-4 rounded-lg">
                 <p className="font-bold text-base">Total Kas Masuk</p>
-                <p className="text-2xl font-bold text-green-700">
+                <p className="text-2xl font-bold text-green-700 dark:text-green-300">
                   {formatRupiah(kasData.totalKasMasuk)}
                 </p>
               </div>
@@ -349,8 +349,8 @@ export default function TransaksiTunai() {
           </Card>
 
           {/* KAS KELUAR Section */}
-          <Card className="border-red-200">
-            <CardHeader className="bg-red-50 border-b border-red-200">
+          <Card className="border-red-200 dark:border-red-800">
+            <CardHeader className="bg-red-50 dark:bg-red-950 border-b border-red-200 dark:border-red-800">
               <CardTitle className="text-base text-red-900">KAS KELUAR</CardTitle>
             </CardHeader>
             <CardContent className="pt-6 space-y-4">
@@ -362,7 +362,7 @@ export default function TransaksiTunai() {
                     {kasData.refundCount} transaksi
                   </p>
                 </div>
-                <p className="text-xl font-bold text-red-700">
+                <p className="text-xl font-bold text-red-700 dark:text-red-300">
                   {formatRupiah(kasData.voidTunai)}
                 </p>
               </div>
@@ -375,7 +375,7 @@ export default function TransaksiTunai() {
                     {kasData.manualOutCount} entri
                   </p>
                 </div>
-                <p className="text-xl font-bold text-red-700">
+                <p className="text-xl font-bold text-red-700 dark:text-red-300">
                   {formatRupiah(kasData.pengeluaranTunai)}
                 </p>
               </div>
@@ -388,15 +388,15 @@ export default function TransaksiTunai() {
                     perubahan pembulatan & kembalian uang
                   </p>
                 </div>
-                <p className="text-xl font-bold text-red-700">
+                <p className="text-xl font-bold text-red-700 dark:text-red-300">
                   {formatRupiah(kasData.kembalianPelanggan)}
                 </p>
               </div>
 
               {/* Total Kas Keluar */}
-              <div className="flex justify-between items-start pt-2 bg-red-50 p-4 rounded-lg">
+              <div className="flex justify-between items-start pt-2 bg-red-50 dark:bg-red-950 p-4 rounded-lg">
                 <p className="font-bold text-base">Total Kas Keluar</p>
-                <p className="text-2xl font-bold text-red-700">
+                <p className="text-2xl font-bold text-red-700 dark:text-red-300">
                   {formatRupiah(kasData.totalKasKeluar)}
                 </p>
               </div>
@@ -406,13 +406,13 @@ export default function TransaksiTunai() {
           {/* SALDO KAS BERSIH Section */}
           <Card
             className={`border-2 ${
-              metrics.netKas >= 0 ? "border-blue-300" : "border-orange-300"
+              metrics.netKas >= 0 ? "border-blue-300 dark:border-blue-700" : "border-orange-300 dark:border-orange-700"
             }`}
           >
             <CardHeader
               className={`${
-                metrics.netKas >= 0 ? "bg-blue-50" : "bg-orange-50"
-              } border-b ${metrics.netKas >= 0 ? "border-blue-200" : "border-orange-200"}`}
+                metrics.netKas >= 0 ? "bg-blue-50 dark:bg-blue-950" : "bg-orange-50 dark:bg-orange-950"
+              } border-b ${metrics.netKas >= 0 ? "border-blue-200 dark:border-blue-800" : "border-orange-200 dark:border-orange-800"}`}
             >
               <CardTitle className={`text-base ${
                 metrics.netKas >= 0 ? "text-blue-900" : "text-orange-900"
@@ -426,7 +426,7 @@ export default function TransaksiTunai() {
                   Total Kas Masuk - Total Kas Keluar
                 </p>
                 <p className={`text-5xl font-bold ${
-                  metrics.netKas >= 0 ? "text-blue-700" : "text-orange-700"
+                  metrics.netKas >= 0 ? "text-blue-700 dark:text-blue-300" : "text-orange-700 dark:text-orange-300"
                 }`}>
                   {formatRupiah(metrics.netKas)}
                 </p>
@@ -456,7 +456,7 @@ export default function TransaksiTunai() {
                   </thead>
                   <tbody>
                     {/* KAS MASUK Group */}
-                    <tr className="bg-green-50 border-b">
+                    <tr className="bg-green-50 dark:bg-green-950 border-b">
                       <td colSpan={3} className="px-4 py-2 font-bold text-green-900 text-xs">
                         KAS MASUK
                       </td>
@@ -475,16 +475,16 @@ export default function TransaksiTunai() {
                         {formatRupiah(kasData.pendapatanTunaiManual)}
                       </td>
                     </tr>
-                    <tr className="bg-green-100 font-bold border-b-2">
+                    <tr className="bg-green-100 dark:bg-green-900 font-bold border-b-2">
                       <td className="px-4 py-2">TOTAL KAS MASUK</td>
                       <td className="px-4 py-2 text-right">-</td>
-                      <td className="px-4 py-2 text-right text-green-700">
+                      <td className="px-4 py-2 text-right text-green-700 dark:text-green-300">
                         {formatRupiah(kasData.totalKasMasuk)}
                       </td>
                     </tr>
 
                     {/* KAS KELUAR Group */}
-                    <tr className="bg-red-50 border-b">
+                    <tr className="bg-red-50 dark:bg-red-950 border-b">
                       <td colSpan={3} className="px-4 py-2 font-bold text-red-900 text-xs">
                         KAS KELUAR
                       </td>
@@ -510,10 +510,10 @@ export default function TransaksiTunai() {
                         {formatRupiah(kasData.kembalianPelanggan)}
                       </td>
                     </tr>
-                    <tr className="bg-red-100 font-bold border-b-2">
+                    <tr className="bg-red-100 dark:bg-red-900 font-bold border-b-2">
                       <td className="px-4 py-2">TOTAL KAS KELUAR</td>
                       <td className="px-4 py-2 text-right">-</td>
-                      <td className="px-4 py-2 text-right text-red-700">
+                      <td className="px-4 py-2 text-right text-red-700 dark:text-red-300">
                         {formatRupiah(kasData.totalKasKeluar)}
                       </td>
                     </tr>
@@ -521,14 +521,14 @@ export default function TransaksiTunai() {
                     {/* SALDO Group */}
                     <tr
                       className={`${
-                        metrics.netKas >= 0 ? "bg-blue-100" : "bg-orange-100"
+                        metrics.netKas >= 0 ? "bg-blue-100 dark:bg-blue-900" : "bg-orange-100 dark:bg-orange-900"
                       } font-bold border-t-2`}
                     >
                       <td className="px-4 py-3">SALDO KAS BERSIH</td>
                       <td className="px-4 py-3 text-right">-</td>
                       <td
                         className={`px-4 py-3 text-right text-lg ${
-                          metrics.netKas >= 0 ? "text-blue-700" : "text-orange-700"
+                          metrics.netKas >= 0 ? "text-blue-700 dark:text-blue-300" : "text-orange-700 dark:text-orange-300"
                         }`}
                       >
                         {formatRupiah(metrics.netKas)}

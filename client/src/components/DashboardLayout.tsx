@@ -557,13 +557,13 @@ function DashboardLayoutContent({
                   </span>
                   <span className={`text-[10px] font-semibold px-1.5 py-0.5 rounded shrink-0 ${
                     isPersonal
-                      ? "bg-purple-50 text-purple-600 dark:bg-purple-950 dark:text-purple-400"
-                      : "bg-blue-50 text-blue-600 dark:bg-blue-950 dark:text-blue-400"
+                      ? "bg-purple-50 dark:bg-purple-950 text-purple-600 dark:text-purple-400 dark:bg-purple-950 dark:text-purple-400"
+                      : "bg-blue-50 dark:bg-blue-950 text-blue-600 dark:text-blue-400 dark:bg-blue-950 dark:text-blue-400"
                   }`}>
                     {isPersonal ? "Pribadi" : "UMKM"}
                   </span>
                   {isTeamMember && activeRole && (
-                    <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded shrink-0 bg-amber-50 text-amber-600 dark:bg-amber-950 dark:text-amber-400">
+                    <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded shrink-0 bg-amber-50 dark:bg-amber-950 text-amber-600 dark:text-amber-400 dark:bg-amber-950 dark:text-amber-400">
                       {activeRole.charAt(0).toUpperCase() + activeRole.slice(1)}
                     </span>
                   )}
@@ -665,8 +665,8 @@ function DashboardLayoutContent({
                 disabled={setModeMut.isPending}
                 className={`flex items-center gap-2 w-full rounded-lg border px-3 py-1.5 text-left transition-all text-xs font-medium ${
                   isPersonal
-                    ? "border-purple-200 bg-purple-50/50 hover:bg-purple-50 text-purple-600 dark:border-purple-800 dark:bg-purple-950/30 dark:text-purple-400"
-                    : "border-blue-200 bg-blue-50/50 hover:bg-blue-50 text-blue-600 dark:border-blue-800 dark:bg-blue-950/30 dark:text-blue-400"
+                    ? "border-purple-200 dark:border-purple-800 bg-purple-50 dark:bg-purple-950/50 hover:bg-purple-50 dark:bg-purple-950 text-purple-600 dark:text-purple-400 dark:border-purple-800 dark:bg-purple-950/30 dark:text-purple-400"
+                    : "border-blue-200 dark:border-blue-800 bg-blue-50 dark:bg-blue-950/50 hover:bg-blue-50 dark:bg-blue-950 text-blue-600 dark:text-blue-400 dark:border-blue-800 dark:bg-blue-950/30 dark:text-blue-400"
                 } ${setModeMut.isPending ? "opacity-60 cursor-wait" : "cursor-pointer"}`}
               >
                 <ArrowRightLeft className="h-3.5 w-3.5 shrink-0" />
@@ -688,8 +688,8 @@ function DashboardLayoutContent({
                 disabled={setModeMut.isPending}
                 className={`h-8 w-8 flex items-center justify-center rounded-md border transition-all ${
                   isPersonal
-                    ? "border-purple-200 bg-purple-50/50 hover:bg-purple-50 text-purple-600 dark:border-purple-800 dark:bg-purple-950/30 dark:text-purple-400"
-                    : "border-blue-200 bg-blue-50/50 hover:bg-blue-50 text-blue-600 dark:border-blue-800 dark:bg-blue-950/30 dark:text-blue-400"
+                    ? "border-purple-200 dark:border-purple-800 bg-purple-50 dark:bg-purple-950/50 hover:bg-purple-50 dark:bg-purple-950 text-purple-600 dark:text-purple-400 dark:border-purple-800 dark:bg-purple-950/30 dark:text-purple-400"
+                    : "border-blue-200 dark:border-blue-800 bg-blue-50 dark:bg-blue-950/50 hover:bg-blue-50 dark:bg-blue-950 text-blue-600 dark:text-blue-400 dark:border-blue-800 dark:bg-blue-950/30 dark:text-blue-400"
                 } ${setModeMut.isPending ? "opacity-60 cursor-wait" : "cursor-pointer"}`}
                 title={appMode === "umkm" ? "Beralih ke Jurnal Pribadi" : "Beralih ke Mode UMKM"}
               >
@@ -710,7 +710,7 @@ function DashboardLayoutContent({
           {/* ─── Tax Alert (UMKM only) ─── */}
           {appMode === "umkm" && !isCollapsed && totalTax > 0 && (
             <div className="px-3 pb-2">
-              <div className="rounded-lg bg-amber-50 border border-amber-200/50 p-3 dark:bg-amber-950/20 dark:border-amber-800/30">
+              <div className="rounded-lg bg-amber-50 dark:bg-amber-950 border border-amber-200 dark:border-amber-800/50 p-3 dark:bg-amber-950/20 dark:border-amber-800/30">
                 <div className="flex items-center gap-2 text-xs text-muted-foreground mb-1">
                   <AlertTriangle className="h-3.5 w-3.5 text-amber-500" />
                   <span>Estimasi Pajak Bulan Ini</span>
@@ -792,13 +792,13 @@ function DashboardLayoutContent({
               >
                 <div className={`h-14 w-14 rounded-xl flex items-center justify-center ${
                   showTransition === "personal"
-                    ? "bg-purple-100 text-purple-600"
-                    : "bg-blue-100 text-blue-600"
+                    ? "bg-purple-100 dark:bg-purple-900 text-purple-600 dark:text-purple-400"
+                    : "bg-blue-100 dark:bg-blue-900 text-blue-600 dark:text-blue-400"
                 }`}>
                   {showTransition === "personal" ? <BookOpen className="h-7 w-7" /> : <Store className="h-7 w-7" />}
                 </div>
                 <p className={`text-sm font-semibold ${
-                  showTransition === "personal" ? "text-purple-600" : "text-blue-600"
+                  showTransition === "personal" ? "text-purple-600 dark:text-purple-400" : "text-blue-600 dark:text-blue-400"
                 }`}>
                   {showTransition === "personal" ? "Jurnal Pribadi" : "Mode UMKM"}
                 </p>
@@ -835,7 +835,7 @@ function DashboardLayoutContent({
             </div>
             <button
               onClick={stopImpersonating}
-              className="bg-white/20 hover:bg-white/30 rounded px-3 py-1 text-xs font-semibold transition-colors"
+              className="bg-white dark:bg-gray-900/20 hover:bg-white dark:bg-gray-900/30 rounded px-3 py-1 text-xs font-semibold transition-colors"
             >
               Kembali ke Akun Saya
             </button>
@@ -872,7 +872,7 @@ function ThemeToggleButton({ isCollapsed }: { isCollapsed: boolean }) {
             {theme === "dark" ? "Mode Gelap" : "Mode Terang"}
           </span>
           <div className={`relative w-8 h-[18px] rounded-full transition-colors ${theme === "dark" ? "bg-primary" : "bg-border"}`}>
-            <div className={`absolute top-[2px] h-[14px] w-[14px] rounded-full bg-white shadow-sm transition-transform ${theme === "dark" ? "translate-x-[14px]" : "translate-x-[2px]"}`} />
+            <div className={`absolute top-[2px] h-[14px] w-[14px] rounded-full bg-white dark:bg-gray-900 shadow-sm transition-transform ${theme === "dark" ? "translate-x-[14px]" : "translate-x-[2px]"}`} />
           </div>
         </div>
       )}

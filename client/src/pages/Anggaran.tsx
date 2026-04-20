@@ -196,7 +196,7 @@ function TagihanRutinTab() {
         <Card className="border-0 shadow-md bg-gradient-to-br from-orange-50 to-amber-50 dark:from-orange-950/20 dark:to-amber-950/10">
           <CardContent className="p-4">
             <div className="text-2xl font-bold text-orange-700 dark:text-orange-400">{formatRupiah(totalBills)}</div>
-            <div className="text-xs text-orange-600/70 dark:text-orange-400/60 mt-1">Total Tagihan / Bulan</div>
+            <div className="text-xs text-orange-600 dark:text-orange-400/70 dark:text-orange-400/60 mt-1">Total Tagihan / Bulan</div>
           </CardContent>
         </Card>
         <Card className="border-0 shadow-md">
@@ -240,7 +240,7 @@ function TagihanRutinTab() {
                         <div className="flex-1 min-w-0">
                           <div className="flex items-center gap-2">
                             <h3 className="font-semibold truncate">{bill.name}</h3>
-                            {isDueSoon && <Badge className="bg-amber-100 text-amber-700 text-[10px] shrink-0">Segera Jatuh Tempo</Badge>}
+                            {isDueSoon && <Badge className="bg-amber-100 dark:bg-amber-900 text-amber-700 dark:text-amber-300 text-[10px] shrink-0">Segera Jatuh Tempo</Badge>}
                           </div>
                           <div className="flex items-center gap-3 mt-1">
                             <span className="text-xs text-muted-foreground">{bill.category}</span>
@@ -474,7 +474,7 @@ function AnggaranTab() {
         </Card>
         <Card className="border-0 shadow-md">
           <CardContent className="p-4">
-            <div className={`text-lg font-bold ${totalBudget - totalSpent < 0 ? "text-red-500" : "text-green-600"}`}>
+            <div className={`text-lg font-bold ${totalBudget - totalSpent < 0 ? "text-red-500" : "text-green-600 dark:text-green-400"}`}>
               {formatRupiah(totalBudget - totalSpent)}
             </div>
             <div className="text-xs text-muted-foreground">Sisa Anggaran</div>
@@ -524,9 +524,9 @@ function AnggaranTab() {
                             {isOver ? (
                               <Badge variant="destructive" className="text-xs"><AlertTriangle className="h-3 w-3 mr-1" />Melebihi Batas</Badge>
                             ) : pct >= 80 ? (
-                              <Badge className="bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400 text-xs">Hampir Habis</Badge>
+                              <Badge className="bg-amber-100 dark:bg-amber-900 text-amber-700 dark:text-amber-300 dark:bg-amber-900/30 dark:text-amber-400 text-xs">Hampir Habis</Badge>
                             ) : (
-                              <Badge className="bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400 text-xs"><CheckCircle2 className="h-3 w-3 mr-1" />Aman</Badge>
+                              <Badge className="bg-green-100 dark:bg-green-900 text-green-700 dark:text-green-300 dark:bg-green-900/30 dark:text-green-400 text-xs"><CheckCircle2 className="h-3 w-3 mr-1" />Aman</Badge>
                             )}
                           </div>
                           {budget.notes && <p className="text-xs text-muted-foreground">{budget.notes}</p>}
@@ -682,7 +682,7 @@ function TabunganImpianTab() {
         <Card className="border-0 shadow-md bg-gradient-to-br from-purple-50 to-pink-50 dark:from-purple-950/20 dark:to-pink-950/10">
           <CardContent className="p-4">
             <div className="text-xl font-bold text-purple-700 dark:text-purple-400">{formatRupiah(totalSaved)}</div>
-            <div className="text-xs text-purple-600/70 dark:text-purple-400/60 mt-1">Total Terkumpul</div>
+            <div className="text-xs text-purple-600 dark:text-purple-400/70 dark:text-purple-400/60 mt-1">Total Terkumpul</div>
           </CardContent>
         </Card>
         <Card className="border-0 shadow-md">
@@ -693,7 +693,7 @@ function TabunganImpianTab() {
         </Card>
         <Card className="border-0 shadow-md">
           <CardContent className="p-4">
-            <div className="text-xl font-bold text-green-600">{completedCount}</div>
+            <div className="text-xl font-bold text-green-600 dark:text-green-400">{completedCount}</div>
             <div className="text-xs text-muted-foreground mt-1">Tercapai</div>
           </CardContent>
         </Card>
@@ -741,7 +741,7 @@ function TabunganImpianTab() {
                         <div className="flex-1 min-w-0">
                           <div className="flex items-center gap-2">
                             <h3 className="font-semibold truncate">{goal.name}</h3>
-                            {goal.isCompleted && <Badge className="bg-green-100 text-green-700 text-xs shrink-0">Tercapai! 🎉</Badge>}
+                            {goal.isCompleted && <Badge className="bg-green-100 dark:bg-green-900 text-green-700 dark:text-green-300 text-xs shrink-0">Tercapai! 🎉</Badge>}
                           </div>
                           {goal.deadline && (
                             <p className="text-xs text-muted-foreground mt-0.5 flex items-center gap-1">
@@ -806,7 +806,7 @@ function TabunganImpianTab() {
                       key={d.label}
                       onClick={() => setForm(f => ({ ...f, icon: d.label }))}
                       className={`flex flex-col items-center gap-1 p-2 rounded-lg border text-xs transition-all ${
-                        isSelected ? "border-purple-500 bg-purple-50 dark:bg-purple-950/30 text-purple-700" : "border-border hover:border-purple-300"
+                        isSelected ? "border-purple-500 bg-purple-50 dark:bg-purple-950/30 text-purple-700 dark:text-purple-300" : "border-border hover:border-purple-300 dark:border-purple-700"
                       }`}
                     >
                       <d.icon className="h-5 w-5" />

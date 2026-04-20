@@ -162,7 +162,7 @@ export default function VoidRefundAnalysis() {
       <div className="flex items-center justify-between flex-wrap gap-3">
         <div>
           <h1 className="text-xl font-bold flex items-center gap-2">
-            <RotateCcw className="h-5 w-5 text-red-600" />
+            <RotateCcw className="h-5 w-5 text-red-600 dark:text-red-400" />
             Analisis Void/Refund
           </h1>
           <p className="text-sm text-muted-foreground mt-0.5">
@@ -231,7 +231,7 @@ export default function VoidRefundAnalysis() {
             {isLoading ? (
               <Skeleton className="h-10 w-24" />
             ) : (
-              <p className="text-3xl font-bold text-red-600">{metrics.totalRefunds}</p>
+              <p className="text-3xl font-bold text-red-600 dark:text-red-400">{metrics.totalRefunds}</p>
             )}
             {!isLoading && (
               <p className="text-xs text-muted-foreground mt-2">
@@ -249,7 +249,7 @@ export default function VoidRefundAnalysis() {
             {isLoading ? (
               <Skeleton className="h-10 w-32" />
             ) : (
-              <p className="text-3xl font-bold text-red-600">
+              <p className="text-3xl font-bold text-red-600 dark:text-red-400">
                 {formatRupiah(metrics.totalRefundAmount)}
               </p>
             )}
@@ -269,7 +269,7 @@ export default function VoidRefundAnalysis() {
             {isLoading ? (
               <Skeleton className="h-10 w-32" />
             ) : (
-              <p className="text-3xl font-bold text-red-600">
+              <p className="text-3xl font-bold text-red-600 dark:text-red-400">
                 {formatRupiah(metrics.avgRefundAmount)}
               </p>
             )}
@@ -293,14 +293,14 @@ export default function VoidRefundAnalysis() {
               {reasonBreakdown.map((item) => (
                 <div
                   key={item.reason}
-                  className="border rounded-lg p-3 bg-red-50 border-red-200"
+                  className="border rounded-lg p-3 bg-red-50 dark:bg-red-950 border-red-200 dark:border-red-800"
                 >
                   <p className="font-semibold text-sm text-red-900">{item.reason}</p>
                   <div className="mt-2 space-y-1">
                     <p className="text-xs text-muted-foreground">
                       {item.count} transaksi
                     </p>
-                    <p className="text-sm font-bold text-red-600">
+                    <p className="text-sm font-bold text-red-600 dark:text-red-400">
                       {formatRupiah(item.amount)}
                     </p>
                   </div>
@@ -325,7 +325,7 @@ export default function VoidRefundAnalysis() {
                   <div key={item.date}>
                     <div className="flex justify-between mb-1">
                       <span className="text-xs font-semibold">{item.date}</span>
-                      <span className="text-xs font-semibold text-red-600">
+                      <span className="text-xs font-semibold text-red-600 dark:text-red-400">
                         {item.count} transaksi • {formatRupiah(item.amount)}
                       </span>
                     </div>
@@ -348,19 +348,19 @@ export default function VoidRefundAnalysis() {
         <Card>
           <CardHeader>
             <CardTitle className="text-base flex items-center gap-2">
-              <Ban className="h-4 w-4 text-amber-600" />
+              <Ban className="h-4 w-4 text-amber-600 dark:text-amber-400" />
               Transaksi Void (Manual)
             </CardTitle>
           </CardHeader>
           <CardContent>
             <div className="grid grid-cols-2 gap-4 mb-4">
-              <div className="rounded-lg border border-amber-200 bg-amber-50 p-3 dark:border-amber-800 dark:bg-amber-950/30">
+              <div className="rounded-lg border border-amber-200 dark:border-amber-800 bg-amber-50 dark:bg-amber-950 p-3 dark:border-amber-800 dark:bg-amber-950/30">
                 <p className="text-xs font-semibold text-muted-foreground">Jumlah Void</p>
-                <p className="text-2xl font-bold text-amber-600 mt-1">{voidedTxMetrics.count}</p>
+                <p className="text-2xl font-bold text-amber-600 dark:text-amber-400 mt-1">{voidedTxMetrics.count}</p>
               </div>
-              <div className="rounded-lg border border-amber-200 bg-amber-50 p-3 dark:border-amber-800 dark:bg-amber-950/30">
+              <div className="rounded-lg border border-amber-200 dark:border-amber-800 bg-amber-50 dark:bg-amber-950 p-3 dark:border-amber-800 dark:bg-amber-950/30">
                 <p className="text-xs font-semibold text-muted-foreground">Total Nominal</p>
-                <p className="text-2xl font-bold text-amber-600 mt-1">{formatRupiah(voidedTxMetrics.total)}</p>
+                <p className="text-2xl font-bold text-amber-600 dark:text-amber-400 mt-1">{formatRupiah(voidedTxMetrics.total)}</p>
               </div>
             </div>
             <ScrollArea className="w-full">
@@ -383,7 +383,7 @@ export default function VoidRefundAnalysis() {
                       <td className="px-4 py-2 font-mono text-xs">{tx.txCode}</td>
                       <td className="px-4 py-2">{tx.date}</td>
                       <td className="px-4 py-2">{tx.category}</td>
-                      <td className="px-4 py-2 text-right font-semibold text-amber-600">
+                      <td className="px-4 py-2 text-right font-semibold text-amber-600 dark:text-amber-400">
                         {formatRupiah(tx.amount)}
                       </td>
                       <td className="px-4 py-2 text-xs">{tx.voidReason ?? "-"}</td>
@@ -438,7 +438,7 @@ export default function VoidRefundAnalysis() {
                       <td className="px-4 py-2 text-right font-semibold">
                         {formatRupiah(row.grandTotal)}
                       </td>
-                      <td className="px-4 py-2 text-right font-bold text-red-600">
+                      <td className="px-4 py-2 text-right font-bold text-red-600 dark:text-red-400">
                         {formatRupiah(row.refundAmount)}
                       </td>
                       <td className="px-4 py-2 text-xs">{row.refundReason}</td>
@@ -446,7 +446,7 @@ export default function VoidRefundAnalysis() {
                     </tr>
                   ))}
                   {/* Summary row */}
-                  <tr className="bg-red-50 font-bold border-t-2 border-red-200">
+                  <tr className="bg-red-50 dark:bg-red-950 font-bold border-t-2 border-red-200 dark:border-red-800">
                     <td colSpan={4} className="px-4 py-3">
                       TOTAL
                     </td>
@@ -455,7 +455,7 @@ export default function VoidRefundAnalysis() {
                         reportData.receipts.reduce((sum, r) => sum + r.grandTotal, 0)
                       )}
                     </td>
-                    <td className="px-4 py-3 text-right text-red-600">
+                    <td className="px-4 py-3 text-right text-red-600 dark:text-red-400">
                       {formatRupiah(metrics.totalRefundAmount)}
                     </td>
                     <td colSpan={2} />

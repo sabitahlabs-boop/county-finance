@@ -1097,7 +1097,7 @@ function QRISDisplay() {
 
   return (
     <div className="space-y-2">
-      <div className="rounded-lg border bg-white p-3 mx-auto w-fit">
+      <div className="rounded-lg border bg-white dark:bg-gray-900 p-3 mx-auto w-fit">
         <img src={qrisUrl} alt="QRIS" className="max-w-[200px] max-h-[200px] rounded-lg mx-auto" />
       </div>
       <p className="text-xs text-center text-muted-foreground">Tunjukkan QR code ke pelanggan untuk scan</p>

@@ -98,7 +98,7 @@ export default function SalesAnalytics() {
               <Card className="border-0 shadow-md">
                 <CardContent className="p-4">
                   <div className="flex items-center gap-2 mb-2">
-                    <div className="p-2 rounded-lg bg-blue-100 dark:bg-blue-900/30"><DollarSign className="h-4 w-4 text-blue-600" /></div>
+                    <div className="p-2 rounded-lg bg-blue-100 dark:bg-blue-900/30"><DollarSign className="h-4 w-4 text-blue-600 dark:text-blue-400" /></div>
                   </div>
                   <div className="text-lg font-bold">{formatRupiah(totalSales)}</div>
                   <div className="text-xs text-muted-foreground">Total Penjualan</div>
@@ -109,7 +109,7 @@ export default function SalesAnalytics() {
               <Card className="border-0 shadow-md">
                 <CardContent className="p-4">
                   <div className="flex items-center gap-2 mb-2">
-                    <div className="p-2 rounded-lg bg-red-100 dark:bg-red-900/30"><TrendingDown className="h-4 w-4 text-red-600" /></div>
+                    <div className="p-2 rounded-lg bg-red-100 dark:bg-red-900/30"><TrendingDown className="h-4 w-4 text-red-600 dark:text-red-400" /></div>
                   </div>
                   <div className="text-lg font-bold">{formatRupiah(totalExpenses)}</div>
                   <div className="text-xs text-muted-foreground">Total Pengeluaran</div>
@@ -120,9 +120,9 @@ export default function SalesAnalytics() {
               <Card className="border-0 shadow-md">
                 <CardContent className="p-4">
                   <div className="flex items-center gap-2 mb-2">
-                    <div className="p-2 rounded-lg bg-green-100 dark:bg-green-900/30"><TrendingUp className="h-4 w-4 text-green-600" /></div>
+                    <div className="p-2 rounded-lg bg-green-100 dark:bg-green-900/30"><TrendingUp className="h-4 w-4 text-green-600 dark:text-green-400" /></div>
                   </div>
-                  <div className={`text-lg font-bold ${totalProfit >= 0 ? "text-green-600" : "text-red-500"}`}>{formatRupiah(totalProfit)}</div>
+                  <div className={`text-lg font-bold ${totalProfit >= 0 ? "text-green-600 dark:text-green-400" : "text-red-500"}`}>{formatRupiah(totalProfit)}</div>
                   <div className="text-xs text-muted-foreground">Laba Bersih</div>
                 </CardContent>
               </Card>
@@ -131,7 +131,7 @@ export default function SalesAnalytics() {
               <Card className="border-0 shadow-md">
                 <CardContent className="p-4">
                   <div className="flex items-center gap-2 mb-2">
-                    <div className="p-2 rounded-lg bg-amber-100 dark:bg-amber-900/30"><Award className="h-4 w-4 text-amber-600" /></div>
+                    <div className="p-2 rounded-lg bg-amber-100 dark:bg-amber-900/30"><Award className="h-4 w-4 text-amber-600 dark:text-amber-400" /></div>
                   </div>
                   <div className="text-lg font-bold">{BULAN_INDONESIA[bestMonthIdx]}</div>
                   <div className="text-xs text-muted-foreground">Bulan Terbaik</div>

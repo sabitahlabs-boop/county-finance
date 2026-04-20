@@ -129,7 +129,7 @@ export default function Kehadiran() {
                               </p>
                             </>
                           ) : (
-                            <Badge className="bg-green-100 text-green-800">Sedang Bekerja</Badge>
+                            <Badge className="bg-green-100 dark:bg-green-900 text-green-800 dark:text-green-200">Sedang Bekerja</Badge>
                           )}
                         </>
                       );
@@ -171,25 +171,25 @@ export default function Kehadiran() {
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
           <Card className="border-0 shadow-md">
             <CardContent className="p-4">
-              <div className="text-2xl font-bold text-green-600">{totalPresent}</div>
+              <div className="text-2xl font-bold text-green-600 dark:text-green-400">{totalPresent}</div>
               <div className="text-xs text-muted-foreground">Hadir</div>
             </CardContent>
           </Card>
           <Card className="border-0 shadow-md">
             <CardContent className="p-4">
-              <div className="text-2xl font-bold text-orange-600">{totalLate}</div>
+              <div className="text-2xl font-bold text-orange-600 dark:text-orange-400">{totalLate}</div>
               <div className="text-xs text-muted-foreground">Telat</div>
             </CardContent>
           </Card>
           <Card className="border-0 shadow-md">
             <CardContent className="p-4">
-              <div className="text-2xl font-bold text-red-600">{totalAbsent}</div>
+              <div className="text-2xl font-bold text-red-600 dark:text-red-400">{totalAbsent}</div>
               <div className="text-xs text-muted-foreground">Absen</div>
             </CardContent>
           </Card>
           <Card className="border-0 shadow-md">
             <CardContent className="p-4">
-              <div className="text-2xl font-bold text-blue-600">{listAttendance?.length || 0}</div>
+              <div className="text-2xl font-bold text-blue-600 dark:text-blue-400">{listAttendance?.length || 0}</div>
               <div className="text-xs text-muted-foreground">Total Pegawai</div>
             </CardContent>
           </Card>
@@ -269,9 +269,9 @@ export default function Kehadiran() {
                       </div>
                       <Badge
                         className={
-                          status === "completed" ? "bg-green-100 text-green-800" :
-                          status === "active" ? "bg-blue-100 text-blue-800" :
-                          "bg-red-100 text-red-800"
+                          status === "completed" ? "bg-green-100 dark:bg-green-900 text-green-800 dark:text-green-200" :
+                          status === "active" ? "bg-blue-100 dark:bg-blue-900 text-blue-800 dark:text-blue-200" :
+                          "bg-red-100 dark:bg-red-900 text-red-800 dark:text-red-200"
                         }
                       >
                         {statusLabel}
@@ -318,9 +318,9 @@ export default function Kehadiran() {
                       <div className="text-right">
                         <Badge
                           className={
-                            status === "completed" ? "bg-green-100 text-green-800" :
-                            status === "active" ? "bg-blue-100 text-blue-800" :
-                            "bg-red-100 text-red-800"
+                            status === "completed" ? "bg-green-100 dark:bg-green-900 text-green-800 dark:text-green-200" :
+                            status === "active" ? "bg-blue-100 dark:bg-blue-900 text-blue-800 dark:text-blue-200" :
+                            "bg-red-100 dark:bg-red-900 text-red-800 dark:text-red-200"
                           }
                         >
                           {statusLabel}

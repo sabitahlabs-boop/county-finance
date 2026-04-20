@@ -112,7 +112,7 @@ export default function LabaRugiDetail() {
   if (!report) {
     return (
       <div className="flex items-center justify-center h-96">
-        <p className="text-gray-500">Data tidak tersedia</p>
+        <p className="text-gray-500 dark:text-gray-400">Data tidak tersedia</p>
       </div>
     );
   }
@@ -134,10 +134,10 @@ export default function LabaRugiDetail() {
       {/* Header */}
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-3">
-          <BarChart3 className="h-8 w-8 text-blue-600" />
+          <BarChart3 className="h-8 w-8 text-blue-600 dark:text-blue-400" />
           <div>
             <h1 className="text-3xl font-bold">Laporan Laba Rugi Detail</h1>
-            <p className="text-gray-600">Laporan P&L terperinci dengan breakdown komprehensif</p>
+            <p className="text-gray-600 dark:text-gray-400">Laporan P&L terperinci dengan breakdown komprehensif</p>
           </div>
         </div>
         <div className="flex gap-2">
@@ -180,7 +180,7 @@ export default function LabaRugiDetail() {
       <div className="grid grid-cols-3 gap-4">
         <Card>
           <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium text-gray-600 flex items-center justify-between">
+            <CardTitle className="text-sm font-medium text-gray-600 dark:text-gray-400 flex items-center justify-between">
               Total Pendapatan
               {deltaPendapatan && (
                 <Badge variant={deltaPendapatan.isUp ? "default" : "destructive"} className="text-xs">
@@ -190,26 +190,26 @@ export default function LabaRugiDetail() {
             </CardTitle>
           </CardHeader>
           <CardContent>
-            <p className="text-2xl font-bold text-green-600">{formatRupiah(report.pendapatan.totalPendapatan)}</p>
-            <p className="text-xs text-gray-500 mt-1">100%</p>
+            <p className="text-2xl font-bold text-green-600 dark:text-green-400">{formatRupiah(report.pendapatan.totalPendapatan)}</p>
+            <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">100%</p>
           </CardContent>
         </Card>
 
         <Card>
           <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium text-gray-600">Laba Kotor</CardTitle>
+            <CardTitle className="text-sm font-medium text-gray-600 dark:text-gray-400">Laba Kotor</CardTitle>
           </CardHeader>
           <CardContent>
-            <p className={`text-2xl font-bold ${report.labaKotor >= 0 ? "text-blue-600" : "text-red-600"}`}>
+            <p className={`text-2xl font-bold ${report.labaKotor >= 0 ? "text-blue-600 dark:text-blue-400" : "text-red-600 dark:text-red-400"}`}>
               {formatRupiah(report.labaKotor)}
             </p>
-            <p className="text-xs text-gray-500 mt-1">{report.marginKotor}% margin</p>
+            <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">{report.marginKotor}% margin</p>
           </CardContent>
         </Card>
 
         <Card>
           <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium text-gray-600 flex items-center justify-between">
+            <CardTitle className="text-sm font-medium text-gray-600 dark:text-gray-400 flex items-center justify-between">
               Laba Bersih
               {deltaLabaBersih && (
                 <Badge variant={deltaLabaBersih.isUp ? "default" : "destructive"} className="text-xs">
@@ -219,10 +219,10 @@ export default function LabaRugiDetail() {
             </CardTitle>
           </CardHeader>
           <CardContent>
-            <p className={`text-2xl font-bold ${report.labaBersih >= 0 ? "text-green-600" : "text-red-600"}`}>
+            <p className={`text-2xl font-bold ${report.labaBersih >= 0 ? "text-green-600 dark:text-green-400" : "text-red-600 dark:text-red-400"}`}>
               {formatRupiah(report.labaBersih)}
             </p>
-            <p className="text-xs text-gray-500 mt-1">{report.marginBersih}% margin</p>
+            <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">{report.marginBersih}% margin</p>
           </CardContent>
         </Card>
       </div>
@@ -232,7 +232,7 @@ export default function LabaRugiDetail() {
         <CardHeader>
           <CardTitle className="flex items-center justify-between">
             <span>1. Pendapatan (Revenue)</span>
-            <span className="text-sm font-normal text-gray-600">{formatRupiah(report.pendapatan.totalPendapatan)}</span>
+            <span className="text-sm font-normal text-gray-600 dark:text-gray-400">{formatRupiah(report.pendapatan.totalPendapatan)}</span>
           </CardTitle>
         </CardHeader>
         <CardContent>
@@ -274,7 +274,7 @@ export default function LabaRugiDetail() {
         <CardHeader>
           <CardTitle className="flex items-center justify-between">
             <span>2. Harga Pokok Penjualan (COGS)</span>
-            <span className="text-sm font-normal text-gray-600">{formatRupiah(report.hpp.totalHPP)}</span>
+            <span className="text-sm font-normal text-gray-600 dark:text-gray-400">{formatRupiah(report.hpp.totalHPP)}</span>
           </CardTitle>
         </CardHeader>
         <CardContent>
@@ -312,16 +312,16 @@ export default function LabaRugiDetail() {
       </Card>
 
       {/* Laba Kotor */}
-      <Card className="bg-blue-50 border-blue-200">
+      <Card className="bg-blue-50 dark:bg-blue-950 border-blue-200 dark:border-blue-800">
         <CardHeader>
           <CardTitle className="flex items-center justify-between">
             <span>Laba Kotor</span>
-            <span className="text-sm font-normal text-gray-600">{formatRupiah(report.labaKotor)}</span>
+            <span className="text-sm font-normal text-gray-600 dark:text-gray-400">{formatRupiah(report.labaKotor)}</span>
           </CardTitle>
         </CardHeader>
         <CardContent>
-          <p className="text-lg font-bold text-blue-600">{report.marginKotor}% Margin Kotor</p>
-          <p className="text-sm text-gray-600 mt-1">Total Pendapatan − Total HPP</p>
+          <p className="text-lg font-bold text-blue-600 dark:text-blue-400">{report.marginKotor}% Margin Kotor</p>
+          <p className="text-sm text-gray-600 dark:text-gray-400 mt-1">Total Pendapatan − Total HPP</p>
         </CardContent>
       </Card>
 
@@ -330,7 +330,7 @@ export default function LabaRugiDetail() {
         <CardHeader>
           <CardTitle className="flex items-center justify-between">
             <span>3. Pengeluaran Operasional</span>
-            <span className="text-sm font-normal text-gray-600">
+            <span className="text-sm font-normal text-gray-600 dark:text-gray-400">
               {formatRupiah(report.pengeluaran.totalPengeluaran - report.hpp.totalHPP)}
             </span>
           </CardTitle>
@@ -385,18 +385,18 @@ export default function LabaRugiDetail() {
       </Card>
 
       {/* Laba Bersih */}
-      <Card className={`${report.labaBersih >= 0 ? "bg-green-50 border-green-200" : "bg-red-50 border-red-200"}`}>
+      <Card className={`${report.labaBersih >= 0 ? "bg-green-50 dark:bg-green-950 border-green-200 dark:border-green-800" : "bg-red-50 dark:bg-red-950 border-red-200 dark:border-red-800"}`}>
         <CardHeader>
           <CardTitle className="flex items-center justify-between">
             <span>Laba Bersih (Net Income)</span>
-            <span className="text-sm font-normal text-gray-600">{formatRupiah(report.labaBersih)}</span>
+            <span className="text-sm font-normal text-gray-600 dark:text-gray-400">{formatRupiah(report.labaBersih)}</span>
           </CardTitle>
         </CardHeader>
         <CardContent>
-          <p className={`text-lg font-bold ${report.labaBersih >= 0 ? "text-green-600" : "text-red-600"}`}>
+          <p className={`text-lg font-bold ${report.labaBersih >= 0 ? "text-green-600 dark:text-green-400" : "text-red-600 dark:text-red-400"}`}>
             {report.marginBersih}% Margin Bersih
           </p>
-          <p className="text-sm text-gray-600 mt-1">Total Pendapatan − (Total HPP + Pengeluaran Operasional)</p>
+          <p className="text-sm text-gray-600 dark:text-gray-400 mt-1">Total Pendapatan − (Total HPP + Pengeluaran Operasional)</p>
         </CardContent>
       </Card>
     </div>
@@ -410,7 +410,7 @@ function LineItem({ label, value, total, bold }: { label: string; value: number;
       <span>{label}</span>
       <div className="flex items-center gap-4">
         <span className={bold ? "text-lg" : ""}>{formatRupiah(value)}</span>
-        <span className={`w-12 text-right text-sm ${value < 0 ? "text-red-600" : "text-gray-600"}`}>{pct}%</span>
+        <span className={`w-12 text-right text-sm ${value < 0 ? "text-red-600 dark:text-red-400" : "text-gray-600 dark:text-gray-400"}`}>{pct}%</span>
       </div>
     </div>
   );

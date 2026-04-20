@@ -131,7 +131,7 @@ export default function GudangPage() {
       <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
         <div>
           <h1 className="text-2xl font-bold tracking-tight flex items-center gap-2">
-            <Warehouse className="h-6 w-6 text-amber-600" />
+            <Warehouse className="h-6 w-6 text-amber-600 dark:text-amber-400" />
             Manajemen Gudang
           </h1>
           <p className="text-sm text-muted-foreground mt-1">
@@ -321,7 +321,7 @@ export default function GudangPage() {
                           </td>
                           <td className="p-3 text-muted-foreground">{item.productSku || "-"}</td>
                           <td className="p-3 text-right font-mono">
-                            <span className={isLow ? "text-red-600 font-bold" : ""}>
+                            <span className={isLow ? "text-red-600 dark:text-red-400 font-bold" : ""}>
                               {item.quantity}
                             </span>
                             {isLow && <AlertTriangle className="h-3.5 w-3.5 text-red-500 inline ml-1" />}
@@ -374,7 +374,7 @@ export default function GudangPage() {
                       <div className="flex flex-col sm:flex-row sm:items-center gap-3">
                         <div className="flex items-center gap-2 flex-1">
                           <div className="h-10 w-10 rounded-lg bg-blue-100 dark:bg-blue-900/30 flex items-center justify-center">
-                            <ArrowRightLeft className="h-5 w-5 text-blue-600" />
+                            <ArrowRightLeft className="h-5 w-5 text-blue-600 dark:text-blue-400" />
                           </div>
                           <div>
                             <div className="font-medium">{t.productName}</div>
@@ -547,7 +547,7 @@ function TransferStockDialog({
       <DialogContent className="sm:max-w-lg">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
-            <ArrowRightLeft className="h-5 w-5 text-blue-600" />
+            <ArrowRightLeft className="h-5 w-5 text-blue-600 dark:text-blue-400" />
             Transfer Stok Antar Gudang
           </DialogTitle>
           <DialogDescription>

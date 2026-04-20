@@ -130,7 +130,7 @@ export default function PeringatanStok() {
       <div className="flex items-center justify-between flex-wrap gap-3">
         <div>
           <h1 className="text-xl font-bold flex items-center gap-2">
-            <AlertTriangle className="h-5 w-5 text-red-600" />
+            <AlertTriangle className="h-5 w-5 text-red-600 dark:text-red-400" />
             Peringatan Stok Rendah
           </h1>
           <p className="text-sm text-muted-foreground mt-0.5">
@@ -161,33 +161,33 @@ export default function PeringatanStok() {
 
       {/* Summary Cards */}
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-        <Card className="border-red-200 bg-red-50">
+        <Card className="border-red-200 dark:border-red-800 bg-red-50 dark:bg-red-950">
           <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium text-red-700">Kritis (Safety)</CardTitle>
+            <CardTitle className="text-sm font-medium text-red-700 dark:text-red-300">Kritis (Safety)</CardTitle>
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold text-red-900">{metrics.critical}</div>
-            <div className="text-xs text-red-700 mt-1">Segera pesan</div>
+            <div className="text-xs text-red-700 dark:text-red-300 mt-1">Segera pesan</div>
           </CardContent>
         </Card>
-        <Card className="border-yellow-200 bg-yellow-50">
+        <Card className="border-yellow-200 dark:border-yellow-800 bg-yellow-50 dark:bg-yellow-950">
           <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium text-yellow-700">
+            <CardTitle className="text-sm font-medium text-yellow-700 dark:text-yellow-300">
               Warning (Reorder)
             </CardTitle>
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold text-yellow-900">{metrics.warning}</div>
-            <div className="text-xs text-yellow-700 mt-1">Pertimbangkan pemesanan</div>
+            <div className="text-xs text-yellow-700 dark:text-yellow-300 mt-1">Pertimbangkan pemesanan</div>
           </CardContent>
         </Card>
-        <Card className="border-blue-200 bg-blue-50">
+        <Card className="border-blue-200 dark:border-blue-800 bg-blue-50 dark:bg-blue-950">
           <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium text-blue-700">Total Alert</CardTitle>
+            <CardTitle className="text-sm font-medium text-blue-700 dark:text-blue-300">Total Alert</CardTitle>
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold text-blue-900">{metrics.total}</div>
-            <div className="text-xs text-blue-700 mt-1">Produk memerlukan perhatian</div>
+            <div className="text-xs text-blue-700 dark:text-blue-300 mt-1">Produk memerlukan perhatian</div>
           </CardContent>
         </Card>
       </div>
@@ -204,19 +204,19 @@ export default function PeringatanStok() {
                 const level = getAlertLevel(alert);
                 const bgColor =
                   level === "critical"
-                    ? "bg-red-50 border-red-200"
+                    ? "bg-red-50 dark:bg-red-950 border-red-200 dark:border-red-800"
                     : level === "warning"
-                      ? "bg-yellow-50 border-yellow-200"
-                      : "bg-blue-50 border-blue-200";
+                      ? "bg-yellow-50 dark:bg-yellow-950 border-yellow-200 dark:border-yellow-800"
+                      : "bg-blue-50 dark:bg-blue-950 border-blue-200 dark:border-blue-800";
 
                 const levelLabel =
                   level === "critical" ? "KRITIS" : level === "warning" ? "WARNING" : "INFO";
                 const levelColor =
                   level === "critical"
-                    ? "text-red-900 bg-red-100"
+                    ? "text-red-900 bg-red-100 dark:bg-red-900"
                     : level === "warning"
-                      ? "text-yellow-900 bg-yellow-100"
-                      : "text-blue-900 bg-blue-100";
+                      ? "text-yellow-900 bg-yellow-100 dark:bg-yellow-900"
+                      : "text-blue-900 bg-blue-100 dark:bg-blue-900";
 
                 return (
                   <div key={idx} className={`border rounded-lg p-4 ${bgColor}`}>

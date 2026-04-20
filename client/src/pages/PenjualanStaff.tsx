@@ -28,23 +28,23 @@ function KPICard({ icon: Icon, label, value, variant = "default" }: {
 }) {
   const bgColor = {
     default: "bg-slate-50",
-    info: "bg-blue-50",
-    success: "bg-green-50",
-    warning: "bg-amber-50",
+    info: "bg-blue-50 dark:bg-blue-950",
+    success: "bg-green-50 dark:bg-green-950",
+    warning: "bg-amber-50 dark:bg-amber-950",
   }[variant];
 
   const borderColor = {
     default: "border-slate-200",
-    info: "border-blue-200",
-    success: "border-green-200",
-    warning: "border-amber-200",
+    info: "border-blue-200 dark:border-blue-800",
+    success: "border-green-200 dark:border-green-800",
+    warning: "border-amber-200 dark:border-amber-800",
   }[variant];
 
   const textColor = {
     default: "text-slate-600",
-    info: "text-blue-600",
-    success: "text-green-600",
-    warning: "text-amber-600",
+    info: "text-blue-600 dark:text-blue-400",
+    success: "text-green-600 dark:text-green-400",
+    warning: "text-amber-600 dark:text-amber-400",
   }[variant];
 
   return (
@@ -252,7 +252,7 @@ export default function PenjualanStaff() {
                           </td>
                           <td className="px-4 py-3 text-right">{staff.transactionCount}</td>
                           <td className="px-4 py-3 text-right font-medium">{formatRupiah(staff.totalSales)}</td>
-                          <td className="px-4 py-3 text-right font-medium text-green-600">{formatRupiah(staff.commissionEarned)}</td>
+                          <td className="px-4 py-3 text-right font-medium text-green-600 dark:text-green-400">{formatRupiah(staff.commissionEarned)}</td>
                           <td className="px-4 py-3 text-center">
                             <Button
                               variant="ghost"
@@ -303,7 +303,7 @@ export default function PenjualanStaff() {
                               <td className="px-3 py-2">{formatTanggalShort(detail.date)}</td>
                               <td className="px-3 py-2 font-mono text-xs">{detail.receiptCode}</td>
                               <td className="px-3 py-2 text-right font-medium">{formatRupiah(detail.saleAmount)}</td>
-                              <td className="px-3 py-2 text-right font-medium text-green-600">{formatRupiah(detail.commissionAmount)}</td>
+                              <td className="px-3 py-2 text-right font-medium text-green-600 dark:text-green-400">{formatRupiah(detail.commissionAmount)}</td>
                               <td className="px-3 py-2 text-center">
                                 {detail.status === 'paid' ? (
                                   <Badge variant="default" className="text-xs">Dibayar</Badge>

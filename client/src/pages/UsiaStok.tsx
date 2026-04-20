@@ -96,15 +96,15 @@ export default function UsiaStok() {
   const getBucketColor = (bucket: string) => {
     switch (bucket) {
       case "0-30":
-        return "bg-green-100 text-green-900 border-green-200";
+        return "bg-green-100 dark:bg-green-900 text-green-900 border-green-200 dark:border-green-800";
       case "31-60":
-        return "bg-yellow-100 text-yellow-900 border-yellow-200";
+        return "bg-yellow-100 dark:bg-yellow-900 text-yellow-900 border-yellow-200 dark:border-yellow-800";
       case "61-90":
-        return "bg-orange-100 text-orange-900 border-orange-200";
+        return "bg-orange-100 dark:bg-orange-900 text-orange-900 border-orange-200 dark:border-orange-800";
       case ">90":
-        return "bg-red-100 text-red-900 border-red-200";
+        return "bg-red-100 dark:bg-red-900 text-red-900 border-red-200 dark:border-red-800";
       default:
-        return "bg-gray-100 text-gray-900 border-gray-200";
+        return "bg-gray-100 dark:bg-gray-800 text-gray-900 dark:text-gray-100 border-gray-200 dark:border-gray-700";
     }
   };
 
@@ -133,7 +133,7 @@ export default function UsiaStok() {
       <div className="flex items-center justify-between flex-wrap gap-3">
         <div>
           <h1 className="text-xl font-bold flex items-center gap-2">
-            <TrendingUp className="h-5 w-5 text-blue-600" />
+            <TrendingUp className="h-5 w-5 text-blue-600 dark:text-blue-400" />
             Analisis Usia Stok
           </h1>
           <p className="text-sm text-muted-foreground mt-0.5">
@@ -164,40 +164,40 @@ export default function UsiaStok() {
 
       {/* Summary Cards */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
-        <Card className="border-green-200 bg-green-50">
+        <Card className="border-green-200 dark:border-green-800 bg-green-50 dark:bg-green-950">
           <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium text-green-700">Fresh</CardTitle>
+            <CardTitle className="text-sm font-medium text-green-700 dark:text-green-300">Fresh</CardTitle>
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold text-green-900">{metrics.fresh}</div>
-            <div className="text-xs text-green-700 mt-1">0-30 hari</div>
+            <div className="text-xs text-green-700 dark:text-green-300 mt-1">0-30 hari</div>
           </CardContent>
         </Card>
-        <Card className="border-yellow-200 bg-yellow-50">
+        <Card className="border-yellow-200 dark:border-yellow-800 bg-yellow-50 dark:bg-yellow-950">
           <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium text-yellow-700">Aging</CardTitle>
+            <CardTitle className="text-sm font-medium text-yellow-700 dark:text-yellow-300">Aging</CardTitle>
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold text-yellow-900">{metrics.aging}</div>
-            <div className="text-xs text-yellow-700 mt-1">31-60 hari</div>
+            <div className="text-xs text-yellow-700 dark:text-yellow-300 mt-1">31-60 hari</div>
           </CardContent>
         </Card>
-        <Card className="border-orange-200 bg-orange-50">
+        <Card className="border-orange-200 dark:border-orange-800 bg-orange-50 dark:bg-orange-950">
           <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium text-orange-700">Old</CardTitle>
+            <CardTitle className="text-sm font-medium text-orange-700 dark:text-orange-300">Old</CardTitle>
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold text-orange-900">{metrics.old}</div>
-            <div className="text-xs text-orange-700 mt-1">61-90 hari</div>
+            <div className="text-xs text-orange-700 dark:text-orange-300 mt-1">61-90 hari</div>
           </CardContent>
         </Card>
-        <Card className="border-red-200 bg-red-50">
+        <Card className="border-red-200 dark:border-red-800 bg-red-50 dark:bg-red-950">
           <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium text-red-700">Dead Stock</CardTitle>
+            <CardTitle className="text-sm font-medium text-red-700 dark:text-red-300">Dead Stock</CardTitle>
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold text-red-900">{metrics.dead}</div>
-            <div className="text-xs text-red-700 mt-1">&gt;90 hari</div>
+            <div className="text-xs text-red-700 dark:text-red-300 mt-1">&gt;90 hari</div>
           </CardContent>
         </Card>
       </div>

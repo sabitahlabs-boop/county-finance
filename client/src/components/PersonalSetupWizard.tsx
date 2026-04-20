@@ -356,7 +356,7 @@ export default function PersonalSetupWizard({ onComplete }: { onComplete: () => 
                 </p>
                 <div className="flex flex-wrap gap-1.5">
                   {accounts.map((acc, i) => (
-                    <span key={i} className="inline-flex items-center gap-1 px-2 py-1 rounded-md bg-white dark:bg-background text-xs">
+                    <span key={i} className="inline-flex items-center gap-1 px-2 py-1 rounded-md bg-white dark:bg-gray-900 dark:bg-background text-xs">
                       {acc.icon} {acc.name}
                       {acc.balance && <span className="text-muted-foreground ml-1">Rp {acc.balance}</span>}
                     </span>
@@ -372,7 +372,7 @@ export default function PersonalSetupWizard({ onComplete }: { onComplete: () => 
                 {bills.length > 0 ? (
                   <div className="flex flex-wrap gap-1.5">
                     {bills.map((bill, i) => (
-                      <span key={i} className="inline-flex items-center gap-1 px-2 py-1 rounded-md bg-white dark:bg-background text-xs">
+                      <span key={i} className="inline-flex items-center gap-1 px-2 py-1 rounded-md bg-white dark:bg-gray-900 dark:bg-background text-xs">
                         {bill.icon} {bill.name}
                         {bill.amount && <span className="text-muted-foreground ml-1">Rp {bill.amount}</span>}
                       </span>

@@ -236,7 +236,7 @@ export default function PenjualanProduk() {
             {isLoading ? (
               <Skeleton className="h-8 w-24" />
             ) : (
-              <p className={`text-2xl font-bold ${totals.laba >= 0 ? "text-green-600" : "text-red-600"}`}>
+              <p className={`text-2xl font-bold ${totals.laba >= 0 ? "text-green-600 dark:text-green-400" : "text-red-600 dark:text-red-400"}`}>
                 {formatRupiah(totals.laba)}
               </p>
             )}
@@ -291,7 +291,7 @@ export default function PenjualanProduk() {
                       <td className="px-4 py-2 text-right text-sm text-muted-foreground">
                         {formatRupiah(row.totalHPP)}
                       </td>
-                      <td className={`px-4 py-2 text-right font-semibold ${row.laba >= 0 ? "text-green-600" : "text-red-600"}`}>
+                      <td className={`px-4 py-2 text-right font-semibold ${row.laba >= 0 ? "text-green-600 dark:text-green-400" : "text-red-600 dark:text-red-400"}`}>
                         {formatRupiah(row.laba)}
                       </td>
                     </tr>
@@ -308,7 +308,7 @@ export default function PenjualanProduk() {
                     <td className="px-4 py-3 text-right text-sm">
                       {formatRupiah(totals.totalHPP)}
                     </td>
-                    <td className={`px-4 py-3 text-right text-sm ${totals.laba >= 0 ? "text-green-600" : "text-red-600"}`}>
+                    <td className={`px-4 py-3 text-right text-sm ${totals.laba >= 0 ? "text-green-600 dark:text-green-400" : "text-red-600 dark:text-red-400"}`}>
                       {formatRupiah(totals.laba)}
                     </td>
                   </tr>

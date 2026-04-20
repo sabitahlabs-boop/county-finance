@@ -160,7 +160,7 @@ export default function LaporanShift() {
       <div className="flex items-center justify-between flex-wrap gap-3">
         <div>
           <h1 className="text-xl font-bold flex items-center gap-2">
-            <Clock className="h-5 w-5 text-blue-600" />
+            <Clock className="h-5 w-5 text-blue-600 dark:text-blue-400" />
             Laporan Shift
           </h1>
           <p className="text-sm text-muted-foreground mt-0.5">
@@ -229,7 +229,7 @@ export default function LaporanShift() {
             {isLoading ? (
               <Skeleton className="h-10 w-24" />
             ) : (
-              <p className="text-3xl font-bold text-blue-600">{metrics.totalShifts}</p>
+              <p className="text-3xl font-bold text-blue-600 dark:text-blue-400">{metrics.totalShifts}</p>
             )}
             {!isLoading && (
               <p className="text-xs text-muted-foreground mt-2">
@@ -267,7 +267,7 @@ export default function LaporanShift() {
             {isLoading ? (
               <Skeleton className="h-10 w-32" />
             ) : (
-              <p className="text-3xl font-bold text-red-600">
+              <p className="text-3xl font-bold text-red-600 dark:text-red-400">
                 {formatRupiah(metrics.totalRefund)}
               </p>
             )}
@@ -287,7 +287,7 @@ export default function LaporanShift() {
             {isLoading ? (
               <Skeleton className="h-10 w-32" />
             ) : (
-              <p className={`text-3xl font-bold ${metrics.avgCashDifference >= 0 ? "text-emerald-600" : "text-red-600"}`}>
+              <p className={`text-3xl font-bold ${metrics.avgCashDifference >= 0 ? "text-emerald-600" : "text-red-600 dark:text-red-400"}`}>
                 {formatRupiah(metrics.avgCashDifference)}
               </p>
             )}
@@ -313,23 +313,23 @@ export default function LaporanShift() {
             </CardContent>
           </Card>
 
-          <Card className="border-yellow-200 bg-yellow-50 dark:bg-yellow-900/20">
+          <Card className="border-yellow-200 dark:border-yellow-800 bg-yellow-50 dark:bg-yellow-950 dark:bg-yellow-900/20">
             <CardHeader className="pb-2">
               <CardTitle className="text-sm font-medium text-yellow-700 dark:text-yellow-400">Seimbang</CardTitle>
             </CardHeader>
             <CardContent>
-              <p className="text-2xl font-bold text-yellow-600">{metrics.totalShifts - metrics.surplusCount - metrics.deficitCount}</p>
-              <p className="text-xs text-yellow-600/70 mt-1">{(((metrics.totalShifts - metrics.surplusCount - metrics.deficitCount) / metrics.totalShifts) * 100).toFixed(0)}% dari total shift</p>
+              <p className="text-2xl font-bold text-yellow-600 dark:text-yellow-400">{metrics.totalShifts - metrics.surplusCount - metrics.deficitCount}</p>
+              <p className="text-xs text-yellow-600 dark:text-yellow-400/70 mt-1">{(((metrics.totalShifts - metrics.surplusCount - metrics.deficitCount) / metrics.totalShifts) * 100).toFixed(0)}% dari total shift</p>
             </CardContent>
           </Card>
 
-          <Card className="border-red-200 bg-red-50 dark:bg-red-900/20">
+          <Card className="border-red-200 dark:border-red-800 bg-red-50 dark:bg-red-950 dark:bg-red-900/20">
             <CardHeader className="pb-2">
               <CardTitle className="text-sm font-medium text-red-700 dark:text-red-400">Deficit</CardTitle>
             </CardHeader>
             <CardContent>
-              <p className="text-2xl font-bold text-red-600">{metrics.deficitCount}</p>
-              <p className="text-xs text-red-600/70 mt-1">{((metrics.deficitCount / metrics.totalShifts) * 100).toFixed(0)}% dari total shift</p>
+              <p className="text-2xl font-bold text-red-600 dark:text-red-400">{metrics.deficitCount}</p>
+              <p className="text-xs text-red-600 dark:text-red-400/70 mt-1">{((metrics.deficitCount / metrics.totalShifts) * 100).toFixed(0)}% dari total shift</p>
             </CardContent>
           </Card>
         </div>
@@ -380,15 +380,15 @@ export default function LaporanShift() {
                       row.status === "surplus"
                         ? "bg-emerald-50 text-emerald-700"
                         : row.status === "deficit"
-                        ? "bg-red-50 text-red-700"
-                        : "bg-yellow-50 text-yellow-700";
+                        ? "bg-red-50 dark:bg-red-950 text-red-700 dark:text-red-300"
+                        : "bg-yellow-50 dark:bg-yellow-950 text-yellow-700 dark:text-yellow-300";
 
                     const selisihColor =
                       row.cashDifference > 0
                         ? "text-emerald-600"
                         : row.cashDifference < 0
-                        ? "text-red-600"
-                        : "text-gray-600";
+                        ? "text-red-600 dark:text-red-400"
+                        : "text-gray-600 dark:text-gray-400";
 
                     return (
                       <tr key={row.id} className="border-b hover:bg-muted/30">
@@ -404,7 +404,7 @@ export default function LaporanShift() {
                         <td className="px-4 py-2 text-right font-semibold text-emerald-600">
                           {formatRupiah(row.totalPenjualan)}
                         </td>
-                        <td className="px-4 py-2 text-right font-semibold text-red-600">
+                        <td className="px-4 py-2 text-right font-semibold text-red-600 dark:text-red-400">
                           {formatRupiah(row.totalRefund)}
                         </td>
                         <td className="px-4 py-2 text-right font-semibold">
@@ -422,7 +422,7 @@ export default function LaporanShift() {
                     );
                   })}
                   {/* Summary row */}
-                  <tr className="bg-blue-50 dark:bg-blue-900/20 font-bold border-t-2 border-blue-200">
+                  <tr className="bg-blue-50 dark:bg-blue-950 dark:bg-blue-900/20 font-bold border-t-2 border-blue-200 dark:border-blue-800">
                     <td colSpan={2} className="px-4 py-3">
                       TOTAL
                     </td>
@@ -433,13 +433,13 @@ export default function LaporanShift() {
                     <td className="px-4 py-3 text-right text-emerald-600">
                       {formatRupiah(metrics.totalPenjualan)}
                     </td>
-                    <td className="px-4 py-3 text-right text-red-600">
+                    <td className="px-4 py-3 text-right text-red-600 dark:text-red-400">
                       {formatRupiah(metrics.totalRefund)}
                     </td>
                     <td className="px-4 py-3 text-right">
                       {formatRupiah(reportData.shifts.reduce((sum, s) => sum + s.closingCash, 0))}
                     </td>
-                    <td className={`px-4 py-3 text-right ${reportData.shifts.reduce((sum, s) => sum + s.cashDifference, 0) >= 0 ? "text-emerald-600" : "text-red-600"}`}>
+                    <td className={`px-4 py-3 text-right ${reportData.shifts.reduce((sum, s) => sum + s.cashDifference, 0) >= 0 ? "text-emerald-600" : "text-red-600 dark:text-red-400"}`}>
                       {formatRupiah(reportData.shifts.reduce((sum, s) => sum + s.cashDifference, 0))}
                     </td>
                     <td />

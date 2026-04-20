@@ -213,7 +213,7 @@ export function POSReceiptPrint({
         </div>
 
         {/* Receipt Preview */}
-        <div className="overflow-y-auto max-h-[75vh] bg-gray-100 p-3">
+        <div className="overflow-y-auto max-h-[75vh] bg-gray-100 dark:bg-gray-800 p-3">
           <div ref={printRef} style={S.receipt}>
 
             {/* ─── Header: Logo + Business Name ─── */}

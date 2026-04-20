@@ -124,7 +124,7 @@ export default function OutletManagement() {
         {/* Header */}
         <div className="mb-8">
           <div className="flex items-center gap-3 mb-2">
-            <Store className="w-8 h-8 text-green-600" />
+            <Store className="w-8 h-8 text-green-600 dark:text-green-400" />
             <h1 className="text-3xl font-bold text-slate-900">
               Manajemen Outlet
             </h1>
@@ -253,15 +253,15 @@ export default function OutletManagement() {
                 <CardHeader className="pb-3">
                   <div className="flex items-start justify-between">
                     <div className="flex items-center gap-3 flex-1">
-                      <div className="p-2 bg-green-100 rounded-lg">
-                        <Store className="w-5 h-5 text-green-600" />
+                      <div className="p-2 bg-green-100 dark:bg-green-900 rounded-lg">
+                        <Store className="w-5 h-5 text-green-600 dark:text-green-400" />
                       </div>
                       <div className="flex-1">
                         <CardTitle className="text-lg">
                           {outlet.name}
                         </CardTitle>
                         {outlet.isDefault && (
-                          <span className="text-xs text-green-600 font-semibold">
+                          <span className="text-xs text-green-600 dark:text-green-400 font-semibold">
                             Outlet Utama
                           </span>
                         )}
@@ -307,7 +307,7 @@ export default function OutletManagement() {
                     <Button
                       variant="outline"
                       size="sm"
-                      className="flex-1 gap-2 text-red-600 hover:text-red-700"
+                      className="flex-1 gap-2 text-red-600 dark:text-red-400 hover:text-red-700 dark:text-red-300"
                       onClick={() => deleteMutation.mutate({ id: outlet.id })}
                       disabled={deleteMutation.isPending}
                     >

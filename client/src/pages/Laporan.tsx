@@ -326,7 +326,7 @@ export default function Laporan() {
                         <CheckCircle2 className="h-3 w-3 mr-0.5" /> Seimbang
                       </Badge>
                     ) : (
-                      <Badge className="bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400 text-[10px]">
+                      <Badge className="bg-red-100 dark:bg-red-900 text-red-700 dark:text-red-300 dark:bg-red-900/30 dark:text-red-400 text-[10px]">
                         <AlertCircle className="h-3 w-3 mr-0.5" /> Tidak Seimbang
                       </Badge>
                     )}
@@ -509,7 +509,7 @@ function ReportRow({ label, value, bold, highlight, className, isText }: {
   return (
     <div className={`flex items-center justify-between py-1 text-xs sm:text-sm ${className ?? ""}`}>
       <span className={bold ? "font-semibold" : "text-muted-foreground"}>{label}</span>
-      <span className={`${bold ? "font-semibold" : ""} ${highlight ? (isNeg ? "text-red-600 text-sm sm:text-base" : "text-emerald-600 text-sm sm:text-base") : ""}`}>
+      <span className={`${bold ? "font-semibold" : ""} ${highlight ? (isNeg ? "text-red-600 dark:text-red-400 text-sm sm:text-base" : "text-emerald-600 text-sm sm:text-base") : ""}`}>
         {isText ? value : formatRupiah(numVal)}
       </span>
     </div>

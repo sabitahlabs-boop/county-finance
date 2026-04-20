@@ -41,7 +41,7 @@ export default function WarehouseSelect() {
               placeholder="Cari outlet atau gudang..."
               value={search}
               onChange={(e) => setSearch(e.target.value)}
-              className="pl-10 bg-white/5 border-white/10 text-white placeholder:text-white/30 h-11 rounded-xl focus:border-emerald-500/50 focus:ring-emerald-500/20"
+              className="pl-10 bg-white dark:bg-gray-900/5 border-white/10 text-white placeholder:text-white/30 h-11 rounded-xl focus:border-emerald-500/50 focus:ring-emerald-500/20"
             />
           </div>
         </motion.div>
@@ -52,7 +52,7 @@ export default function WarehouseSelect() {
         {isLoading ? (
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             {[1, 2, 3].map(i => (
-              <div key={i} className="h-40 rounded-2xl bg-white/5 animate-pulse" />
+              <div key={i} className="h-40 rounded-2xl bg-white dark:bg-gray-900/5 animate-pulse" />
             ))}
           </div>
         ) : filtered.length === 0 ? (
@@ -73,7 +73,7 @@ export default function WarehouseSelect() {
                   localStorage.setItem("county-selected-warehouse", String(wh.id));
                   setLocation("/");
                 }}
-                className="group relative overflow-hidden rounded-2xl bg-white/[0.03] backdrop-blur-sm border border-white/[0.06] p-5 text-left transition-all duration-300 hover:bg-white/[0.07] hover:border-emerald-500/30 hover:shadow-lg hover:shadow-emerald-500/5"
+                className="group relative overflow-hidden rounded-2xl bg-white dark:bg-gray-900/[0.03] backdrop-blur-sm border border-white/[0.06] p-5 text-left transition-all duration-300 hover:bg-white dark:bg-gray-900/[0.07] hover:border-emerald-500/30 hover:shadow-lg hover:shadow-emerald-500/5"
               >
                 {/* Glow effect on hover */}
                 <div className="absolute inset-0 bg-gradient-to-br from-emerald-500/0 to-emerald-500/0 group-hover:from-emerald-500/5 group-hover:to-transparent transition-all duration-300" />

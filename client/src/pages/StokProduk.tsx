@@ -148,7 +148,7 @@ function BulkImportDialog({ open, onClose, onImport }: {
             </div>
 
             {error && (
-              <div className="rounded-lg bg-red-50 border border-red-200 p-3 text-sm text-red-700">{error}</div>
+              <div className="rounded-lg bg-red-50 dark:bg-red-950 border border-red-200 dark:border-red-800 p-3 text-sm text-red-700 dark:text-red-300">{error}</div>
             )}
 
             <div className="rounded-lg bg-muted/50 p-4 space-y-2">
@@ -377,7 +377,7 @@ export default function StokProduk() {
                     </div>
                   </div>
                 ) : (
-                  <div className="rounded-lg bg-amber-50 border border-amber-200 p-3 text-xs text-amber-700">
+                  <div className="rounded-lg bg-amber-50 dark:bg-amber-950 border border-amber-200 dark:border-amber-800 p-3 text-xs text-amber-700 dark:text-amber-300">
                     Harga akan diinput manual saat transaksi di POS/Kasir.
                   </div>
                 )}
@@ -535,7 +535,7 @@ export default function StokProduk() {
                     </div>
                     <div>
                       <p className="text-xs text-muted-foreground">Stok</p>
-                      <p className={`font-medium ${isLow ? "text-orange-600" : ""}`}>{p.stockCurrent} {p.unit}</p>
+                      <p className={`font-medium ${isLow ? "text-orange-600 dark:text-orange-400" : ""}`}>{p.stockCurrent} {p.unit}</p>
                     </div>
                     <div>
                       <p className="text-xs text-muted-foreground">Margin</p>
@@ -780,7 +780,7 @@ function EditProductForm({ product, onSave, isPending }: { product: any; onSave:
           </div>
         </div>
       ) : (
-        <div className="rounded-lg bg-amber-50 border border-amber-200 p-3 text-xs text-amber-700">
+        <div className="rounded-lg bg-amber-50 dark:bg-amber-950 border border-amber-200 dark:border-amber-800 p-3 text-xs text-amber-700 dark:text-amber-300">
           Harga akan diinput manual saat transaksi di POS/Kasir.
         </div>
       )}

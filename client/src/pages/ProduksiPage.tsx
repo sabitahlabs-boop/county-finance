@@ -114,10 +114,10 @@ export default function ProduksiPage() {
       {/* Header */}
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-3">
-          <Factory className="h-8 w-8 text-green-600" />
+          <Factory className="h-8 w-8 text-green-600 dark:text-green-400" />
           <div>
             <h1 className="text-3xl font-bold">Manajemen Produksi</h1>
-            <p className="text-gray-600">Catat dan pantau batch produksi dengan biaya material</p>
+            <p className="text-gray-600 dark:text-gray-400">Catat dan pantau batch produksi dengan biaya material</p>
           </div>
         </div>
         <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
@@ -149,9 +149,9 @@ export default function ProduksiPage() {
               </div>
 
               {selectedProduct && (
-                <div className="rounded-lg bg-blue-50 border border-blue-200 p-3">
-                  <p className="text-sm text-gray-600">Biaya Material/Unit</p>
-                  <p className="text-lg font-bold text-blue-600">{formatRupiah(materialCost)}</p>
+                <div className="rounded-lg bg-blue-50 dark:bg-blue-950 border border-blue-200 dark:border-blue-800 p-3">
+                  <p className="text-sm text-gray-600 dark:text-gray-400">Biaya Material/Unit</p>
+                  <p className="text-lg font-bold text-blue-600 dark:text-blue-400">{formatRupiah(materialCost)}</p>
                 </div>
               )}
 
@@ -167,9 +167,9 @@ export default function ProduksiPage() {
               </div>
 
               {selectedProduct && formData.qty && (
-                <div className="rounded-lg bg-green-50 border border-green-200 p-3">
-                  <p className="text-sm text-gray-600">Total Biaya Material</p>
-                  <p className="text-lg font-bold text-green-600">{formatRupiah(projectedTotalCost)}</p>
+                <div className="rounded-lg bg-green-50 dark:bg-green-950 border border-green-200 dark:border-green-800 p-3">
+                  <p className="text-sm text-gray-600 dark:text-gray-400">Total Biaya Material</p>
+                  <p className="text-lg font-bold text-green-600 dark:text-green-400">{formatRupiah(projectedTotalCost)}</p>
                 </div>
               )}
 
@@ -243,29 +243,29 @@ export default function ProduksiPage() {
         <div className="grid grid-cols-3 gap-4">
           <Card>
             <CardHeader className="pb-2">
-              <CardTitle className="text-sm font-medium text-gray-600">Total Diproduksi</CardTitle>
+              <CardTitle className="text-sm font-medium text-gray-600 dark:text-gray-400">Total Diproduksi</CardTitle>
             </CardHeader>
             <CardContent>
               <p className="text-2xl font-bold">{costReport.totalProduced.toLocaleString()}</p>
-              <p className="text-xs text-gray-500 mt-1">unit</p>
+              <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">unit</p>
             </CardContent>
           </Card>
           <Card>
             <CardHeader className="pb-2">
-              <CardTitle className="text-sm font-medium text-gray-600">Total Biaya</CardTitle>
+              <CardTitle className="text-sm font-medium text-gray-600 dark:text-gray-400">Total Biaya</CardTitle>
             </CardHeader>
             <CardContent>
-              <p className="text-2xl font-bold text-green-600">{formatRupiah(costReport.totalCost)}</p>
-              <p className="text-xs text-gray-500 mt-1">material</p>
+              <p className="text-2xl font-bold text-green-600 dark:text-green-400">{formatRupiah(costReport.totalCost)}</p>
+              <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">material</p>
             </CardContent>
           </Card>
           <Card>
             <CardHeader className="pb-2">
-              <CardTitle className="text-sm font-medium text-gray-600">Rata-rata Cost/Unit</CardTitle>
+              <CardTitle className="text-sm font-medium text-gray-600 dark:text-gray-400">Rata-rata Cost/Unit</CardTitle>
             </CardHeader>
             <CardContent>
-              <p className="text-2xl font-bold text-blue-600">{formatRupiah(costReport.avgCostPerUnit)}</p>
-              <p className="text-xs text-gray-500 mt-1">per unit</p>
+              <p className="text-2xl font-bold text-blue-600 dark:text-blue-400">{formatRupiah(costReport.avgCostPerUnit)}</p>
+              <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">per unit</p>
             </CardContent>
           </Card>
         </div>
@@ -345,7 +345,7 @@ export default function ProduksiPage() {
                     <TableCell className="text-right">{log.qtyProduced.toLocaleString()}</TableCell>
                     <TableCell className="text-right">{formatRupiah(log.totalCost)}</TableCell>
                     <TableCell className="text-right text-sm">{formatRupiah(log.costPerUnit)}</TableCell>
-                    <TableCell className="text-xs text-gray-600">{log.notes || "-"}</TableCell>
+                    <TableCell className="text-xs text-gray-600 dark:text-gray-400">{log.notes || "-"}</TableCell>
                   </TableRow>
                 ))}
               </TableBody>
@@ -353,7 +353,7 @@ export default function ProduksiPage() {
           ) : (
             <div className="text-center py-8">
               <AlertCircle className="h-8 w-8 text-gray-400 mx-auto mb-2" />
-              <p className="text-gray-500">Belum ada log produksi untuk periode ini</p>
+              <p className="text-gray-500 dark:text-gray-400">Belum ada log produksi untuk periode ini</p>
             </div>
           )}
         </CardContent>

@@ -89,7 +89,7 @@ export default function ProActivation() {
             <div className="relative mx-auto w-16 h-16 mb-4">
               <div className="absolute inset-0 bg-green-500/20 rounded-full animate-ping" />
               <div className="relative flex items-center justify-center w-16 h-16 bg-green-100 dark:bg-green-900/30 rounded-full">
-                <CheckCircle className="h-10 w-10 text-green-600" />
+                <CheckCircle className="h-10 w-10 text-green-600 dark:text-green-400" />
               </div>
             </div>
             <h2 className="text-2xl font-bold mb-2">Selamat! Akun Pro Aktif!</h2>

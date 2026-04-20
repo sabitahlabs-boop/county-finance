@@ -192,13 +192,13 @@ export default function PenjualanKredit() {
   const getStatusBadgeColor = (stat: string) => {
     switch (stat) {
       case "belum_lunas":
-        return "bg-red-100 text-red-700";
+        return "bg-red-100 dark:bg-red-900 text-red-700 dark:text-red-300";
       case "cicilan":
-        return "bg-yellow-100 text-yellow-700";
+        return "bg-yellow-100 dark:bg-yellow-900 text-yellow-700 dark:text-yellow-300";
       case "lunas":
-        return "bg-green-100 text-green-700";
+        return "bg-green-100 dark:bg-green-900 text-green-700 dark:text-green-300";
       default:
-        return "bg-gray-100 text-gray-700";
+        return "bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300";
     }
   };
 
@@ -319,7 +319,7 @@ export default function PenjualanKredit() {
             {isLoading ? (
               <Skeleton className="h-10 w-32" />
             ) : (
-              <p className="text-2xl font-bold text-green-600">
+              <p className="text-2xl font-bold text-green-600 dark:text-green-400">
                 {formatRupiah(summary.totalBayar)}
               </p>
             )}
@@ -334,7 +334,7 @@ export default function PenjualanKredit() {
             {isLoading ? (
               <Skeleton className="h-10 w-32" />
             ) : (
-              <p className="text-2xl font-bold text-orange-600">
+              <p className="text-2xl font-bold text-orange-600 dark:text-orange-400">
                 {formatRupiah(summary.totalSisa)}
               </p>
             )}
@@ -403,10 +403,10 @@ export default function PenjualanKredit() {
                       <div className="flex-shrink-0 w-24 text-right">
                         {formatRupiah(credit.totalAmount)}
                       </div>
-                      <div className="flex-shrink-0 w-20 text-right text-green-600">
+                      <div className="flex-shrink-0 w-20 text-right text-green-600 dark:text-green-400">
                         {formatRupiah(credit.paidAmount)}
                       </div>
-                      <div className="flex-shrink-0 w-20 text-right text-orange-600">
+                      <div className="flex-shrink-0 w-20 text-right text-orange-600 dark:text-orange-400">
                         {formatRupiah(credit.remainingAmount)}
                       </div>
                       <div className="flex-shrink-0">

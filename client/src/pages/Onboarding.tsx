@@ -203,7 +203,7 @@ export default function Onboarding({ onComplete }: { onComplete: () => void }) {
                         onClick={() => setAppMode("umkm")}
                         className={`text-left rounded-2xl border-2 p-5 transition-all ${
                           appMode === "umkm"
-                            ? "border-blue-500 bg-blue-50/50 dark:bg-blue-900/10 shadow-md"
+                            ? "border-blue-500 bg-blue-50 dark:bg-blue-950/50 dark:bg-blue-900/10 shadow-md"
                             : "border-transparent bg-muted/50 hover:bg-muted hover:shadow-sm"
                         }`}
                       >

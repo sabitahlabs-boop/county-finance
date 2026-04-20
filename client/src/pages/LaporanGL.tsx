@@ -39,7 +39,7 @@ function AccountTable({ rows, showAmount = true }: { rows: AccountRow[]; showAmo
             <TableCell className="font-mono text-xs">{row.code}</TableCell>
             <TableCell className={row.parentCode ? "pl-8" : ""}>{row.name}</TableCell>
             {showAmount && (
-              <TableCell className={`text-right font-mono text-sm ${row.amount < 0 ? "text-red-600" : ""}`}>
+              <TableCell className={`text-right font-mono text-sm ${row.amount < 0 ? "text-red-600 dark:text-red-400" : ""}`}>
                 {formatRp(row.amount)}
               </TableCell>
             )}
@@ -180,10 +180,10 @@ export default function LaporanGL() {
         <Card>
           <CardContent className="pt-4 pb-3">
             <div className="flex items-center gap-2 text-sm text-muted-foreground mb-1">
-              <TrendingUp className="h-4 w-4 text-green-600" />
+              <TrendingUp className="h-4 w-4 text-green-600 dark:text-green-400" />
               Total Pendapatan
             </div>
-            <p className="text-lg font-bold text-green-700">
+            <p className="text-lg font-bold text-green-700 dark:text-green-300">
               {lrLoading ? <Skeleton className="h-6 w-32" /> : formatRp(labaRugi?.totalRevenue ?? 0)}
             </p>
           </CardContent>
@@ -191,10 +191,10 @@ export default function LaporanGL() {
         <Card>
           <CardContent className="pt-4 pb-3">
             <div className="flex items-center gap-2 text-sm text-muted-foreground mb-1">
-              <TrendingDown className="h-4 w-4 text-red-600" />
+              <TrendingDown className="h-4 w-4 text-red-600 dark:text-red-400" />
               Total Beban
             </div>
-            <p className="text-lg font-bold text-red-700">
+            <p className="text-lg font-bold text-red-700 dark:text-red-300">
               {lrLoading ? <Skeleton className="h-6 w-32" /> : formatRp((labaRugi?.totalCOGS ?? 0) + (labaRugi?.totalExpenses ?? 0))}
             </p>
           </CardContent>
@@ -202,10 +202,10 @@ export default function LaporanGL() {
         <Card>
           <CardContent className="pt-4 pb-3">
             <div className="flex items-center gap-2 text-sm text-muted-foreground mb-1">
-              <FileText className="h-4 w-4 text-blue-600" />
+              <FileText className="h-4 w-4 text-blue-600 dark:text-blue-400" />
               Laba Bersih
             </div>
-            <p className={`text-lg font-bold ${(labaRugi?.netProfit ?? 0) >= 0 ? "text-green-700" : "text-red-700"}`}>
+            <p className={`text-lg font-bold ${(labaRugi?.netProfit ?? 0) >= 0 ? "text-green-700 dark:text-green-300" : "text-red-700 dark:text-red-300"}`}>
               {lrLoading ? <Skeleton className="h-6 w-32" /> : formatRp(labaRugi?.netProfit ?? 0)}
             </p>
           </CardContent>
@@ -219,11 +219,11 @@ export default function LaporanGL() {
             {neracaLoading ? (
               <Skeleton className="h-6 w-20" />
             ) : neraca?.balanceCheck ? (
-              <Badge variant="outline" className="text-green-700 border-green-300 bg-green-50">
+              <Badge variant="outline" className="text-green-700 dark:text-green-300 border-green-300 dark:border-green-700 bg-green-50 dark:bg-green-950">
                 <CheckCircle2 className="h-3.5 w-3.5 mr-1" /> Seimbang
               </Badge>
             ) : (
-              <Badge variant="outline" className="text-red-700 border-red-300 bg-red-50">
+              <Badge variant="outline" className="text-red-700 dark:text-red-300 border-red-300 dark:border-red-700 bg-red-50 dark:bg-red-950">
                 <AlertCircle className="h-3.5 w-3.5 mr-1" /> Tidak Seimbang
               </Badge>
             )}
@@ -285,7 +285,7 @@ export default function LaporanGL() {
                             </TableCell>
                             <TableCell className="text-right font-mono text-sm">{formatRp(acc.totalDebit)}</TableCell>
                             <TableCell className="text-right font-mono text-sm">{formatRp(acc.totalCredit)}</TableCell>
-                            <TableCell className={`text-right font-mono text-sm font-medium ${acc.balance < 0 ? "text-red-600" : ""}`}>
+                            <TableCell className={`text-right font-mono text-sm font-medium ${acc.balance < 0 ? "text-red-600 dark:text-red-400" : ""}`}>
                               {formatRp(acc.balance)}
                             </TableCell>
                           </TableRow>
@@ -303,13 +303,13 @@ export default function LaporanGL() {
                     </TableBody>
                   </Table>
                   {trialBalance && trialBalance.totalDebit === trialBalance.totalCredit && (
-                    <div className="flex items-center gap-2 mt-3 text-sm text-green-700 bg-green-50 border border-green-200 rounded-md px-3 py-2">
+                    <div className="flex items-center gap-2 mt-3 text-sm text-green-700 dark:text-green-300 bg-green-50 dark:bg-green-950 border border-green-200 dark:border-green-800 rounded-md px-3 py-2">
                       <CheckCircle2 className="h-4 w-4" />
                       Total Debit = Total Kredit — Jurnal seimbang
                     </div>
                   )}
                   {trialBalance && trialBalance.totalDebit !== trialBalance.totalCredit && (
-                    <div className="flex items-center gap-2 mt-3 text-sm text-red-700 bg-red-50 border border-red-200 rounded-md px-3 py-2">
+                    <div className="flex items-center gap-2 mt-3 text-sm text-red-700 dark:text-red-300 bg-red-50 dark:bg-red-950 border border-red-200 dark:border-red-800 rounded-md px-3 py-2">
                       <AlertCircle className="h-4 w-4" />
                       Selisih: {formatRp(trialBalance.totalDebit - trialBalance.totalCredit)} — Periksa jurnal
                     </div>
@@ -343,9 +343,9 @@ export default function LaporanGL() {
                   <div>
                     <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wider mb-2">Pendapatan</h3>
                     <AccountTable rows={labaRugi.revenue} />
-                    <div className="flex justify-between items-center mt-1 px-2 py-1.5 bg-green-50 rounded font-semibold text-sm">
+                    <div className="flex justify-between items-center mt-1 px-2 py-1.5 bg-green-50 dark:bg-green-950 rounded font-semibold text-sm">
                       <span>Total Pendapatan</span>
-                      <span className="font-mono text-green-700">{formatRp(labaRugi.totalRevenue)}</span>
+                      <span className="font-mono text-green-700 dark:text-green-300">{formatRp(labaRugi.totalRevenue)}</span>
                     </div>
                   </div>
 
@@ -353,16 +353,16 @@ export default function LaporanGL() {
                   <div>
                     <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wider mb-2">Harga Pokok Penjualan</h3>
                     <AccountTable rows={labaRugi.cogs} />
-                    <div className="flex justify-between items-center mt-1 px-2 py-1.5 bg-orange-50 rounded font-semibold text-sm">
+                    <div className="flex justify-between items-center mt-1 px-2 py-1.5 bg-orange-50 dark:bg-orange-950 rounded font-semibold text-sm">
                       <span>Total HPP</span>
-                      <span className="font-mono text-orange-700">{formatRp(labaRugi.totalCOGS)}</span>
+                      <span className="font-mono text-orange-700 dark:text-orange-300">{formatRp(labaRugi.totalCOGS)}</span>
                     </div>
                   </div>
 
                   {/* Laba Kotor */}
-                  <div className="flex justify-between items-center px-3 py-2 bg-blue-50 border border-blue-200 rounded-md font-bold">
+                  <div className="flex justify-between items-center px-3 py-2 bg-blue-50 dark:bg-blue-950 border border-blue-200 dark:border-blue-800 rounded-md font-bold">
                     <span>Laba Kotor</span>
-                    <span className={`font-mono ${labaRugi.grossProfit >= 0 ? "text-blue-700" : "text-red-700"}`}>
+                    <span className={`font-mono ${labaRugi.grossProfit >= 0 ? "text-blue-700 dark:text-blue-300" : "text-red-700 dark:text-red-300"}`}>
                       {formatRp(labaRugi.grossProfit)}
                     </span>
                   </div>
@@ -371,18 +371,18 @@ export default function LaporanGL() {
                   <div>
                     <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wider mb-2">Beban Operasional</h3>
                     <AccountTable rows={labaRugi.expenses} />
-                    <div className="flex justify-between items-center mt-1 px-2 py-1.5 bg-red-50 rounded font-semibold text-sm">
+                    <div className="flex justify-between items-center mt-1 px-2 py-1.5 bg-red-50 dark:bg-red-950 rounded font-semibold text-sm">
                       <span>Total Beban</span>
-                      <span className="font-mono text-red-700">{formatRp(labaRugi.totalExpenses)}</span>
+                      <span className="font-mono text-red-700 dark:text-red-300">{formatRp(labaRugi.totalExpenses)}</span>
                     </div>
                   </div>
 
                   {/* Laba Bersih */}
                   <div className={`flex justify-between items-center px-4 py-3 rounded-lg font-bold text-lg ${
-                    labaRugi.netProfit >= 0 ? "bg-green-100 border border-green-300" : "bg-red-100 border border-red-300"
+                    labaRugi.netProfit >= 0 ? "bg-green-100 dark:bg-green-900 border border-green-300 dark:border-green-700" : "bg-red-100 dark:bg-red-900 border border-red-300 dark:border-red-700"
                   }`}>
                     <span>Laba Bersih</span>
-                    <span className={`font-mono ${labaRugi.netProfit >= 0 ? "text-green-800" : "text-red-800"}`}>
+                    <span className={`font-mono ${labaRugi.netProfit >= 0 ? "text-green-800 dark:text-green-200" : "text-red-800 dark:text-red-200"}`}>
                       {formatRp(labaRugi.netProfit)}
                     </span>
                   </div>
@@ -407,9 +407,9 @@ export default function LaporanGL() {
                   <div>
                     <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wider mb-2">Aset</h3>
                     <AccountTable rows={neraca.assets} />
-                    <div className="flex justify-between items-center mt-1 px-2 py-1.5 bg-blue-50 rounded font-semibold text-sm">
+                    <div className="flex justify-between items-center mt-1 px-2 py-1.5 bg-blue-50 dark:bg-blue-950 rounded font-semibold text-sm">
                       <span>Total Aset</span>
-                      <span className="font-mono text-blue-700">{formatRp(neraca.totalAssets)}</span>
+                      <span className="font-mono text-blue-700 dark:text-blue-300">{formatRp(neraca.totalAssets)}</span>
                     </div>
                   </div>
 
@@ -417,9 +417,9 @@ export default function LaporanGL() {
                   <div>
                     <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wider mb-2">Kewajiban</h3>
                     <AccountTable rows={neraca.liabilities} />
-                    <div className="flex justify-between items-center mt-1 px-2 py-1.5 bg-orange-50 rounded font-semibold text-sm">
+                    <div className="flex justify-between items-center mt-1 px-2 py-1.5 bg-orange-50 dark:bg-orange-950 rounded font-semibold text-sm">
                       <span>Total Kewajiban</span>
-                      <span className="font-mono text-orange-700">{formatRp(neraca.totalLiabilities)}</span>
+                      <span className="font-mono text-orange-700 dark:text-orange-300">{formatRp(neraca.totalLiabilities)}</span>
                     </div>
                   </div>
 
@@ -427,23 +427,23 @@ export default function LaporanGL() {
                   <div>
                     <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wider mb-2">Ekuitas</h3>
                     <AccountTable rows={neraca.equity} />
-                    <div className="flex justify-between items-center mt-1 px-2 py-1.5 bg-purple-50 rounded font-semibold text-sm">
+                    <div className="flex justify-between items-center mt-1 px-2 py-1.5 bg-purple-50 dark:bg-purple-950 rounded font-semibold text-sm">
                       <span>Total Ekuitas</span>
-                      <span className="font-mono text-purple-700">{formatRp(neraca.totalEquity)}</span>
+                      <span className="font-mono text-purple-700 dark:text-purple-300">{formatRp(neraca.totalEquity)}</span>
                     </div>
                   </div>
 
                   {/* Laba Periode Berjalan */}
-                  <div className="flex justify-between items-center px-3 py-2 bg-green-50 border border-green-200 rounded-md font-semibold text-sm">
+                  <div className="flex justify-between items-center px-3 py-2 bg-green-50 dark:bg-green-950 border border-green-200 dark:border-green-800 rounded-md font-semibold text-sm">
                     <span>Laba Periode Berjalan</span>
-                    <span className={`font-mono ${neraca.netProfit >= 0 ? "text-green-700" : "text-red-700"}`}>
+                    <span className={`font-mono ${neraca.netProfit >= 0 ? "text-green-700 dark:text-green-300" : "text-red-700 dark:text-red-300"}`}>
                       {formatRp(neraca.netProfit)}
                     </span>
                   </div>
 
                   {/* Balance Equation */}
                   <div className={`px-4 py-3 rounded-lg border-2 ${
-                    neraca.balanceCheck ? "bg-green-50 border-green-300" : "bg-red-50 border-red-300"
+                    neraca.balanceCheck ? "bg-green-50 dark:bg-green-950 border-green-300 dark:border-green-700" : "bg-red-50 dark:bg-red-950 border-red-300 dark:border-red-700"
                   }`}>
                     <div className="grid grid-cols-2 gap-4 text-sm">
                       <div>
@@ -460,13 +460,13 @@ export default function LaporanGL() {
                     <div className="mt-2 flex items-center gap-2 text-sm">
                       {neraca.balanceCheck ? (
                         <>
-                          <CheckCircle2 className="h-4 w-4 text-green-600" />
-                          <span className="text-green-700 font-medium">Neraca Seimbang (A = L + E + Laba)</span>
+                          <CheckCircle2 className="h-4 w-4 text-green-600 dark:text-green-400" />
+                          <span className="text-green-700 dark:text-green-300 font-medium">Neraca Seimbang (A = L + E + Laba)</span>
                         </>
                       ) : (
                         <>
-                          <AlertCircle className="h-4 w-4 text-red-600" />
-                          <span className="text-red-700 font-medium">
+                          <AlertCircle className="h-4 w-4 text-red-600 dark:text-red-400" />
+                          <span className="text-red-700 dark:text-red-300 font-medium">
                             Selisih: {formatRp(neraca.totalAssets - neraca.totalLiabilities - neraca.totalEquity - neraca.netProfit)}
                           </span>
                         </>
@@ -554,7 +554,7 @@ export default function LaporanGL() {
                             <TableCell className="text-right font-mono text-sm">
                               {entry.creditAmount > 0 ? formatRp(entry.creditAmount) : "—"}
                             </TableCell>
-                            <TableCell className={`text-right font-mono text-sm font-medium ${entry.runningBalance < 0 ? "text-red-600" : ""}`}>
+                            <TableCell className={`text-right font-mono text-sm font-medium ${entry.runningBalance < 0 ? "text-red-600 dark:text-red-400" : ""}`}>
                               {formatRp(entry.runningBalance)}
                             </TableCell>
                           </TableRow>

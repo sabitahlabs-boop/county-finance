@@ -147,7 +147,7 @@ export function InvoicePrintDialog({ open, onClose, transaction, business }: Inv
         </div>
 
         {/* Invoice Preview */}
-        <div className="overflow-y-auto max-h-[80vh] bg-gray-100 p-6">
+        <div className="overflow-y-auto max-h-[80vh] bg-gray-100 dark:bg-gray-800 p-6">
           <div
             ref={printRef}
             style={{

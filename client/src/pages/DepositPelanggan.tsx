@@ -153,19 +153,19 @@ export default function DepositPelanggan() {
       <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
         <Card className="border-0 shadow-md">
           <CardContent className="p-4">
-            <div className="text-2xl font-bold text-blue-600">{formatRupiah(totalOutstanding)}</div>
+            <div className="text-2xl font-bold text-blue-600 dark:text-blue-400">{formatRupiah(totalOutstanding)}</div>
             <div className="text-xs text-muted-foreground">Total Outstanding</div>
           </CardContent>
         </Card>
         <Card className="border-0 shadow-md">
           <CardContent className="p-4">
-            <div className="text-2xl font-bold text-green-600">{deposits?.length || 0}</div>
+            <div className="text-2xl font-bold text-green-600 dark:text-green-400">{deposits?.length || 0}</div>
             <div className="text-xs text-muted-foreground">Customer Aktif</div>
           </CardContent>
         </Card>
         <Card className="border-0 shadow-md">
           <CardContent className="p-4">
-            <div className="text-2xl font-bold text-purple-600">
+            <div className="text-2xl font-bold text-purple-600 dark:text-purple-400">
               {deposits?.filter(d => d.balance > 0).length || 0}
             </div>
             <div className="text-xs text-muted-foreground">Dengan Saldo</div>
@@ -211,7 +211,7 @@ export default function DepositPelanggan() {
                 <div className="flex items-center justify-between">
                   <div className="flex-1">
                     <h4 className="font-semibold">{deposit.clientName}</h4>
-                    <p className="text-2xl font-bold mt-2 text-blue-600">
+                    <p className="text-2xl font-bold mt-2 text-blue-600 dark:text-blue-400">
                       {formatRupiah(deposit.balance)}
                     </p>
                     <p className="text-xs text-muted-foreground mt-1">
@@ -265,18 +265,18 @@ export default function DepositPelanggan() {
                       <div className="space-y-2 max-h-64 overflow-y-auto">
                         {history && history.length > 0 ? (
                           history.map((tx) => (
-                            <div key={tx.id} className="flex items-center justify-between text-sm p-2 rounded bg-gray-50">
+                            <div key={tx.id} className="flex items-center justify-between text-sm p-2 rounded bg-gray-50 dark:bg-gray-800">
                               <div className="flex items-center gap-2">
-                                {tx.type === "topup" && <TrendingUp className="h-4 w-4 text-green-600" />}
-                                {tx.type === "usage" && <TrendingDown className="h-4 w-4 text-red-600" />}
-                                {tx.type === "refund" && <RotateCcw className="h-4 w-4 text-blue-600" />}
+                                {tx.type === "topup" && <TrendingUp className="h-4 w-4 text-green-600 dark:text-green-400" />}
+                                {tx.type === "usage" && <TrendingDown className="h-4 w-4 text-red-600 dark:text-red-400" />}
+                                {tx.type === "refund" && <RotateCcw className="h-4 w-4 text-blue-600 dark:text-blue-400" />}
                                 <div>
                                   <p className="font-medium capitalize">{tx.type}</p>
                                   <p className="text-xs text-muted-foreground">{new Date(tx.createdAt).toLocaleDateString("id-ID")}</p>
                                 </div>
                               </div>
                               <p className={`font-semibold ${
-                                tx.type === "usage" ? "text-red-600" : "text-green-600"
+                                tx.type === "usage" ? "text-red-600 dark:text-red-400" : "text-green-600 dark:text-green-400"
                               }`}>
                                 {tx.type === "usage" ? "-" : "+"}{formatRupiah(tx.amount)}
                               </p>

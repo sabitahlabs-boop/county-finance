@@ -27,23 +27,23 @@ function KPICard({ icon: Icon, label, value, variant = "default" }: {
 }) {
   const bgColor = {
     default: "bg-slate-50",
-    info: "bg-blue-50",
-    success: "bg-green-50",
-    warning: "bg-amber-50",
+    info: "bg-blue-50 dark:bg-blue-950",
+    success: "bg-green-50 dark:bg-green-950",
+    warning: "bg-amber-50 dark:bg-amber-950",
   }[variant];
 
   const borderColor = {
     default: "border-slate-200",
-    info: "border-blue-200",
-    success: "border-green-200",
-    warning: "border-amber-200",
+    info: "border-blue-200 dark:border-blue-800",
+    success: "border-green-200 dark:border-green-800",
+    warning: "border-amber-200 dark:border-amber-800",
   }[variant];
 
   const textColor = {
     default: "text-slate-600",
-    info: "text-blue-600",
-    success: "text-green-600",
-    warning: "text-amber-600",
+    info: "text-blue-600 dark:text-blue-400",
+    success: "text-green-600 dark:text-green-400",
+    warning: "text-amber-600 dark:text-amber-400",
   }[variant];
 
   return (

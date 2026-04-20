@@ -502,7 +502,7 @@ export default function Pajak() {
               <CardHeader className="pb-3">
                 <div className="flex items-center gap-2">
                   <div className="h-8 w-8 rounded-lg bg-blue-100 dark:bg-blue-900/30 flex items-center justify-center">
-                    <Percent className="h-4 w-4 text-blue-600" />
+                    <Percent className="h-4 w-4 text-blue-600 dark:text-blue-400" />
                   </div>
                   <div>
                     <CardTitle className="text-base">PPN (Pajak Pertambahan Nilai)</CardTitle>
@@ -543,7 +543,7 @@ export default function Pajak() {
                     </div>
                     <div className="flex justify-between text-sm">
                       <span className="text-muted-foreground">PPN {ppnTarif}%</span>
-                      <span className="font-bold text-blue-600">{formatRupiah(ppnResult.ppn)}</span>
+                      <span className="font-bold text-blue-600 dark:text-blue-400">{formatRupiah(ppnResult.ppn)}</span>
                     </div>
                     <div className="flex justify-between text-sm border-t pt-1 mt-1">
                       <span className="font-medium">Total</span>
@@ -559,7 +559,7 @@ export default function Pajak() {
               <CardHeader className="pb-3">
                 <div className="flex items-center gap-2">
                   <div className="h-8 w-8 rounded-lg bg-purple-100 dark:bg-purple-900/30 flex items-center justify-center">
-                    <Users className="h-4 w-4 text-purple-600" />
+                    <Users className="h-4 w-4 text-purple-600 dark:text-purple-400" />
                   </div>
                   <div>
                     <CardTitle className="text-base">PPh 21 (Karyawan)</CardTitle>
@@ -602,7 +602,7 @@ export default function Pajak() {
                     </div>
                     <div className="flex justify-between text-sm border-t pt-1 mt-1">
                       <span className="font-medium">PPh 21 per Tahun</span>
-                      <span className="font-bold text-purple-600">{formatRupiah(pph21Result.pajak)}</span>
+                      <span className="font-bold text-purple-600 dark:text-purple-400">{formatRupiah(pph21Result.pajak)}</span>
                     </div>
                     <div className="flex justify-between text-sm">
                       <span className="text-muted-foreground">PPh 21 per Bulan</span>
@@ -622,7 +622,7 @@ export default function Pajak() {
               <CardHeader className="pb-3">
                 <div className="flex items-center gap-2">
                   <div className="h-8 w-8 rounded-lg bg-amber-100 dark:bg-amber-900/30 flex items-center justify-center">
-                    <Building2 className="h-4 w-4 text-amber-600" />
+                    <Building2 className="h-4 w-4 text-amber-600 dark:text-amber-400" />
                   </div>
                   <div>
                     <CardTitle className="text-base">PPh 23 (Jasa & Dividen)</CardTitle>
@@ -659,7 +659,7 @@ export default function Pajak() {
                     </div>
                     <div className="flex justify-between text-sm border-t pt-1 mt-1">
                       <span className="font-medium">PPh 23 yang dipotong</span>
-                      <span className="font-bold text-amber-600">{formatRupiah(pph23Result.pajak)}</span>
+                      <span className="font-bold text-amber-600 dark:text-amber-400">{formatRupiah(pph23Result.pajak)}</span>
                     </div>
                     <div className="flex justify-between text-sm">
                       <span className="text-muted-foreground">Yang diterima (netto)</span>
@@ -833,7 +833,7 @@ export default function Pajak() {
 
                 return (
                   <div key={idx} className={`flex items-center gap-3 p-3 rounded-lg ${isOverdue ? "bg-red-50 dark:bg-red-950/20" : isUrgent ? "bg-orange-50 dark:bg-orange-950/20" : "bg-muted/30"}`}>
-                    <div className={`h-10 w-10 rounded-full flex items-center justify-center shrink-0 ${isOverdue ? "bg-red-100 text-red-600" : isUrgent ? "bg-orange-100 text-orange-600" : "bg-primary/10 text-primary"}`}>
+                    <div className={`h-10 w-10 rounded-full flex items-center justify-center shrink-0 ${isOverdue ? "bg-red-100 dark:bg-red-900 text-red-600 dark:text-red-400" : isUrgent ? "bg-orange-100 dark:bg-orange-900 text-orange-600 dark:text-orange-400" : "bg-primary/10 text-primary"}`}>
                       {isOverdue ? <AlertTriangle className="h-5 w-5" /> : isUrgent ? <Clock className="h-5 w-5" /> : <CalendarClock className="h-5 w-5" />}
                     </div>
                     <div className="flex-1 min-w-0">
@@ -842,7 +842,7 @@ export default function Pajak() {
                     </div>
                     <div className="text-right shrink-0">
                       <p className="text-sm font-medium">{deadlineStr}</p>
-                      <p className={`text-xs ${isOverdue ? "text-red-600 font-medium" : isUrgent ? "text-orange-600 font-medium" : "text-muted-foreground"}`}>
+                      <p className={`text-xs ${isOverdue ? "text-red-600 dark:text-red-400 font-medium" : isUrgent ? "text-orange-600 dark:text-orange-400 font-medium" : "text-muted-foreground"}`}>
                         {isOverdue ? `Terlambat ${Math.abs(daysLeft)} hari` : daysLeft === 0 ? "Hari ini!" : `${daysLeft} hari lagi`}
                       </p>
                     </div>
@@ -867,11 +867,11 @@ export default function Pajak() {
                     </tr>
                   </thead>
                   <tbody>
-                    <tr className="border-b"><td className="p-3">Telat lapor SPT Masa PPh</td><td className="p-3 text-right font-medium text-red-600">Rp 100.000</td></tr>
-                    <tr className="border-b"><td className="p-3">Telat lapor SPT Masa PPN</td><td className="p-3 text-right font-medium text-red-600">Rp 500.000</td></tr>
-                    <tr className="border-b"><td className="p-3">Telat lapor SPT Tahunan OP</td><td className="p-3 text-right font-medium text-red-600">Rp 100.000</td></tr>
-                    <tr className="border-b"><td className="p-3">Telat lapor SPT Tahunan Badan</td><td className="p-3 text-right font-medium text-red-600">Rp 1.000.000</td></tr>
-                    <tr><td className="p-3">Telat setor pajak</td><td className="p-3 text-right font-medium text-red-600">2% per bulan dari pajak terutang</td></tr>
+                    <tr className="border-b"><td className="p-3">Telat lapor SPT Masa PPh</td><td className="p-3 text-right font-medium text-red-600 dark:text-red-400">Rp 100.000</td></tr>
+                    <tr className="border-b"><td className="p-3">Telat lapor SPT Masa PPN</td><td className="p-3 text-right font-medium text-red-600 dark:text-red-400">Rp 500.000</td></tr>
+                    <tr className="border-b"><td className="p-3">Telat lapor SPT Tahunan OP</td><td className="p-3 text-right font-medium text-red-600 dark:text-red-400">Rp 100.000</td></tr>
+                    <tr className="border-b"><td className="p-3">Telat lapor SPT Tahunan Badan</td><td className="p-3 text-right font-medium text-red-600 dark:text-red-400">Rp 1.000.000</td></tr>
+                    <tr><td className="p-3">Telat setor pajak</td><td className="p-3 text-right font-medium text-red-600 dark:text-red-400">2% per bulan dari pajak terutang</td></tr>
                   </tbody>
                 </table>
               </div>

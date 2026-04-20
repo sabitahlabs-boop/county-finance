@@ -126,11 +126,11 @@ export default function RingkasanDiskon() {
   const getTypeBadgeColor = (type: string) => {
     switch (type) {
       case "percentage":
-        return "bg-blue-100 text-blue-700";
+        return "bg-blue-100 dark:bg-blue-900 text-blue-700 dark:text-blue-300";
       case "fixed":
-        return "bg-purple-100 text-purple-700";
+        return "bg-purple-100 dark:bg-purple-900 text-purple-700 dark:text-purple-300";
       default:
-        return "bg-gray-100 text-gray-700";
+        return "bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300";
     }
   };
 

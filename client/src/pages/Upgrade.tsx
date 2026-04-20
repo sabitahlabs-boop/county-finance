@@ -105,7 +105,7 @@ export default function Upgrade() {
         animate={{ opacity: 1, y: 0 }}
         className="text-center"
       >
-        <div className="inline-flex items-center gap-2 bg-gradient-to-r from-amber-100 to-yellow-100 text-amber-800 rounded-full px-4 py-1.5 text-sm font-medium mb-4">
+        <div className="inline-flex items-center gap-2 bg-gradient-to-r from-amber-100 to-yellow-100 text-amber-800 dark:text-amber-200 rounded-full px-4 py-1.5 text-sm font-medium mb-4">
           <Crown className="h-4 w-4" />
           Upgrade ke Pro
         </div>

@@ -20,9 +20,9 @@ import { motion, AnimatePresence } from "framer-motion";
 import { toast } from "sonner";
 
 function StatusBadge({ status }: { status: string }) {
-  if (status === "lunas") return <Badge className="bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400"><CheckCircle2 className="h-3 w-3 mr-1" />Lunas</Badge>;
-  if (status === "terlambat") return <Badge className="bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400"><AlertTriangle className="h-3 w-3 mr-1" />Terlambat</Badge>;
-  return <Badge className="bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400"><Clock className="h-3 w-3 mr-1" />Belum Lunas</Badge>;
+  if (status === "lunas") return <Badge className="bg-green-100 dark:bg-green-900 text-green-700 dark:text-green-300 dark:bg-green-900/30 dark:text-green-400"><CheckCircle2 className="h-3 w-3 mr-1" />Lunas</Badge>;
+  if (status === "terlambat") return <Badge className="bg-red-100 dark:bg-red-900 text-red-700 dark:text-red-300 dark:bg-red-900/30 dark:text-red-400"><AlertTriangle className="h-3 w-3 mr-1" />Terlambat</Badge>;
+  return <Badge className="bg-amber-100 dark:bg-amber-900 text-amber-700 dark:text-amber-300 dark:bg-amber-900/30 dark:text-amber-400"><Clock className="h-3 w-3 mr-1" />Belum Lunas</Badge>;
 }
 
 export default function HutangPiutang() {
@@ -143,13 +143,13 @@ export default function HutangPiutang() {
           </Card>
           <Card className="border-0 shadow-md">
             <CardContent className="p-4">
-              <div className="text-lg font-bold text-green-600">{formatRupiah(totalPaid)}</div>
+              <div className="text-lg font-bold text-green-600 dark:text-green-400">{formatRupiah(totalPaid)}</div>
               <div className="text-xs text-muted-foreground">Sudah Dibayar</div>
             </CardContent>
           </Card>
           <Card className="border-0 shadow-md">
             <CardContent className="p-4">
-              <div className="text-lg font-bold text-amber-600">{formatRupiah(totalRemaining)}</div>
+              <div className="text-lg font-bold text-amber-600 dark:text-amber-400">{formatRupiah(totalRemaining)}</div>
               <div className="text-xs text-muted-foreground">Sisa</div>
             </CardContent>
           </Card>

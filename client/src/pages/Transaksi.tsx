@@ -383,7 +383,7 @@ function ScanReceiptDialog({ open, onClose, onResult }: {
                   {result.discount > 0 && (
                     <div className="flex justify-between text-xs">
                       <span className="text-muted-foreground">Diskon</span>
-                      <span className="text-green-600">-{formatRupiah(result.discount)}</span>
+                      <span className="text-green-600 dark:text-green-400">-{formatRupiah(result.discount)}</span>
                     </div>
                   )}
                 </div>
@@ -391,7 +391,7 @@ function ScanReceiptDialog({ open, onClose, onResult }: {
               <div className="pt-2 border-t">
                 <div className="flex justify-between font-bold">
                   <span>Total</span>
-                  <span className="text-red-600">{formatRupiah(result.total)}</span>
+                  <span className="text-red-600 dark:text-red-400">{formatRupiah(result.total)}</span>
                 </div>
               </div>
             </div>
@@ -406,7 +406,7 @@ function ScanReceiptDialog({ open, onClose, onResult }: {
                     className="flex items-center gap-3 p-4 rounded-xl border-2 border-primary/20 hover:border-primary hover:bg-primary/5 transition-all text-left"
                   >
                     <div className="h-10 w-10 rounded-lg bg-blue-100 dark:bg-blue-900/30 flex items-center justify-center shrink-0">
-                      <Package className="h-5 w-5 text-blue-600" />
+                      <Package className="h-5 w-5 text-blue-600 dark:text-blue-400" />
                     </div>
                     <div>
                       <p className="font-semibold text-sm">Masukkan ke Stok Item</p>
@@ -418,7 +418,7 @@ function ScanReceiptDialog({ open, onClose, onResult }: {
                     className="flex items-center gap-3 p-4 rounded-xl border-2 border-primary/20 hover:border-primary hover:bg-primary/5 transition-all text-left"
                   >
                     <div className="h-10 w-10 rounded-lg bg-red-100 dark:bg-red-900/30 flex items-center justify-center shrink-0">
-                      <Receipt className="h-5 w-5 text-red-600" />
+                      <Receipt className="h-5 w-5 text-red-600 dark:text-red-400" />
                     </div>
                     <div>
                       <p className="font-semibold text-sm">Catat Pengeluaran Saja</p>
@@ -750,7 +750,7 @@ export default function Transaksi() {
               <p className="text-xs text-muted-foreground font-medium">Total Pengeluaran</p>
               <p className="text-lg font-bold text-red-500">{formatRupiah(totalPengeluaran)}</p>
             </div>
-            <div className="h-9 w-9 rounded-lg bg-red-50 flex items-center justify-center">
+            <div className="h-9 w-9 rounded-lg bg-red-50 dark:bg-red-950 flex items-center justify-center">
               <ArrowDownRight className="h-4 w-4 text-red-500" />
             </div>
           </CardContent>
@@ -851,7 +851,7 @@ export default function Transaksi() {
                           <Button
                             variant="ghost"
                             size="sm"
-                            className="h-7 w-7 p-0 text-muted-foreground hover:text-blue-600"
+                            className="h-7 w-7 p-0 text-muted-foreground hover:text-blue-600 dark:text-blue-400"
                             title="Edit Transaksi"
                             onClick={() => {
                               setEditTx(tx);
@@ -1162,13 +1162,13 @@ export default function Transaksi() {
                 </div>
                 <div className="flex justify-between text-sm">
                   <span className="text-muted-foreground">Jumlah</span>
-                  <span className={`font-semibold ${voidDialog.type === "pemasukan" ? "text-emerald-600" : "text-red-600"}`}>
+                  <span className={`font-semibold ${voidDialog.type === "pemasukan" ? "text-emerald-600" : "text-red-600 dark:text-red-400"}`}>
                     {voidDialog.type === "pemasukan" ? "+" : "-"}{formatRupiah(voidDialog.amount)}
                   </span>
                 </div>
               </div>
 
-              <div className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800 dark:border-amber-800 dark:bg-amber-950/30 dark:text-amber-300">
+              <div className="rounded-lg border border-amber-200 dark:border-amber-800 bg-amber-50 dark:bg-amber-950 p-3 text-sm text-amber-800 dark:text-amber-200 dark:border-amber-800 dark:bg-amber-950/30 dark:text-amber-300">
                 <strong>Perhatian:</strong> Void akan membuat jurnal reversal otomatis (transaksi pembalik) dan mengembalikan stok jika ada produk terkait. Transaksi asli tetap tercatat sebagai "voided".
               </div>
 

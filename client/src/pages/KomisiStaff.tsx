@@ -287,13 +287,13 @@ export default function KomisiStaff() {
         <Card>
           <CardContent className="pt-6">
             <div className="text-sm text-muted-foreground mb-1">Belum Dibayar</div>
-            <div className="text-2xl font-bold text-amber-600">{formatRupiah(metrics.totalBelumDibayar)}</div>
+            <div className="text-2xl font-bold text-amber-600 dark:text-amber-400">{formatRupiah(metrics.totalBelumDibayar)}</div>
           </CardContent>
         </Card>
         <Card>
           <CardContent className="pt-6">
             <div className="text-sm text-muted-foreground mb-1">Sudah Dibayar</div>
-            <div className="text-2xl font-bold text-green-600">{formatRupiah(metrics.totalSudahDibayar)}</div>
+            <div className="text-2xl font-bold text-green-600 dark:text-green-400">{formatRupiah(metrics.totalSudahDibayar)}</div>
           </CardContent>
         </Card>
       </div>
@@ -365,8 +365,8 @@ export default function KomisiStaff() {
                       <td className="py-2 px-3">{row.userName || "Unknown"}</td>
                       <td className="text-right py-2 px-3">{formatRupiah(row.totalSalesAmount)}</td>
                       <td className="text-right py-2 px-3 font-semibold">{formatRupiah(row.totalCommissionAmount)}</td>
-                      <td className="text-right py-2 px-3 text-amber-600">{formatRupiah(row.commissionPending)}</td>
-                      <td className="text-right py-2 px-3 text-green-600">{formatRupiah(row.commissionPaid)}</td>
+                      <td className="text-right py-2 px-3 text-amber-600 dark:text-amber-400">{formatRupiah(row.commissionPending)}</td>
+                      <td className="text-right py-2 px-3 text-green-600 dark:text-green-400">{formatRupiah(row.commissionPaid)}</td>
                       <td className="text-right py-2 px-3">{row.transactionCount}</td>
                     </tr>
                   ))}
@@ -468,11 +468,11 @@ export default function KomisiStaff() {
                       <td className="text-right py-2 px-3 font-semibold">{formatRupiah(c.commissionAmount)}</td>
                       <td className="text-center py-2 px-3">
                         {c.status === "pending" ? (
-                          <span className="text-xs font-semibold text-amber-600 bg-amber-100 px-2 py-1 rounded">
+                          <span className="text-xs font-semibold text-amber-600 dark:text-amber-400 bg-amber-100 dark:bg-amber-900 px-2 py-1 rounded">
                             Pending
                           </span>
                         ) : (
-                          <span className="text-xs font-semibold text-green-600 bg-green-100 px-2 py-1 rounded">
+                          <span className="text-xs font-semibold text-green-600 dark:text-green-400 bg-green-100 dark:bg-green-900 px-2 py-1 rounded">
                             Dibayar
                           </span>
                         )}

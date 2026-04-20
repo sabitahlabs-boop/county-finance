@@ -65,8 +65,8 @@ const roleConfigs: Record<Role, RoleConfig> = {
     icon: <Eye className="h-5 w-5" />,
     color: "text-gray-600 dark:text-gray-400",
     accentColor: "from-gray-400 to-slate-500",
-    bgColor: "bg-gray-50 dark:bg-gray-950/20",
-    badgeColor: "bg-gray-100 dark:bg-gray-900 text-gray-800 dark:text-gray-200",
+    bgColor: "bg-gray-50 dark:bg-gray-800 dark:bg-gray-950/20",
+    badgeColor: "bg-gray-100 dark:bg-gray-800 dark:bg-gray-900 text-gray-800 dark:text-gray-200",
   },
 };
 
@@ -331,7 +331,7 @@ export default function StaffManagement() {
                           initial={{ opacity: 0 }}
                           animate={{ opacity: 1 }}
                           exit={{ opacity: 0 }}
-                          className={`p-4 sm:p-5 transition-colors hover:bg-white/2.5 dark:hover:bg-white/5 ${
+                          className={`p-4 sm:p-5 transition-colors hover:bg-white dark:bg-gray-900/2.5 dark:hover:bg-white dark:bg-gray-900/5 ${
                             isEditing ? config.bgColor : ""
                           }`}
                         >
@@ -420,7 +420,7 @@ export default function StaffManagement() {
                                   {Object.keys(defaultPermissions).map((perm) => (
                                     <div
                                       key={perm}
-                                      className="flex items-center space-x-2 p-2 rounded-lg hover:bg-white/5"
+                                      className="flex items-center space-x-2 p-2 rounded-lg hover:bg-white dark:bg-gray-900/5"
                                     >
                                       <Checkbox
                                         id={`perm-${member.id}-${perm}`}
@@ -510,7 +510,7 @@ export default function StaffManagement() {
                                     variant="ghost"
                                     size="icon"
                                     onClick={() => startEdit(member)}
-                                    className="h-8 w-8 hover:bg-white/10"
+                                    className="h-8 w-8 hover:bg-white dark:bg-gray-900/10"
                                   >
                                     <Pencil className="h-4 w-4" />
                                   </Button>
@@ -522,7 +522,7 @@ export default function StaffManagement() {
                                         removeMut.mutate({ memberId: Number(member.id) });
                                       }
                                     }}
-                                    className="h-8 w-8 hover:bg-red-500/20 hover:text-red-600 dark:hover:text-red-400"
+                                    className="h-8 w-8 hover:bg-red-500/20 hover:text-red-600 dark:text-red-400 dark:hover:text-red-400"
                                     disabled={removeMut.isPending}
                                   >
                                     <Trash2 className="h-4 w-4" />
@@ -540,7 +540,7 @@ export default function StaffManagement() {
                                       hasAccess && (
                                         <span
                                           key={perm}
-                                          className="inline-flex items-center gap-1 text-xs px-2.5 py-1 rounded-full bg-white/5 border border-white/10 text-white/80"
+                                          className="inline-flex items-center gap-1 text-xs px-2.5 py-1 rounded-full bg-white dark:bg-gray-900/5 border border-white/10 text-white/80"
                                         >
                                           <ToggleRight className="h-3 w-3" />
                                           {permissionLabels[perm]}

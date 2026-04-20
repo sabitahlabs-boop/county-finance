@@ -157,7 +157,7 @@ export function COGSCalculator({
           <div className="grid grid-cols-3 gap-2 pt-2 border-t">
             <div className="text-center">
               <p className="text-xs text-muted-foreground">HPP (COGS)</p>
-              <p className="font-bold text-sm text-orange-600">{formatRupiah(totalCogs)}</p>
+              <p className="font-bold text-sm text-orange-600 dark:text-orange-400">{formatRupiah(totalCogs)}</p>
             </div>
             <div className="text-center">
               <p className="text-xs text-muted-foreground">Harga Jual</p>
@@ -211,7 +211,7 @@ export function COGSCalculator({
                     <Button
                       variant="ghost"
                       size="icon"
-                      className="h-7 w-7 text-red-500 hover:text-red-600"
+                      className="h-7 w-7 text-red-500 hover:text-red-600 dark:text-red-400"
                       onClick={() => deleteMutation.mutate({ id: comp.id })}
                       disabled={deleteMutation.isPending}
                     >
@@ -225,7 +225,7 @@ export function COGSCalculator({
             {/* Total bar */}
             <div className="flex items-center justify-between px-3 py-2 rounded-lg bg-orange-50 dark:bg-orange-950/30 border border-orange-200 dark:border-orange-800">
               <span className="text-sm font-semibold">Total HPP</span>
-              <span className="text-sm font-bold text-orange-600">{formatRupiah(totalCogs)}</span>
+              <span className="text-sm font-bold text-orange-600 dark:text-orange-400">{formatRupiah(totalCogs)}</span>
             </div>
           </div>
         )}

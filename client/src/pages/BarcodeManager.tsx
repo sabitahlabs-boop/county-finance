@@ -47,14 +47,14 @@ const BarcodeDisplay: React.FC<{ barcode: string; productName: string }> = ({
   const pattern = generateBarcodePattern(barcode);
 
   return (
-    <div className="flex flex-col items-center gap-2 bg-white p-6 rounded-lg border border-gray-200">
+    <div className="flex flex-col items-center gap-2 bg-white dark:bg-gray-900 p-6 rounded-lg border border-gray-200 dark:border-gray-700">
       {/* Barcode bars */}
       <div className="flex items-end gap-px h-20 justify-center">
         {pattern.map((isBlack, idx) => (
           <div
             key={idx}
             className={`${
-              isBlack ? 'bg-black' : 'bg-white'
+              isBlack ? 'bg-black' : 'bg-white dark:bg-gray-900'
             } transition-all duration-200`}
             style={{
               width: isBlack ? '2px' : '1px',
@@ -67,7 +67,7 @@ const BarcodeDisplay: React.FC<{ barcode: string; productName: string }> = ({
       {/* Barcode number */}
       <div className="text-center">
         <p className="font-mono text-sm font-semibold text-black">{barcode}</p>
-        <p className="text-xs text-gray-600 mt-1 max-w-xs truncate">{productName}</p>
+        <p className="text-xs text-gray-600 dark:text-gray-400 mt-1 max-w-xs truncate">{productName}</p>
       </div>
     </div>
   );
@@ -115,33 +115,33 @@ const ProductCard: React.FC<{
 
         <div className="grid grid-cols-2 gap-2 text-xs text-gray-400 mb-3">
           <div>
-            <span className="text-gray-500">SKU:</span>
+            <span className="text-gray-500 dark:text-gray-400">SKU:</span>
             <p className="font-mono text-green-400">{product.sku}</p>
           </div>
           <div>
-            <span className="text-gray-500">Barcode:</span>
+            <span className="text-gray-500 dark:text-gray-400">Barcode:</span>
             <p className="font-mono text-green-400">{product.barcode}</p>
           </div>
           <div>
-            <span className="text-gray-500">Price:</span>
+            <span className="text-gray-500 dark:text-gray-400">Price:</span>
             <p className="text-white">Rp {product.sellingPrice.toLocaleString('id-ID')}</p>
           </div>
           <div>
-            <span className="text-gray-500">Stock:</span>
+            <span className="text-gray-500 dark:text-gray-400">Stock:</span>
             <p className="text-white">{product.stockCurrent} units</p>
           </div>
         </div>
 
         {/* Mini barcode preview */}
         <div className="mt-3 bg-gray-800 p-2 rounded">
-          <div className="flex items-center gap-1 h-12 justify-center bg-white rounded p-1">
+          <div className="flex items-center gap-1 h-12 justify-center bg-white dark:bg-gray-900 rounded p-1">
             <div className="flex items-end gap-px">
               {(product.barcode || product.sku || String(product.id)).substring(0, 16).split('').map((char: string, idx: number) => {
                 const code = char.charCodeAt(0);
                 return (
                   <div
                     key={idx}
-                    className={`${(code % 2 === 0) ? 'bg-black' : 'bg-white'}`}
+                    className={`${(code % 2 === 0) ? 'bg-black' : 'bg-white dark:bg-gray-900'}`}
                     style={{
                       width: '3px',
                       height: `${8 + ((code % 3) * 2)}px`,
@@ -242,7 +242,7 @@ export default function BarcodeManager() {
             <div className="relative">
               <Search
                 size={18}
-                className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500"
+                className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500 dark:text-gray-400"
               />
               <input
                 type="text"

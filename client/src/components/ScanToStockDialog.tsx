@@ -335,7 +335,7 @@ export function ScanToStockDialog({
                 <div>
                   <div className="flex items-center justify-between mb-1">
                     <Label className="text-xs">Harga Jual</Label>
-                    {currentItem?.price > 0 && <span className="text-xs text-amber-600 font-medium bg-amber-50 px-1.5 py-0.5 rounded">+30% saran</span>}
+                    {currentItem?.price > 0 && <span className="text-xs text-amber-600 dark:text-amber-400 font-medium bg-amber-50 dark:bg-amber-950 px-1.5 py-0.5 rounded">+30% saran</span>}
                   </div>
                   <Input
                     type="number"

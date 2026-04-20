@@ -121,7 +121,7 @@ export default function MiniCalculator() {
                     <Calculator className="h-4 w-4" />
                     <span className="text-sm font-medium">Kalkulator</span>
                   </div>
-                  <Button variant="ghost" size="icon" className="h-6 w-6 text-white/80 hover:text-white hover:bg-white/20" onClick={() => setIsOpen(false)}>
+                  <Button variant="ghost" size="icon" className="h-6 w-6 text-white/80 hover:text-white hover:bg-white dark:bg-gray-900/20" onClick={() => setIsOpen(false)}>
                     <X className="h-3 w-3" />
                   </Button>
                 </div>

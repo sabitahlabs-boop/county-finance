@@ -27,10 +27,10 @@ import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/component
 type TierLevel = "Bronze" | "Silver" | "Gold" | "Platinum";
 
 const TIER_COLORS: Record<TierLevel, { bg: string; text: string; icon: string }> = {
-  Bronze: { bg: "bg-amber-50", text: "text-amber-700", icon: "🥉" },
+  Bronze: { bg: "bg-amber-50 dark:bg-amber-950", text: "text-amber-700 dark:text-amber-300", icon: "🥉" },
   Silver: { bg: "bg-slate-50", text: "text-slate-700", icon: "🥈" },
-  Gold: { bg: "bg-yellow-50", text: "text-yellow-700", icon: "🥇" },
-  Platinum: { bg: "bg-purple-50", text: "text-purple-700", icon: "💎" },
+  Gold: { bg: "bg-yellow-50 dark:bg-yellow-950", text: "text-yellow-700 dark:text-yellow-300", icon: "🥇" },
+  Platinum: { bg: "bg-purple-50 dark:bg-purple-950", text: "text-purple-700 dark:text-purple-300", icon: "💎" },
 };
 
 export default function LoyaltyManagement() {
@@ -136,7 +136,7 @@ export default function LoyaltyManagement() {
         <Card className="border-0 shadow-md bg-gradient-to-r from-blue-50 to-indigo-50">
           <CardContent className="p-4 flex items-center justify-between">
             <div className="flex items-center gap-3">
-              <Gift className="h-5 w-5 text-blue-600" />
+              <Gift className="h-5 w-5 text-blue-600 dark:text-blue-400" />
               <div>
                 <p className="text-sm font-medium">Status Loyalitas</p>
                 <p className="text-xs text-muted-foreground">Program {config.isEnabled ? "Aktif" : "Tidak Aktif"}</p>
@@ -323,7 +323,7 @@ export default function LoyaltyManagement() {
                   ) : (
                     <div className="space-y-2 max-h-64 overflow-y-auto">
                       {memberTransactions.map((tx) => (
-                        <div key={tx.id} className="flex items-center justify-between text-xs p-2 bg-white rounded border">
+                        <div key={tx.id} className="flex items-center justify-between text-xs p-2 bg-white dark:bg-gray-900 rounded border">
                           <div>
                             <p className="font-medium">{tx.description}</p>
                             <p className="text-muted-foreground">{new Date(tx.createdAt).toLocaleDateString('id-ID')}</p>

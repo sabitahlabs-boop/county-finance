@@ -22,9 +22,9 @@ const ACCOUNT_TYPE_LABELS: Record<"bank" | "ewallet" | "cash", string> = {
 };
 
 const ACCOUNT_TYPE_COLORS: Record<"bank" | "ewallet" | "cash", string> = {
-  bank: "bg-blue-100 text-blue-700",
-  ewallet: "bg-purple-100 text-purple-700",
-  cash: "bg-amber-100 text-amber-700",
+  bank: "bg-blue-100 dark:bg-blue-900 text-blue-700 dark:text-blue-300",
+  ewallet: "bg-purple-100 dark:bg-purple-900 text-purple-700 dark:text-purple-300",
+  cash: "bg-amber-100 dark:bg-amber-900 text-amber-700 dark:text-amber-300",
 };
 
 // Common emojis for bank accounts
@@ -199,7 +199,7 @@ function AccountDialog({
           </div>
 
           {/* Info Box */}
-          <div className="mt-6 p-3 bg-blue-50 border border-blue-200 rounded-lg">
+          <div className="mt-6 p-3 bg-blue-50 dark:bg-blue-950 border border-blue-200 dark:border-blue-800 rounded-lg">
             <p className="text-xs text-blue-900">
               Rekening yang ditambahkan di sini otomatis tersedia sebagai metode pembayaran di POS, Transaksi, dan Laporan Rekening Koran.
             </p>
@@ -328,7 +328,7 @@ function AccountCard({
         <div className="space-y-2 border-t pt-3">
           <div className="flex justify-between items-baseline">
             <span className="text-xs text-muted-foreground">Saldo Sekarang</span>
-            <span className={`text-lg font-bold ${isPositive ? "text-green-600" : "text-red-600"}`}>
+            <span className={`text-lg font-bold ${isPositive ? "text-green-600 dark:text-green-400" : "text-red-600 dark:text-red-400"}`}>
               {formatRupiah(currentBalance)}
             </span>
           </div>
@@ -524,10 +524,10 @@ export default function ManajemenRekening() {
         )}
 
         {/* Info Box */}
-        <Card className="bg-blue-50 border-blue-200">
+        <Card className="bg-blue-50 dark:bg-blue-950 border-blue-200 dark:border-blue-800">
           <CardContent className="pt-6">
             <div className="flex gap-3">
-              <ChevronRight className="h-5 w-5 text-blue-600 flex-shrink-0 mt-0.5" />
+              <ChevronRight className="h-5 w-5 text-blue-600 dark:text-blue-400 flex-shrink-0 mt-0.5" />
               <p className="text-sm text-blue-900">
                 <strong>Tips:</strong> Rekening yang ditambahkan di sini otomatis tersedia sebagai metode pembayaran di POS, Transaksi, dan Laporan Rekening Koran.
               </p>

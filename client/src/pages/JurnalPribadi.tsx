@@ -178,7 +178,7 @@ export default function JurnalPribadi() {
             <div className="flex items-center justify-between">
               <div>
                 <CardTitle className="text-base font-bold flex items-center gap-2">
-                  <Wallet className="h-4 w-4 text-blue-600" /> Akun Keuangan
+                  <Wallet className="h-4 w-4 text-blue-600 dark:text-blue-400" /> Akun Keuangan
                 </CardTitle>
                 <p className="text-xs text-muted-foreground mt-0.5">Total saldo: <span className="font-bold text-foreground">{formatRupiah(totalBalance)}</span></p>
               </div>
@@ -229,7 +229,7 @@ export default function JurnalPribadi() {
                       <button onClick={(e) => { e.stopPropagation(); setEditAccount(account); }} className="h-6 w-6 sm:h-5 sm:w-5 rounded flex items-center justify-center bg-muted hover:bg-muted-foreground/20" title="Edit akun">
                         <Pencil className="h-3 w-3 sm:h-2.5 sm:w-2.5" />
                       </button>
-                      <button onClick={(e) => { e.stopPropagation(); if (confirm(`Hapus akun "${account.accountName}"? Semua data transaksi terkait tetap tersimpan.`)) deleteAccountMut.mutate({ id: account.id }); }} className="h-6 w-6 sm:h-5 sm:w-5 rounded flex items-center justify-center bg-muted hover:bg-red-100 dark:hover:bg-red-900/30" title="Hapus akun">
+                      <button onClick={(e) => { e.stopPropagation(); if (confirm(`Hapus akun "${account.accountName}"? Semua data transaksi terkait tetap tersimpan.`)) deleteAccountMut.mutate({ id: account.id }); }} className="h-6 w-6 sm:h-5 sm:w-5 rounded flex items-center justify-center bg-muted hover:bg-red-100 dark:bg-red-900 dark:hover:bg-red-900/30" title="Hapus akun">
                         <Trash2 className="h-3 w-3 sm:h-2.5 sm:w-2.5 text-red-500" />
                       </button>
                     </div>
