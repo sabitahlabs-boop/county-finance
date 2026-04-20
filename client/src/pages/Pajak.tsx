@@ -173,10 +173,18 @@ export default function Pajak() {
     onError: (err: any) => toast.error(err.message),
   });
 
-  const [payForm, setPayForm] = useState({
+  const [payForm, setPayForm] = useState<{
+    paymentDate: string;
+    ntpn: string;
+    notes: string;
+    taxCode?: string;
+    manualAmount?: string;
+  }>({
     paymentDate: now.toISOString().substring(0, 10),
     ntpn: "",
     notes: "",
+    taxCode: "PPH_FINAL_05",
+    manualAmount: "",
   });
 
   const totalTax = taxCalc?.reduce((s: number, t: any) => s + t.amount, 0) ?? 0;
@@ -322,6 +330,23 @@ export default function Pajak() {
               </CardContent>
             </Card>
           </div>
+
+          {/* Quick Action: Catat Pembayaran */}
+          <Card className="border-dashed border-primary/30 bg-primary/5">
+            <CardContent className="p-4 flex items-center justify-between">
+              <div>
+                <p className="font-medium text-sm">Catat Pembayaran Pajak</p>
+                <p className="text-xs text-muted-foreground">Sudah bayar pajak? Catat di sini agar tercatat di riwayat & GL</p>
+              </div>
+              <Button onClick={() => {
+                setSelectedTax(null);
+                setPaymentOpen(true);
+                setPayForm({ paymentDate: now.toISOString().substring(0, 10), ntpn: "", notes: "" });
+              }}>
+                <CheckCircle2 className="h-4 w-4 mr-1.5" /> Catat Pembayaran
+              </Button>
+            </CardContent>
+          </Card>
 
           {/* Tax Breakdown */}
           {calcLoading ? (
@@ -954,11 +979,31 @@ export default function Pajak() {
         <DialogContent>
           <DialogHeader><DialogTitle>Catat Pembayaran Pajak</DialogTitle></DialogHeader>
           <div className="space-y-3 pt-2">
-            <div className="rounded-lg bg-muted/50 p-3">
-              <p className="text-sm font-medium">{selectedTax?.taxName}</p>
-              <p className="text-lg font-bold">{formatRupiah(selectedTax?.amount ?? 0)}</p>
-              <p className="text-xs text-muted-foreground">Periode: {BULAN_INDONESIA[month - 1]} {year}</p>
-            </div>
+            {selectedTax ? (
+              <div className="rounded-lg bg-muted/50 p-3">
+                <p className="text-sm font-medium">{selectedTax.taxName}</p>
+                <p className="text-lg font-bold">{formatRupiah(selectedTax.amount ?? 0)}</p>
+                <p className="text-xs text-muted-foreground">Periode: {BULAN_INDONESIA[month - 1]} {year}</p>
+              </div>
+            ) : (
+              <>
+                <div className="space-y-1.5">
+                  <Label className="text-xs">Jenis Pajak</Label>
+                  <Select value={payForm.taxCode || "PPH_FINAL_05"} onValueChange={(v) => setPayForm({ ...payForm, taxCode: v })}>
+                    <SelectTrigger><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="PPH_FINAL_05">PPh Final 0.5%</SelectItem>
+                      <SelectItem value="PPN">PPN</SelectItem>
+                      <SelectItem value="PPH_21">PPh 21</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-1.5">
+                  <Label className="text-xs">Jumlah Pembayaran (Rp)</Label>
+                  <Input type="number" value={payForm.manualAmount || ""} onChange={(e) => setPayForm({ ...payForm, manualAmount: e.target.value })} placeholder="Contoh: 500000" />
+                </div>
+              </>
+            )}
             <div className="space-y-1.5">
               <Label className="text-xs">Tanggal Pembayaran</Label>
               <Input type="date" value={payForm.paymentDate} onChange={(e) => setPayForm({ ...payForm, paymentDate: e.target.value })} />
@@ -972,18 +1017,32 @@ export default function Pajak() {
               <Input value={payForm.notes} onChange={(e) => setPayForm({ ...payForm, notes: e.target.value })} placeholder="Catatan tambahan" />
             </div>
             <Button className="w-full" disabled={recordPayment.isPending} onClick={() => {
-              if (!selectedTax) return;
               const periodStr = `${year}-${String(month).padStart(2, "0")}`;
-              recordPayment.mutate({
-                periodMonth: periodStr,
-                taxCode: selectedTax.taxCode,
-                omzetAmount: selectedTax.basis,
-                taxAmount: selectedTax.amount,
-                paymentDate: payForm.paymentDate,
-                ntpn: payForm.ntpn || undefined,
-                status: "LUNAS",
-                notes: payForm.notes || undefined,
-              });
+              if (selectedTax) {
+                recordPayment.mutate({
+                  periodMonth: periodStr,
+                  taxCode: selectedTax.taxCode,
+                  omzetAmount: selectedTax.basis,
+                  taxAmount: selectedTax.amount,
+                  paymentDate: payForm.paymentDate,
+                  ntpn: payForm.ntpn || undefined,
+                  status: "LUNAS",
+                  notes: payForm.notes || undefined,
+                });
+              } else {
+                const amount = parseInt(payForm.manualAmount || "0");
+                if (amount <= 0) { toast.error("Masukkan jumlah pembayaran"); return; }
+                recordPayment.mutate({
+                  periodMonth: periodStr,
+                  taxCode: payForm.taxCode || "PPH_FINAL_05",
+                  omzetAmount: 0,
+                  taxAmount: amount,
+                  paymentDate: payForm.paymentDate,
+                  ntpn: payForm.ntpn || undefined,
+                  status: "LUNAS",
+                  notes: payForm.notes || undefined,
+                });
+              }
             }}>
               {recordPayment.isPending ? "Menyimpan..." : "Simpan Pembayaran"}
             </Button>

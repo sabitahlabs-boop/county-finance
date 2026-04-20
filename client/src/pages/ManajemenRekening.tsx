@@ -10,7 +10,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Textarea } from "@/components/ui/textarea";
 import { Skeleton } from "@/components/ui/skeleton";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
-import { Landmark, Plus, Pencil, Trash2, ChevronRight } from "lucide-react";
+import { Landmark, Plus, Pencil, Trash2, ChevronRight, AlertTriangle } from "lucide-react";
 import { formatRupiah } from "../../../shared/finance";
 import { toast } from "sonner";
 
@@ -316,6 +316,14 @@ function AccountCard({
           <p className="text-xs text-muted-foreground line-clamp-2">{account.description}</p>
         )}
 
+        {/* Negative balance warning */}
+        {!isPositive && (
+          <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-red-500/10 border border-red-500/20">
+            <AlertTriangle className="h-4 w-4 text-red-500 flex-shrink-0" />
+            <p className="text-xs text-red-500">Saldo negatif — periksa saldo awal atau transaksi yang tercatat</p>
+          </div>
+        )}
+
         {/* Balance section */}
         <div className="space-y-2 border-t pt-3">
           <div className="flex justify-between items-baseline">
@@ -457,13 +465,21 @@ export default function ManajemenRekening() {
         </div>
 
         {/* Summary Card */}
-        <Card className="bg-gradient-to-br from-primary/5 to-primary/10 border-primary/20">
+        <Card className={`bg-gradient-to-br ${totalBalance < 0 ? "from-red-500/5 to-red-500/10 border-red-500/20" : "from-primary/5 to-primary/10 border-primary/20"}`}>
           <CardContent className="pt-6">
             <p className="text-sm text-muted-foreground mb-2">Total Saldo Semua Rekening</p>
             {isLoading ? (
               <Skeleton className="h-10 w-40" />
             ) : (
-              <h2 className="text-4xl font-bold text-primary">{formatRupiah(totalBalance)}</h2>
+              <>
+                <h2 className={`text-4xl font-bold ${totalBalance < 0 ? "text-red-500" : "text-primary"}`}>{formatRupiah(totalBalance)}</h2>
+                {totalBalance < 0 && (
+                  <div className="flex items-center gap-2 mt-3 text-red-500">
+                    <AlertTriangle className="h-4 w-4" />
+                    <p className="text-sm">Ada rekening dengan saldo negatif — periksa saldo awal atau koreksi transaksi</p>
+                  </div>
+                )}
+              </>
             )}
           </CardContent>
         </Card>
