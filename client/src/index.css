@@ -4,7 +4,8 @@
 @custom-variant dark (&:is(.dark *));
 
 @theme inline {
-  --font-sans: "DM Sans", "Plus Jakarta Sans", system-ui, sans-serif;
+  --font-sans: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+  --font-mono: 'SF Mono', 'Fira Code', 'Fira Mono', monospace;
   --radius-sm: calc(var(--radius) - 4px);
   --radius-md: calc(var(--radius) - 2px);
   --radius-lg: var(--radius);
@@ -41,94 +42,116 @@
   --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
   --color-sidebar-border: var(--sidebar-border);
   --color-sidebar-ring: var(--sidebar-ring);
-  /* County brand colors */
-  --color-county-blue: oklch(0.38 0.15 250);
-  --color-county-navy: oklch(0.22 0.08 250);
-  --color-county-orange: oklch(0.68 0.19 50);
-  --color-county-green: oklch(0.62 0.19 145);
-  --color-county-violet: oklch(0.55 0.20 285);
-  --color-success: oklch(0.62 0.19 145);
-  --color-warning: oklch(0.68 0.19 50);
-  --color-danger: oklch(0.58 0.22 25);
-  --color-info: oklch(0.50 0.15 250);
+  /* County semantic colors */
+  --color-county-blue: #2563EB;
+  --color-county-navy: #1E3A5F;
+  --color-county-orange: #D97706;
+  --color-county-green: #16A34A;
+  --color-county-violet: #7C3AED;
+  --color-success: #16A34A;
+  --color-warning: #D97706;
+  --color-danger: #DC2626;
+  --color-info: #2563EB;
 }
 
+/* ═══════════════════════════════════════════════
+   COUNTY DESIGN SYSTEM — Linear/Notion Inspired
+   Warm grays, blue accent, typography-driven
+   ═══════════════════════════════════════════════ */
+
 :root {
-  --radius: 0.75rem;
-  /* County Navy Blue as primary */
-  --primary: oklch(0.38 0.15 250);
-  --primary-foreground: oklch(0.99 0 0);
-  --background: oklch(0.97 0.005 250);
-  --foreground: oklch(0.15 0.02 250);
-  --card: oklch(1 0 0);
-  --card-foreground: oklch(0.15 0.02 250);
-  --popover: oklch(1 0 0);
-  --popover-foreground: oklch(0.15 0.02 250);
-  --secondary: oklch(0.95 0.01 250);
-  --secondary-foreground: oklch(0.35 0.06 250);
-  --muted: oklch(0.94 0.008 250);
-  --muted-foreground: oklch(0.50 0.02 250);
-  --accent: oklch(0.94 0.015 50);
-  --accent-foreground: oklch(0.15 0.02 250);
-  --destructive: oklch(0.58 0.22 25);
-  --destructive-foreground: oklch(0.99 0 0);
-  --border: oklch(0.91 0.008 250);
-  --input: oklch(0.91 0.008 250);
-  --ring: oklch(0.38 0.15 250);
-  /* Charts: County brand palette - blue, orange, green, yellow, teal */
-  --chart-1: oklch(0.38 0.15 250);
-  --chart-2: oklch(0.68 0.19 50);
-  --chart-3: oklch(0.58 0.18 145);
-  --chart-4: oklch(0.75 0.16 75);
-  --chart-5: oklch(0.55 0.16 200);
-  /* Sidebar: deep navy blue */
-  --sidebar: oklch(0.22 0.08 250);
-  --sidebar-foreground: oklch(0.92 0.005 250);
-  --sidebar-primary: oklch(0.68 0.19 50);
-  --sidebar-primary-foreground: oklch(0.99 0 0);
-  --sidebar-accent: oklch(0.30 0.07 250);
-  --sidebar-accent-foreground: oklch(0.92 0.005 250);
-  --sidebar-border: oklch(0.35 0.07 250);
-  --sidebar-ring: oklch(0.38 0.15 250);
+  --radius: 0.5rem;
+
+  /* Primary: Blue — actions, links, CTAs */
+  --primary: #2563EB;
+  --primary-foreground: #FFFFFF;
+
+  /* Surfaces — warm off-whites */
+  --background: #FAFAFA;
+  --foreground: #1B1B18;
+  --card: #FFFFFF;
+  --card-foreground: #1B1B18;
+  --popover: #FFFFFF;
+  --popover-foreground: #1B1B18;
+
+  /* Secondary — subtle warm grays */
+  --secondary: #F5F5F4;
+  --secondary-foreground: #63635E;
+  --muted: #F0EFED;
+  --muted-foreground: #9B9A97;
+  --accent: #F0F7FF;
+  --accent-foreground: #1B1B18;
+
+  /* Destructive */
+  --destructive: #DC2626;
+  --destructive-foreground: #FFFFFF;
+
+  /* Borders — warm, subtle */
+  --border: #E8E5E2;
+  --input: #E8E5E2;
+  --ring: #2563EB;
+
+  /* Charts */
+  --chart-1: #2563EB;
+  --chart-2: #16A34A;
+  --chart-3: #D97706;
+  --chart-4: #7C3AED;
+  --chart-5: #DC2626;
+
+  /* Sidebar — light, clean (not dark navy anymore) */
+  --sidebar: #FBFBFA;
+  --sidebar-foreground: #1B1B18;
+  --sidebar-primary: #2563EB;
+  --sidebar-primary-foreground: #FFFFFF;
+  --sidebar-accent: #F0EFED;
+  --sidebar-accent-foreground: #1B1B18;
+  --sidebar-border: #E8E5E2;
+  --sidebar-ring: #2563EB;
 }
 
 .dark {
-  /* Primary: County Green for dark mode CTAs */
-  --primary: oklch(0.68 0.17 155);
-  --primary-foreground: oklch(0.99 0 0);
-  --sidebar-primary: oklch(0.68 0.17 155);
-  --sidebar-primary-foreground: oklch(0.99 0 0);
-  /* Surfaces: Deep navy */
-  --background: oklch(0.13 0.03 255);
-  --foreground: oklch(0.93 0.005 250);
-  --card: oklch(0.17 0.03 255);
-  --card-foreground: oklch(0.93 0.005 250);
-  --popover: oklch(0.17 0.03 255);
-  --popover-foreground: oklch(0.93 0.005 250);
-  --secondary: oklch(0.21 0.03 255);
-  --secondary-foreground: oklch(0.80 0.005 250);
-  --muted: oklch(0.23 0.03 255);
-  --muted-foreground: oklch(0.60 0.015 250);
-  --accent: oklch(0.23 0.04 255);
-  --accent-foreground: oklch(0.93 0.005 250);
-  --destructive: oklch(0.65 0.22 25);
-  --destructive-foreground: oklch(0.99 0 0);
-  --border: oklch(1 0 0 / 8%);
-  --input: oklch(1 0 0 / 12%);
-  --ring: oklch(0.68 0.17 155);
-  /* Charts: green-blue-orange-purple-teal */
-  --chart-1: oklch(0.68 0.17 155);
-  --chart-2: oklch(0.62 0.15 250);
-  --chart-3: oklch(0.72 0.16 50);
-  --chart-4: oklch(0.65 0.18 285);
-  --chart-5: oklch(0.60 0.14 200);
-  /* Sidebar: darkest navy */
-  --sidebar: oklch(0.11 0.04 255);
-  --sidebar-foreground: oklch(0.93 0.005 250);
-  --sidebar-accent: oklch(0.20 0.05 255);
-  --sidebar-accent-foreground: oklch(0.99 0 0);
-  --sidebar-border: oklch(1 0 0 / 7%);
-  --sidebar-ring: oklch(0.68 0.17 155);
+  /* Primary: Blue stays consistent */
+  --primary: #3B82F6;
+  --primary-foreground: #FFFFFF;
+  --sidebar-primary: #3B82F6;
+  --sidebar-primary-foreground: #FFFFFF;
+
+  /* Surfaces: Dark warm grays */
+  --background: #161615;
+  --foreground: #EDEDEC;
+  --card: #1C1C1A;
+  --card-foreground: #EDEDEC;
+  --popover: #1C1C1A;
+  --popover-foreground: #EDEDEC;
+
+  --secondary: #232321;
+  --secondary-foreground: #A3A39E;
+  --muted: #2A2A28;
+  --muted-foreground: #7A7A75;
+  --accent: #1E293B;
+  --accent-foreground: #EDEDEC;
+
+  --destructive: #EF4444;
+  --destructive-foreground: #FFFFFF;
+
+  --border: #2E2E2C;
+  --input: #2E2E2C;
+  --ring: #3B82F6;
+
+  /* Charts */
+  --chart-1: #3B82F6;
+  --chart-2: #22C55E;
+  --chart-3: #F59E0B;
+  --chart-4: #8B5CF6;
+  --chart-5: #EF4444;
+
+  /* Sidebar: dark */
+  --sidebar: #161615;
+  --sidebar-foreground: #EDEDEC;
+  --sidebar-accent: #232321;
+  --sidebar-accent-foreground: #EDEDEC;
+  --sidebar-border: #2E2E2C;
+  --sidebar-ring: #3B82F6;
 }
 
 @layer base {
@@ -137,6 +160,10 @@
   }
   body {
     @apply bg-background text-foreground font-sans;
+    font-size: 14px;
+    line-height: 1.5;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
   }
   button:not(:disabled),
   [role="button"]:not([aria-disabled="true"]),
@@ -180,94 +207,106 @@
     }
   }
 
-  /* County brand gradient utilities */
-  .gradient-primary {
-    background: linear-gradient(135deg, oklch(0.38 0.15 250), oklch(0.32 0.16 260));
+  /* ─── County Design System Utilities ─── */
+
+  /* Semantic amount colors */
+  .amount-positive { color: #16A34A; font-weight: 600; font-variant-numeric: tabular-nums; }
+  .amount-negative { color: #DC2626; font-weight: 600; font-variant-numeric: tabular-nums; }
+
+  /* Tags / Badges */
+  .tag {
+    display: inline-flex; align-items: center;
+    padding: 3px 10px; border-radius: 100px;
+    font-size: 11px; font-weight: 600;
   }
-  .gradient-orange {
-    background: linear-gradient(135deg, oklch(0.68 0.19 50), oklch(0.62 0.20 35));
+  .tag-blue { background: #EFF6FF; color: #2563EB; }
+  .tag-green { background: #F0FDF4; color: #16A34A; }
+  .tag-red { background: #FEF2F2; color: #DC2626; }
+  .tag-amber { background: #FFFBEB; color: #D97706; }
+  .tag-purple { background: #F5F3FF; color: #7C3AED; }
+
+  .dark .tag-blue { background: #1E293B; color: #60A5FA; }
+  .dark .tag-green { background: #052E16; color: #4ADE80; }
+  .dark .tag-red { background: #450A0A; color: #FCA5A5; }
+  .dark .tag-amber { background: #451A03; color: #FCD34D; }
+  .dark .tag-purple { background: #2E1065; color: #A78BFA; }
+
+  /* Stat cards */
+  .stat-value {
+    font-size: 26px; font-weight: 700; letter-spacing: -0.5px;
+    font-variant-numeric: tabular-nums;
   }
-  .gradient-success {
-    background: linear-gradient(135deg, oklch(0.58 0.18 145), oklch(0.52 0.16 160));
+  .stat-label {
+    font-size: 12px; font-weight: 500; color: var(--muted-foreground);
+    text-transform: uppercase; letter-spacing: 0.3px;
   }
-  .gradient-card {
-    background: linear-gradient(135deg, oklch(1 0 0), oklch(0.97 0.01 250 / 40%));
+  .stat-change {
+    display: inline-flex; align-items: center; gap: 3px;
+    font-size: 12px; font-weight: 600; margin-top: 6px;
+    padding: 2px 8px; border-radius: 100px;
   }
-  .gradient-sidebar {
-    background: linear-gradient(180deg, oklch(0.22 0.08 250), oklch(0.18 0.09 255));
+  .stat-change.up { background: #F0FDF4; color: #16A34A; }
+  .stat-change.down { background: #FEF2F2; color: #DC2626; }
+  .dark .stat-change.up { background: #052E16; color: #4ADE80; }
+  .dark .stat-change.down { background: #450A0A; color: #FCA5A5; }
+
+  /* Monospace for codes */
+  .tx-code { font-family: var(--font-mono); font-size: 12px; color: var(--muted-foreground); }
+
+  /* Card hover — very subtle */
+  .card-interactive {
+    transition: box-shadow 0.15s ease, border-color 0.15s ease;
   }
-  .gradient-hero {
-    background: linear-gradient(135deg, oklch(0.28 0.14 250), oklch(0.22 0.15 255), oklch(0.30 0.12 260));
+  .card-interactive:hover {
+    box-shadow: 0 1px 3px rgba(0,0,0,0.06), 0 1px 2px rgba(0,0,0,0.04);
+    border-color: #D4D1CD;
   }
-  .gradient-warm {
-    background: linear-gradient(135deg, oklch(0.68 0.19 50), oklch(0.62 0.20 35));
+  .dark .card-interactive:hover {
+    box-shadow: 0 1px 3px rgba(0,0,0,0.2);
+    border-color: #3A3A38;
   }
-  .gradient-cool {
-    background: linear-gradient(135deg, oklch(0.38 0.15 250), oklch(0.32 0.16 260));
-  }
-  .gradient-mint {
-    background: linear-gradient(135deg, oklch(0.58 0.18 145), oklch(0.52 0.16 160));
-  }
+
+  /* Custom scrollbar */
+  ::-webkit-scrollbar { width: 6px; height: 6px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  ::-webkit-scrollbar-thumb { background: #D4D1CD; border-radius: 99px; }
+  ::-webkit-scrollbar-thumb:hover { background: #9B9A97; }
+  .dark ::-webkit-scrollbar-thumb { background: #3A3A38; }
+  .dark ::-webkit-scrollbar-thumb:hover { background: #5A5A58; }
+
+  /* Gradient utilities (kept for backward compat) */
+  .gradient-primary { background: linear-gradient(135deg, #2563EB, #1D4FD7); }
+  .gradient-orange { background: linear-gradient(135deg, #F59E0B, #D97706); }
+  .gradient-success { background: linear-gradient(135deg, #22C55E, #16A34A); }
 
   /* Glass effect */
   .glass {
-    background: oklch(1 0 0 / 70%);
+    background: rgba(255,255,255,0.7);
     backdrop-filter: blur(12px);
     -webkit-backdrop-filter: blur(12px);
   }
   .dark .glass {
-    background: oklch(0.17 0.03 255 / 60%);
-    border-color: oklch(1 0 0 / 6%);
+    background: rgba(28,28,26,0.6);
+    border-color: #2E2E2C;
   }
 
-  /* Mesh gradient background for main content area */
-  .mesh-bg {
-    background:
-      radial-gradient(ellipse 80% 50% at 20% 80%, oklch(0.68 0.17 155 / 4%), transparent),
-      radial-gradient(ellipse 60% 40% at 80% 20%, oklch(0.62 0.15 250 / 3%), transparent),
-      var(--background);
-  }
-  /* Green glow accent */
-  .glow-green {
-    box-shadow: 0 0 20px oklch(0.68 0.17 155 / 15%), 0 0 60px oklch(0.68 0.17 155 / 5%);
-  }
+  /* Brand glow shadows (kept for backward compat) */
+  .shadow-glow-blue { box-shadow: 0 4px 20px rgba(37,99,235,0.25); }
+  .shadow-glow-orange { box-shadow: 0 4px 20px rgba(217,119,6,0.25); }
+  .shadow-glow-green { box-shadow: 0 4px 20px rgba(22,163,74,0.25); }
+  .shadow-glow-purple { box-shadow: 0 4px 20px rgba(124,58,237,0.2); }
 
-  /* Trello-style card interactions */
-  .card-interactive {
-    transition: box-shadow 0.15s ease, transform 0.15s ease, border-color 0.15s ease;
-    cursor: pointer;
-  }
-  .card-interactive:hover {
-    box-shadow: 0 4px 12px oklch(0 0 0 / 8%);
-    transform: translateY(-1px);
-    border-color: oklch(0.85 0.01 250);
-  }
-  .card-interactive:active {
-    transform: translateY(0);
-    box-shadow: 0 1px 3px oklch(0 0 0 / 6%);
-  }
-  .card-grab {
-    cursor: grab;
-  }
-  .card-grab:active {
-    cursor: grabbing;
-    box-shadow: 0 8px 24px oklch(0 0 0 / 12%);
-    transform: rotate(-1deg) scale(1.02);
-  }
-
-  /* Kanban column */
-  .kanban-column {
-    background: oklch(0.96 0.005 250);
-    border-radius: 0.875rem;
-    padding: 0.75rem;
-  }
-  .dark .kanban-column {
-    background: oklch(0.18 0.02 250);
+  /* Gradient text */
+  .gradient-text-green {
+    background: linear-gradient(135deg, #22C55E, #16A34A);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
   }
 
   /* Slide-over panel */
   .slide-over {
-    border-left: 1px solid oklch(0.91 0.008 250);
+    border-left: 1px solid var(--border);
     animation: slideIn 0.2s ease-out;
   }
   @keyframes slideIn {
@@ -275,34 +314,15 @@
     to { transform: translateX(0); opacity: 1; }
   }
 
-  /* County brand glow shadows */
-  .shadow-glow-blue {
-    box-shadow: 0 4px 20px oklch(0.38 0.15 250 / 25%);
-  }
-  .shadow-glow-orange {
-    box-shadow: 0 4px 20px oklch(0.68 0.19 50 / 25%);
-  }
-  .shadow-glow-green {
-    box-shadow: 0 4px 20px oklch(0.68 0.17 155 / 25%);
-  }
-  .shadow-glow-purple {
-    box-shadow: 0 4px 20px oklch(0.55 0.20 270 / 20%);
-  }
-  .shadow-glow-pink {
-    box-shadow: 0 4px 20px oklch(0.60 0.20 330 / 20%);
+  /* Kanban column */
+  .kanban-column {
+    background: var(--secondary);
+    border-radius: 0.875rem;
+    padding: 0.75rem;
   }
 
-  /* Gradient text for accent highlights */
-  .gradient-text-green {
-    background: linear-gradient(135deg, oklch(0.68 0.17 155), oklch(0.75 0.15 155));
-    -webkit-background-clip: text;
-    -webkit-text-fill-color: transparent;
-    background-clip: text;
+  /* Mesh background — very subtle now */
+  .mesh-bg {
+    background: var(--background);
   }
-
-  /* Custom scrollbar for dark mode */
-  .dark ::-webkit-scrollbar { width: 5px; height: 5px; }
-  .dark ::-webkit-scrollbar-track { background: transparent; }
-  .dark ::-webkit-scrollbar-thumb { background: oklch(0.30 0.03 255); border-radius: 99px; }
-  .dark ::-webkit-scrollbar-thumb:hover { background: oklch(0.40 0.03 255); }
 }

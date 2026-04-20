@@ -120,7 +120,7 @@ const PERSONAL_MENU: MenuItem[] = [
   { icon: Settings, label: "Pengaturan", path: "/pengaturan" },
 ];
 
-// UMKM menu — collapsible groups (Olsera-style)
+// UMKM menu — collapsible groups
 const UMKM_SIDEBAR: SidebarItem[] = [
   { icon: LayoutDashboard, label: "Dashboard", path: "/" },
   {
@@ -187,15 +187,10 @@ const UMKM_SIDEBAR: SidebarItem[] = [
   { icon: HelpCircle, label: "Panduan", path: "/panduan" },
 ];
 
-const POS_CHILDREN: MenuItem[] = [
-  { icon: ShoppingBag, label: "Kasir (POS)", path: "/pos" },
-  { icon: Receipt, label: "Laporan Penjualan", path: "/laporan-penjualan" },
-];
-
 const SIDEBAR_WIDTH_KEY = "sidebar-width";
-const DEFAULT_WIDTH = 260;
+const DEFAULT_WIDTH = 248;
 const MIN_WIDTH = 200;
-const MAX_WIDTH = 400;
+const MAX_WIDTH = 360;
 
 export default function DashboardLayout({
   children,
@@ -219,28 +214,23 @@ export default function DashboardLayout({
   if (!user) {
     return (
       <div className="flex items-center justify-center min-h-screen bg-background">
-        <div className="flex flex-col items-center gap-8 p-8 max-w-md w-full">
-          <div className="flex flex-col items-center gap-3">
+        <div className="flex flex-col items-center gap-8 p-8 max-w-sm w-full">
+          <div className="flex flex-col items-center gap-4">
             <img
               src="/county-icon.png"
               alt="County"
-              className="h-20 w-20 object-contain mb-2"
+              className="h-16 w-16 object-contain"
             />
-            <span className="text-3xl font-bold text-primary">County</span>
-            <h1 className="text-lg font-semibold tracking-tight text-center text-foreground">
-              Masuk untuk melanjutkan
+            <h1 className="text-xl font-semibold tracking-tight text-foreground">
+              Masuk ke County
             </h1>
-            <p className="text-sm text-muted-foreground text-center max-w-sm">
-              Kelola keuangan Anda dengan mudah — pencatatan, laporan, dan
-              analisis dalam satu platform.
+            <p className="text-sm text-muted-foreground text-center">
+              Kelola keuangan Anda dengan mudah — pencatatan, laporan, dan analisis dalam satu platform.
             </p>
           </div>
           <Button
-            onClick={() => {
-              window.location.href = getLoginUrl();
-            }}
-            size="lg"
-            className="w-full shadow-lg shadow-primary/25 hover:shadow-xl hover:shadow-primary/30 transition-all"
+            onClick={() => { window.location.href = getLoginUrl(); }}
+            className="w-full h-10 font-semibold"
           >
             Masuk
           </Button>
@@ -331,14 +321,12 @@ function DashboardLayoutContent({
   const isTeamMember = !isOwnBusiness;
   const memberPermissions = isTeamMember ? activePermissions : null;
 
-  // Build sidebar items — flat for Personal, collapsible groups for UMKM
+  // Build sidebar items
   const { sidebarItems, flatItems } = useMemo(() => {
     if (appMode === "personal") {
       let items = [...PERSONAL_MENU];
-      if (!debtEnabled)
-        items = items.filter((i) => i.path !== "/hutang-piutang");
-      if (isAdmin)
-        items.push({ icon: Shield, label: "Super Admin", path: "/admin" });
+      if (!debtEnabled) items = items.filter((i) => i.path !== "/hutang-piutang");
+      if (isAdmin) items.push({ icon: Shield, label: "Super Admin", path: "/admin" });
       if (isTeamMember && memberPermissions) {
         items = items.filter((i) => {
           const p = PATH_PERMISSION_MAP[i.path];
@@ -348,13 +336,11 @@ function DashboardLayoutContent({
       return { sidebarItems: items as SidebarItem[], flatItems: items };
     }
 
-    // UMKM — build collapsible groups
     let items: SidebarItem[] = UMKM_SIDEBAR.map((item) => {
       if (isGroup(item)) return { ...item, children: [...item.children] };
       return { ...item };
     });
 
-    // Insert POS as top-level menu right below Dashboard
     if (posEnabled) {
       const dashIdx = items.findIndex((item) => !isGroup(item) && item.path === "/");
       const posItem: SidebarItem = { icon: ShoppingBag, label: "Kasir (POS)", path: "/pos" };
@@ -362,50 +348,32 @@ function DashboardLayoutContent({
       items.splice(dashIdx + 1, 0, posItem, salesReportItem);
     }
 
-    // Remove Hutang & Piutang if disabled
     if (!debtEnabled) {
       items = items.map((item) => {
-        if (isGroup(item)) {
-          return { ...item, children: item.children.filter((c) => c.path !== "/hutang-piutang") };
-        }
+        if (isGroup(item)) return { ...item, children: item.children.filter((c) => c.path !== "/hutang-piutang") };
         return item;
       });
     }
 
-    // Add admin item
     if (isAdmin) {
-      // Insert before Pengaturan
       const settingsIdx = items.findIndex((i) => !isGroup(i) && (i as MenuItem).path === "/pengaturan");
-      if (settingsIdx >= 0) {
-        items.splice(settingsIdx, 0, { icon: Shield, label: "Super Admin", path: "/admin" });
-      } else {
-        items.push({ icon: Shield, label: "Super Admin", path: "/admin" });
-      }
+      if (settingsIdx >= 0) items.splice(settingsIdx, 0, { icon: Shield, label: "Super Admin", path: "/admin" });
+      else items.push({ icon: Shield, label: "Super Admin", path: "/admin" });
     }
 
-    // Filter by permissions for team members
     if (isTeamMember && memberPermissions) {
       items = items.map((item) => {
         if (isGroup(item)) {
-          return {
-            ...item,
-            children: item.children.filter((c) => {
-              const p = PATH_PERMISSION_MAP[c.path];
-              return !p || memberPermissions[p] === true;
-            }),
-          };
+          return { ...item, children: item.children.filter((c) => { const p = PATH_PERMISSION_MAP[c.path]; return !p || memberPermissions[p] === true; }) };
         }
         const mi = item as MenuItem;
         const p = PATH_PERMISSION_MAP[mi.path];
         if (p && memberPermissions[p] !== true) return null;
         return item;
       }).filter(Boolean) as SidebarItem[];
-
-      // Remove empty groups
       items = items.filter((item) => !isGroup(item) || item.children.length > 0);
     }
 
-    // Build flat items for active menu detection
     const flat: MenuItem[] = [];
     items.forEach((item) => {
       if (isGroup(item)) flat.push(...item.children);
@@ -416,25 +384,16 @@ function DashboardLayoutContent({
   }, [appMode, posEnabled, debtEnabled, isAdmin, isTeamMember, memberPermissions]);
 
   const locationPath = location.split("?")[0];
-  const activeMenuItem = flatItems.find((item) => {
-    const itemPath = item.path.split("?")[0];
-    return itemPath === locationPath;
-  });
+  const activeMenuItem = flatItems.find((item) => item.path.split("?")[0] === locationPath);
 
-  // Tax estimate for sidebar (only for UMKM mode)
+  // Tax estimate for sidebar (only UMKM)
   const now = new Date();
   const { data: taxCalc } = trpc.tax.calculate.useQuery(
     { month: now.getMonth() + 1, year: now.getFullYear() },
-    {
-      retry: false,
-      refetchOnWindowFocus: false,
-      enabled: appMode === "umkm",
-    }
+    { retry: false, refetchOnWindowFocus: false, enabled: appMode === "umkm" }
   );
-  const totalTax =
-    taxCalc?.reduce((s: number, t: any) => s + t.amount, 0) ?? 0;
+  const totalTax = taxCalc?.reduce((s: number, t: any) => s + t.amount, 0) ?? 0;
 
-  // Mode-aware style tokens
   const isPersonal = appMode === "personal";
 
   useEffect(() => {
@@ -444,11 +403,9 @@ function DashboardLayoutContent({
   useEffect(() => {
     const handleMouseMove = (e: MouseEvent) => {
       if (!isResizing) return;
-      const sidebarLeft =
-        sidebarRef.current?.getBoundingClientRect().left ?? 0;
+      const sidebarLeft = sidebarRef.current?.getBoundingClientRect().left ?? 0;
       const newWidth = e.clientX - sidebarLeft;
-      if (newWidth >= MIN_WIDTH && newWidth <= MAX_WIDTH)
-        setSidebarWidth(newWidth);
+      if (newWidth >= MIN_WIDTH && newWidth <= MAX_WIDTH) setSidebarWidth(newWidth);
     };
     const handleMouseUp = () => setIsResizing(false);
     if (isResizing) {
@@ -467,7 +424,6 @@ function DashboardLayoutContent({
 
   // Track which collapsible groups are open
   const [openGroups, setOpenGroups] = useState<Record<string, boolean>>(() => {
-    // Auto-open the group that contains the current path
     const initial: Record<string, boolean> = {};
     UMKM_SIDEBAR.forEach((item) => {
       if (isGroup(item) && item.children.some((c) => c.path === location)) {
@@ -488,31 +444,19 @@ function DashboardLayoutContent({
     return (
       <SidebarMenuItem
         key={item.path}
-        {...(item.path === "/panduan"
-          ? { "data-onboarding": "panduan-link" }
-          : {})}
+        {...(item.path === "/panduan" ? { "data-onboarding": "panduan-link" } : {})}
       >
         <SidebarMenuButton
           isActive={isActive}
           onClick={() => setLocation(item.path)}
           tooltip={item.label}
-          className={`h-9 transition-all font-normal rounded-lg ${
+          className={`h-8 transition-all rounded-md text-[13px] font-medium ${
             isActive
-              ? isPersonal
-                ? "bg-county-violet/10 text-county-violet font-semibold"
-                : "bg-sidebar-primary/10 text-sidebar-primary font-semibold"
-              : "text-sidebar-foreground/70 hover:text-sidebar-foreground hover:bg-sidebar-accent/50"
+              ? "bg-accent text-foreground font-semibold"
+              : "text-muted-foreground hover:text-foreground hover:bg-accent/50"
           }`}
         >
-          <item.icon
-            className={`h-4 w-4 shrink-0 ${
-              isActive
-                ? isPersonal
-                  ? "text-county-violet"
-                  : "text-sidebar-primary"
-                : ""
-            }`}
-          />
+          <item.icon className={`h-4 w-4 shrink-0 ${isActive ? "text-primary opacity-100" : "opacity-60"}`} />
           <span>{item.label}</span>
         </SidebarMenuButton>
       </SidebarMenuItem>
@@ -534,16 +478,16 @@ function DashboardLayoutContent({
           <CollapsibleTrigger asChild>
             <SidebarMenuButton
               tooltip={group.label}
-              className={`h-9 transition-all font-normal rounded-lg ${
+              className={`h-8 transition-all rounded-md text-[13px] font-medium ${
                 hasActiveChild
-                  ? "text-sidebar-foreground font-semibold"
-                  : "text-sidebar-foreground/70 hover:text-sidebar-foreground hover:bg-sidebar-accent/50"
+                  ? "text-foreground font-semibold"
+                  : "text-muted-foreground hover:text-foreground hover:bg-accent/50"
               }`}
             >
-              <group.icon className={`h-4 w-4 shrink-0 ${hasActiveChild ? "text-sidebar-primary" : ""}`} />
+              <group.icon className={`h-4 w-4 shrink-0 ${hasActiveChild ? "text-primary opacity-100" : "opacity-60"}`} />
               <span className="flex-1">{group.label}</span>
               <ChevronRight
-                className={`h-3.5 w-3.5 shrink-0 transition-transform duration-200 text-sidebar-foreground/40 ${
+                className={`h-3 w-3 shrink-0 transition-transform duration-200 opacity-40 ${
                   (isOpen || hasActiveChild) ? "rotate-90" : ""
                 }`}
               />
@@ -558,10 +502,10 @@ function DashboardLayoutContent({
                     <SidebarMenuSubButton
                       isActive={isActive}
                       onClick={() => setLocation(child.path)}
-                      className={`transition-all ${
+                      className={`text-[13px] transition-all ${
                         isActive
-                          ? "text-sidebar-primary font-semibold"
-                          : "text-sidebar-foreground/60 hover:text-sidebar-foreground"
+                          ? "text-primary font-semibold"
+                          : "text-muted-foreground hover:text-foreground"
                       }`}
                     >
                       <span>{child.label}</span>
@@ -581,18 +525,18 @@ function DashboardLayoutContent({
       <div className="relative" ref={sidebarRef}>
         <Sidebar
           collapsible="icon"
-          className="border-r-0"
+          className="border-r border-border"
           disableTransition={isResizing}
         >
-          {/* ─── Header: Logo + Toggle ─── */}
-          <SidebarHeader className="h-16 justify-center">
-            <div className="flex items-center gap-3 px-2 transition-all w-full">
+          {/* ─── Header: Logo + Brand ─── */}
+          <SidebarHeader className="h-14 justify-center border-b border-border/50">
+            <div className="flex items-center gap-2.5 px-2 transition-all w-full">
               <button
                 onClick={toggleSidebar}
-                className="h-8 w-8 flex items-center justify-center hover:bg-sidebar-accent rounded-lg transition-colors focus:outline-none shrink-0"
+                className="h-7 w-7 flex items-center justify-center hover:bg-accent rounded-md transition-colors focus:outline-none shrink-0"
                 aria-label="Toggle navigation"
               >
-                <PanelLeft className="h-4 w-4 text-sidebar-foreground/70" />
+                <PanelLeft className="h-4 w-4 text-muted-foreground" />
               </button>
               {!isCollapsed && (
                 <div className="flex items-center gap-2 min-w-0">
@@ -600,31 +544,26 @@ function DashboardLayoutContent({
                     <img
                       src={businessLogoUrl}
                       alt={business?.businessName || "Logo"}
-                      className="h-7 w-7 object-contain shrink-0 rounded"
+                      className="h-6 w-6 object-contain shrink-0 rounded"
                     />
                   ) : (
-                    <img
-                      src="/county-icon.png"
-                      alt="County"
-                      className="h-7 w-7 object-contain shrink-0"
-                    />
+                    <div className="h-6 w-6 rounded-md bg-primary flex items-center justify-center shrink-0">
+                      <span className="text-[11px] font-bold text-primary-foreground">C</span>
+                    </div>
                   )}
-                  <span className="font-bold tracking-tight truncate text-sidebar-foreground">
+                  <span className="font-semibold text-sm tracking-tight truncate text-foreground">
                     {business?.businessName || "County"}
                   </span>
-                  <span
-                    className={`text-[10px] font-medium px-1.5 py-0.5 rounded-full shrink-0 ${
-                      isPersonal
-                        ? "bg-county-violet/15 text-county-violet"
-                        : "bg-sidebar-primary/15 text-sidebar-primary"
-                    }`}
-                  >
+                  <span className={`text-[10px] font-semibold px-1.5 py-0.5 rounded shrink-0 ${
+                    isPersonal
+                      ? "bg-purple-50 text-purple-600 dark:bg-purple-950 dark:text-purple-400"
+                      : "bg-blue-50 text-blue-600 dark:bg-blue-950 dark:text-blue-400"
+                  }`}>
                     {isPersonal ? "Pribadi" : "UMKM"}
                   </span>
                   {isTeamMember && activeRole && (
-                    <span className="text-[10px] font-medium px-1.5 py-0.5 rounded-full shrink-0 bg-county-orange/15 text-county-orange">
-                      {activeRole.charAt(0).toUpperCase() +
-                        activeRole.slice(1)}
+                    <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded shrink-0 bg-amber-50 text-amber-600 dark:bg-amber-950 dark:text-amber-400">
+                      {activeRole.charAt(0).toUpperCase() + activeRole.slice(1)}
                     </span>
                   )}
                 </div>
@@ -634,69 +573,34 @@ function DashboardLayoutContent({
 
           {/* ─── Business Switcher ─── */}
           {businesses.length > 0 && (
-            <div
-              className={
-                isCollapsed
-                  ? "px-1 pb-2 flex justify-center"
-                  : "px-3 pb-2"
-              }
-            >
+            <div className={isCollapsed ? "px-1 py-2 flex justify-center" : "px-3 py-2"}>
               {hasMultipleBusinesses ? (
                 <DropdownMenu>
                   <DropdownMenuTrigger asChild>
                     {isCollapsed ? (
                       <button
-                        className="h-9 w-9 flex items-center justify-center rounded-lg border border-sidebar-border/50 bg-sidebar-accent/30 hover:bg-sidebar-accent/60 transition-all focus:outline-none relative"
+                        className="h-8 w-8 flex items-center justify-center rounded-md border border-border bg-secondary/50 hover:bg-accent transition-all focus:outline-none relative"
                         title="Switch Bisnis"
                       >
-                        <Building2 className="h-4 w-4 text-sidebar-foreground/70" />
-                        <span className="absolute -top-1 -right-1 h-3.5 w-3.5 rounded-full bg-sidebar-primary text-[8px] text-sidebar-primary-foreground font-bold flex items-center justify-center">
+                        <Building2 className="h-4 w-4 text-muted-foreground" />
+                        <span className="absolute -top-1 -right-1 h-3.5 w-3.5 rounded-full bg-primary text-[8px] text-primary-foreground font-bold flex items-center justify-center">
                           {businesses.length}
                         </span>
                       </button>
                     ) : (
-                      <button className="flex items-center gap-2.5 w-full rounded-xl border border-sidebar-border/40 bg-sidebar-accent/30 hover:bg-sidebar-accent/60 px-3 py-2.5 text-left transition-all focus:outline-none">
-                        <div className="h-8 w-8 rounded-lg bg-sidebar-primary flex items-center justify-center shrink-0">
-                          <Building2 className="h-4 w-4 text-sidebar-primary-foreground" />
+                      <button className="flex items-center gap-2.5 w-full rounded-lg border border-border bg-secondary/30 hover:bg-accent/50 px-3 py-2 text-left transition-all focus:outline-none">
+                        <div className="h-7 w-7 rounded-md bg-primary flex items-center justify-center shrink-0">
+                          <Building2 className="h-3.5 w-3.5 text-primary-foreground" />
                         </div>
                         <div className="flex-1 min-w-0">
-                          <p className="text-[10px] font-medium text-sidebar-foreground/50 leading-none uppercase tracking-wider">
+                          <p className="text-[10px] font-semibold text-muted-foreground leading-none uppercase tracking-wider">
                             Bisnis Aktif
                           </p>
-                          <p className="text-sm font-semibold text-sidebar-foreground truncate mt-0.5">
-                            {businesses.find(
-                              (b) => b.id === activeBusinessId
-                            )?.name ?? "Pilih Bisnis"}
-                          </p>
-                          <p className="text-[10px] text-sidebar-foreground/50 mt-0.5 flex items-center gap-1">
-                            {(() => {
-                              const active = businesses.find(
-                                (b) => b.id === activeBusinessId
-                              );
-                              if (!active) return "";
-                              if (active.isOwn) {
-                                return (
-                                  <>
-                                    <Crown className="h-2.5 w-2.5" /> Owner
-                                  </>
-                                );
-                              }
-                              return (
-                                <>
-                                  <Briefcase className="h-2.5 w-2.5" />{" "}
-                                  {active.role?.charAt(0).toUpperCase()}
-                                  {active.role?.slice(1) ?? "Karyawan"}
-                                </>
-                              );
-                            })()}
+                          <p className="text-sm font-semibold text-foreground truncate mt-0.5">
+                            {businesses.find((b) => b.id === activeBusinessId)?.name ?? "Pilih Bisnis"}
                           </p>
                         </div>
-                        <div className="flex flex-col items-center gap-0.5 shrink-0">
-                          <ChevronDown className="h-3.5 w-3.5 text-sidebar-foreground/40" />
-                          <span className="text-[9px] font-medium text-sidebar-foreground/40">
-                            {businesses.length}
-                          </span>
-                        </div>
+                        <ChevronDown className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
                       </button>
                     )}
                   </DropdownMenuTrigger>
@@ -709,42 +613,17 @@ function DashboardLayoutContent({
                     {businesses.map((b) => (
                       <DropdownMenuItem
                         key={b.id}
-                        onClick={() => {
-                          if (b.id !== activeBusinessId) switchBusiness(b.id);
-                        }}
-                        className={`cursor-pointer rounded-lg px-2 py-2.5 mb-0.5 ${
-                          b.id === activeBusinessId
-                            ? "bg-primary/5"
-                            : ""
-                        }`}
+                        onClick={() => { if (b.id !== activeBusinessId) switchBusiness(b.id); }}
+                        className={`cursor-pointer rounded-lg px-2 py-2.5 mb-0.5 ${b.id === activeBusinessId ? "bg-accent" : ""}`}
                       >
                         <div className="flex items-center gap-3 w-full">
-                          <div
-                            className={`h-9 w-9 rounded-lg flex items-center justify-center shrink-0 ${
-                              b.isOwn
-                                ? "bg-primary text-primary-foreground"
-                                : "bg-county-orange text-white"
-                            }`}
-                          >
+                          <div className={`h-8 w-8 rounded-md flex items-center justify-center shrink-0 ${b.isOwn ? "bg-primary text-primary-foreground" : "bg-amber-500 text-white"}`}>
                             <Building2 className="h-4 w-4" />
                           </div>
                           <div className="flex-1 min-w-0">
-                            <p className="text-sm font-semibold truncate">
-                              {b.name}
-                            </p>
+                            <p className="text-sm font-semibold truncate">{b.name}</p>
                             <p className="text-xs text-muted-foreground flex items-center gap-1">
-                              {b.isOwn ? (
-                                <>
-                                  <Crown className="h-3 w-3" /> Bisnis Saya
-                                  (Owner)
-                                </>
-                              ) : (
-                                <>
-                                  <Briefcase className="h-3 w-3" /> Sebagai{" "}
-                                  {b.role?.charAt(0).toUpperCase()}
-                                  {b.role?.slice(1) ?? "Karyawan"}
-                                </>
-                              )}
+                              {b.isOwn ? (<><Crown className="h-3 w-3" /> Bisnis Saya (Owner)</>) : (<><Briefcase className="h-3 w-3" /> Sebagai {b.role?.charAt(0).toUpperCase()}{b.role?.slice(1) ?? "Karyawan"}</>)}
                             </p>
                           </div>
                           {b.id === activeBusinessId && (
@@ -758,28 +637,17 @@ function DashboardLayoutContent({
                   </DropdownMenuContent>
                 </DropdownMenu>
               ) : (
-                /* Single business — compact info */
                 !isCollapsed && (
-                  <div className="flex items-center gap-2.5 w-full rounded-xl border border-sidebar-border/30 bg-sidebar-accent/20 px-3 py-2 transition-all">
-                    <div className="h-7 w-7 rounded-lg bg-sidebar-primary flex items-center justify-center shrink-0">
-                      <Building2 className="h-3.5 w-3.5 text-sidebar-primary-foreground" />
+                  <div className="flex items-center gap-2.5 w-full rounded-lg border border-border/50 bg-secondary/30 px-3 py-2 transition-all">
+                    <div className="h-6 w-6 rounded-md bg-primary flex items-center justify-center shrink-0">
+                      <Building2 className="h-3 w-3 text-primary-foreground" />
                     </div>
                     <div className="flex-1 min-w-0">
-                      <p className="text-sm font-medium text-sidebar-foreground truncate">
+                      <p className="text-sm font-medium text-foreground truncate">
                         {businesses[0]?.name ?? "Bisnis"}
                       </p>
-                      <p className="text-[10px] text-sidebar-foreground/50 flex items-center gap-1">
-                        {businesses[0]?.isOwn ? (
-                          <>
-                            <Crown className="h-2.5 w-2.5" /> Owner
-                          </>
-                        ) : (
-                          <>
-                            <Briefcase className="h-2.5 w-2.5" />{" "}
-                            {businesses[0]?.role?.charAt(0).toUpperCase()}
-                            {businesses[0]?.role?.slice(1) ?? "Karyawan"}
-                          </>
-                        )}
+                      <p className="text-[10px] text-muted-foreground flex items-center gap-1">
+                        {businesses[0]?.isOwn ? (<><Crown className="h-2.5 w-2.5" /> Owner</>) : (<><Briefcase className="h-2.5 w-2.5" /> {businesses[0]?.role?.charAt(0).toUpperCase()}{businesses[0]?.role?.slice(1) ?? "Karyawan"}</>)}
                       </p>
                     </div>
                   </div>
@@ -788,16 +656,16 @@ function DashboardLayoutContent({
             </div>
           )}
 
-          {/* ─── Mode Switcher (UMKM ↔ Jurnal Pribadi) ─── */}
+          {/* ─── Mode Switcher ─── */}
           {!isCollapsed && (
             <div className="px-3 pb-2">
               <button
                 onClick={handleModeSwitch}
                 disabled={setModeMut.isPending}
-                className={`flex items-center gap-2.5 w-full rounded-xl border px-3 py-2 text-left transition-all text-xs font-medium ${
+                className={`flex items-center gap-2 w-full rounded-lg border px-3 py-1.5 text-left transition-all text-xs font-medium ${
                   isPersonal
-                    ? "border-county-violet/30 bg-county-violet/5 hover:bg-county-violet/10 text-county-violet"
-                    : "border-sidebar-primary/30 bg-sidebar-primary/5 hover:bg-sidebar-primary/10 text-sidebar-primary"
+                    ? "border-purple-200 bg-purple-50/50 hover:bg-purple-50 text-purple-600 dark:border-purple-800 dark:bg-purple-950/30 dark:text-purple-400"
+                    : "border-blue-200 bg-blue-50/50 hover:bg-blue-50 text-blue-600 dark:border-blue-800 dark:bg-blue-950/30 dark:text-blue-400"
                 } ${setModeMut.isPending ? "opacity-60 cursor-wait" : "cursor-pointer"}`}
               >
                 <ArrowRightLeft className="h-3.5 w-3.5 shrink-0" />
@@ -817,24 +685,21 @@ function DashboardLayoutContent({
               <button
                 onClick={handleModeSwitch}
                 disabled={setModeMut.isPending}
-                className={`h-9 w-9 flex items-center justify-center rounded-lg border transition-all ${
+                className={`h-8 w-8 flex items-center justify-center rounded-md border transition-all ${
                   isPersonal
-                    ? "border-county-violet/30 bg-county-violet/5 hover:bg-county-violet/10 text-county-violet"
-                    : "border-sidebar-primary/30 bg-sidebar-primary/5 hover:bg-sidebar-primary/10 text-sidebar-primary"
+                    ? "border-purple-200 bg-purple-50/50 hover:bg-purple-50 text-purple-600 dark:border-purple-800 dark:bg-purple-950/30 dark:text-purple-400"
+                    : "border-blue-200 bg-blue-50/50 hover:bg-blue-50 text-blue-600 dark:border-blue-800 dark:bg-blue-950/30 dark:text-blue-400"
                 } ${setModeMut.isPending ? "opacity-60 cursor-wait" : "cursor-pointer"}`}
                 title={appMode === "umkm" ? "Beralih ke Jurnal Pribadi" : "Beralih ke Mode UMKM"}
               >
-                <ArrowRightLeft className="h-4 w-4" />
+                <ArrowRightLeft className="h-3.5 w-3.5" />
               </button>
             </div>
           )}
 
           {/* ─── Navigation ─── */}
           <SidebarContent className="gap-0">
-            <SidebarMenu
-              data-onboarding="sidebar-menu"
-              className="px-2 py-1"
-            >
+            <SidebarMenu data-onboarding="sidebar-menu" className="px-2 py-1">
               {sidebarItems.map((item) =>
                 isGroup(item) ? renderGroup(item) : renderMenuItem(item as MenuItem)
               )}
@@ -844,12 +709,12 @@ function DashboardLayoutContent({
           {/* ─── Tax Alert (UMKM only) ─── */}
           {appMode === "umkm" && !isCollapsed && totalTax > 0 && (
             <div className="px-3 pb-2">
-              <div className="rounded-xl bg-warning/8 border border-warning/20 p-3">
-                <div className="flex items-center gap-2 text-xs text-sidebar-foreground/70 mb-1">
-                  <AlertTriangle className="h-3.5 w-3.5 text-warning" />
+              <div className="rounded-lg bg-amber-50 border border-amber-200/50 p-3 dark:bg-amber-950/20 dark:border-amber-800/30">
+                <div className="flex items-center gap-2 text-xs text-muted-foreground mb-1">
+                  <AlertTriangle className="h-3.5 w-3.5 text-amber-500" />
                   <span>Estimasi Pajak Bulan Ini</span>
                 </div>
-                <p className="text-sm font-semibold text-sidebar-foreground">
+                <p className="text-sm font-semibold text-foreground">
                   {formatRupiah(totalTax)}
                 </p>
               </div>
@@ -857,29 +722,25 @@ function DashboardLayoutContent({
           )}
 
           {/* ─── Footer: Theme + User ─── */}
-          <SidebarFooter className="p-3">
-            <ThemeToggleButton isCollapsed={isCollapsed} isPersonal={isPersonal} />
+          <SidebarFooter className="p-3 border-t border-border/50">
+            <ThemeToggleButton isCollapsed={isCollapsed} />
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
-                <button className="flex items-center gap-3 rounded-xl px-1 py-1 hover:bg-sidebar-accent/50 transition-colors w-full text-left group-data-[collapsible=icon]:justify-center focus:outline-none">
-                  <Avatar className="h-9 w-9 border border-sidebar-border shrink-0">
+                <button className="flex items-center gap-2.5 rounded-lg px-1 py-1 hover:bg-accent/50 transition-colors w-full text-left group-data-[collapsible=icon]:justify-center focus:outline-none">
+                  <Avatar className="h-8 w-8 border border-border shrink-0">
                     {businessLogoUrl ? (
                       <img src={businessLogoUrl} alt={business?.businessName || "Logo"} className="h-full w-full object-cover rounded-full" />
                     ) : (
-                      <AvatarFallback
-                        className={`text-xs font-medium text-white ${
-                          isPersonal ? "bg-county-violet" : "bg-primary"
-                        }`}
-                      >
+                      <AvatarFallback className="text-xs font-semibold bg-secondary text-foreground">
                         {user?.name?.charAt(0).toUpperCase()}
                       </AvatarFallback>
                     )}
                   </Avatar>
                   <div className="flex-1 min-w-0 group-data-[collapsible=icon]:hidden">
-                    <p className="text-sm font-medium truncate leading-none text-sidebar-foreground">
+                    <p className="text-[13px] font-medium truncate leading-none text-foreground">
                       {user?.name || "-"}
                     </p>
-                    <p className="text-xs text-sidebar-foreground/60 truncate mt-1.5">
+                    <p className="text-[11px] text-muted-foreground truncate mt-1">
                       {user?.email || "-"}
                     </p>
                   </div>
@@ -898,12 +759,8 @@ function DashboardLayoutContent({
           </SidebarFooter>
         </Sidebar>
         <div
-          className={`absolute top-0 right-0 w-1 h-full cursor-col-resize hover:bg-primary/20 transition-colors ${
-            isCollapsed ? "hidden" : ""
-          }`}
-          onMouseDown={() => {
-            if (!isCollapsed) setIsResizing(true);
-          }}
+          className={`absolute top-0 right-0 w-1 h-full cursor-col-resize hover:bg-primary/20 transition-colors ${isCollapsed ? "hidden" : ""}`}
+          onMouseDown={() => { if (!isCollapsed) setIsResizing(true); }}
           style={{ zIndex: 50 }}
         />
       </div>
@@ -921,8 +778,8 @@ function DashboardLayoutContent({
               className="fixed inset-0 z-[100] flex items-center justify-center pointer-events-none"
               style={{
                 background: showTransition === "personal"
-                  ? "linear-gradient(135deg, rgba(139,92,246,0.15), rgba(16,185,129,0.08))"
-                  : "linear-gradient(135deg, rgba(30,77,155,0.15), rgba(37,99,235,0.08))",
+                  ? "linear-gradient(135deg, rgba(124,58,237,0.1), rgba(37,99,235,0.05))"
+                  : "linear-gradient(135deg, rgba(37,99,235,0.1), rgba(22,163,74,0.05))",
               }}
             >
               <motion.div
@@ -932,18 +789,15 @@ function DashboardLayoutContent({
                 transition={{ duration: 0.6, ease: "easeOut" }}
                 className="flex flex-col items-center gap-3"
               >
-                <div className={`h-16 w-16 rounded-2xl flex items-center justify-center ${
+                <div className={`h-14 w-14 rounded-xl flex items-center justify-center ${
                   showTransition === "personal"
-                    ? "bg-county-violet/20 text-county-violet"
-                    : "bg-blue-600/20 text-blue-600"
+                    ? "bg-purple-100 text-purple-600"
+                    : "bg-blue-100 text-blue-600"
                 }`}>
-                  {showTransition === "personal"
-                    ? <BookOpen className="h-8 w-8" />
-                    : <Store className="h-8 w-8" />
-                  }
+                  {showTransition === "personal" ? <BookOpen className="h-7 w-7" /> : <Store className="h-7 w-7" />}
                 </div>
                 <p className={`text-sm font-semibold ${
-                  showTransition === "personal" ? "text-county-violet" : "text-blue-600"
+                  showTransition === "personal" ? "text-purple-600" : "text-blue-600"
                 }`}>
                   {showTransition === "personal" ? "Jurnal Pribadi" : "Mode UMKM"}
                 </p>
@@ -951,21 +805,27 @@ function DashboardLayoutContent({
             </motion.div>
           )}
         </AnimatePresence>
+
+        {/* Top bar */}
         {isMobile ? (
-          <div className="flex border-b h-14 items-center justify-between bg-background/95 px-2 backdrop-blur sticky top-0 z-40">
+          <div className="flex border-b border-border h-12 items-center justify-between bg-background px-3 sticky top-0 z-40">
             <div className="flex items-center gap-2">
-              <SidebarTrigger className="h-9 w-9 rounded-lg bg-background" />
-              <span className="tracking-tight text-foreground font-medium">
+              <SidebarTrigger className="h-8 w-8 rounded-md" />
+              <span className="text-sm font-medium text-foreground">
                 {activeMenuItem?.label ?? "Menu"}
               </span>
             </div>
             <NotificationCenter />
           </div>
         ) : (
-          <div className="flex h-12 items-center justify-end px-4 border-b border-border/30">
+          <div className="flex h-12 items-center justify-between px-6 border-b border-border/50">
+            <div className="text-sm font-medium text-muted-foreground">
+              {activeMenuItem?.label && activeMenuItem.path !== "/" ? activeMenuItem.label : ""}
+            </div>
             <NotificationCenter />
           </div>
         )}
+
         {isAdminImpersonating && (
           <div className="bg-amber-500 text-white px-4 py-2 flex items-center justify-between text-sm font-medium">
             <div className="flex items-center gap-2">
@@ -980,6 +840,7 @@ function DashboardLayoutContent({
             </button>
           </div>
         )}
+
         <main className="flex-1 p-4 md:p-6">{children}</main>
         {business?.calculatorEnabled !== false && <MiniCalculator />}
       </SidebarInset>
@@ -987,56 +848,30 @@ function DashboardLayoutContent({
   );
 }
 
-function ThemeToggleButton({
-  isCollapsed,
-  isPersonal,
-}: {
-  isCollapsed: boolean;
-  isPersonal: boolean;
-}) {
+function ThemeToggleButton({ isCollapsed }: { isCollapsed: boolean }) {
   const { theme, toggleTheme, switchable } = useTheme();
   if (!switchable || !toggleTheme) return null;
 
   return (
     <button
       onClick={toggleTheme}
-      className="flex items-center gap-3 rounded-xl px-2 py-2 hover:bg-sidebar-accent/50 transition-colors w-full text-left group-data-[collapsible=icon]:justify-center focus:outline-none mb-1"
-      title={
-        theme === "dark"
-          ? "Beralih ke mode terang"
-          : "Beralih ke mode gelap"
-      }
+      className="flex items-center gap-2.5 rounded-lg px-2 py-1.5 hover:bg-accent/50 transition-colors w-full text-left group-data-[collapsible=icon]:justify-center focus:outline-none mb-1"
+      title={theme === "dark" ? "Beralih ke mode terang" : "Beralih ke mode gelap"}
     >
-      <div
-        className={`h-8 w-8 flex items-center justify-center rounded-lg shrink-0 ${
-          theme === "dark"
-            ? "bg-county-orange"
-            : isPersonal
-              ? "bg-county-violet"
-              : "bg-primary"
-        }`}
-      >
+      <div className="h-7 w-7 flex items-center justify-center rounded-md shrink-0 bg-secondary">
         {theme === "dark" ? (
-          <Sun className="h-4 w-4 text-white" />
+          <Sun className="h-3.5 w-3.5 text-amber-500" />
         ) : (
-          <Moon className="h-4 w-4 text-white" />
+          <Moon className="h-3.5 w-3.5 text-muted-foreground" />
         )}
       </div>
       {!isCollapsed && (
         <div className="flex items-center justify-between flex-1 min-w-0">
-          <span className="text-sm text-sidebar-foreground/80">
+          <span className="text-[13px] text-muted-foreground">
             {theme === "dark" ? "Mode Gelap" : "Mode Terang"}
           </span>
-          <div
-            className={`relative w-9 h-5 rounded-full transition-colors ${
-              theme === "dark" ? "bg-primary" : "bg-sidebar-accent"
-            }`}
-          >
-            <div
-              className={`absolute top-0.5 h-4 w-4 rounded-full bg-white shadow-sm transition-transform ${
-                theme === "dark" ? "translate-x-4" : "translate-x-0.5"
-              }`}
-            />
+          <div className={`relative w-8 h-[18px] rounded-full transition-colors ${theme === "dark" ? "bg-primary" : "bg-border"}`}>
+            <div className={`absolute top-[2px] h-[14px] w-[14px] rounded-full bg-white shadow-sm transition-transform ${theme === "dark" ? "translate-x-[14px]" : "translate-x-[2px]"}`} />
           </div>
         </div>
       )}
