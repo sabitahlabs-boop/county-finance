@@ -162,6 +162,7 @@ export default function PersonalSetupWizard({ onComplete }: { onComplete: () => 
   const upsertLiabilityMut = trpc.personalFinance.upsertLiability.useMutation();
   const upsertHeritageMut = trpc.personalFinance.upsertHeritage.useMutation();
   const upsertGoalMut = trpc.personalFinance.upsertGoal.useMutation();
+  const completePersonalSetupMut = trpc.business.completePersonalSetup.useMutation();
 
   // ─── Computed ───
   const totalIncome = useMemo(() => incomes.reduce((s, i) => s + i.amount, 0), [incomes]);
@@ -246,8 +247,12 @@ export default function PersonalSetupWizard({ onComplete }: { onComplete: () => 
       await upsertGoalMut.mutateAsync({ name: "Dana Pensiun", goalType: "dana_pensiun", targetAmount: totalIncome * 12 * 20, currentAmount: 0, priority: 2, icon: "🏖️", color: "#F59E0B" });
       await upsertGoalMut.mutateAsync({ name: "Investasi Umum", goalType: "investasi", targetAmount: totalIncome * 12 * 5, currentAmount: investments.reduce((s, i) => s + i.currentValue, 0), priority: 3, icon: "📈", color: "#10B981" });
 
+      // Mark business as personal setup done (updates businesses table)
+      await completePersonalSetupMut.mutateAsync();
+
       await utils.personalFinance.getDashboard.invalidate();
       await utils.personalFinance.getProfile.invalidate();
+      await utils.business.mine.invalidate();
       toast.success("Setup keuangan selesai! 🎉");
       onComplete();
     } catch (e: any) {
