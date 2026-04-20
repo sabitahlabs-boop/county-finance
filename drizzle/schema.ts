@@ -930,3 +930,71 @@ export const auditLogs = mysqlTable("audit_logs", {
 
 export type AuditLog = typeof auditLogs.$inferSelect;
 export type InsertAuditLog = typeof auditLogs.$inferInsert;
+
+// ─── Chart of Accounts (CoA) — SAK EMKM Double-Entry ───
+export const accounts = mysqlTable("accounts", {
+  id: int("id").autoincrement().primaryKey(),
+  businessId: int("businessId").notNull().references(() => businesses.id),
+  code: varchar("code", { length: 10 }).notNull(), // "1101", "4201"
+  name: varchar("name", { length: 255 }).notNull(), // "Kas BCA", "Penjualan"
+  accountType: mysqlEnum("accountType", ["asset", "liability", "equity", "revenue", "cogs", "expense"]).notNull(),
+  normalBalance: mysqlEnum("normalBalance", ["debit", "credit"]).notNull(),
+  parentCode: varchar("parentCode", { length: 10 }), // "1100" for header grouping
+  description: text("description"),
+  isHeader: boolean("isHeader").notNull().default(false), // true = grouping only, no posting
+  isSystemAccount: boolean("isSystemAccount").notNull().default(false), // auto-generated, no delete
+  bankAccountId: int("bankAccountId").references(() => bankAccounts.id), // link kas/bank to CoA
+  isActive: boolean("isActive").notNull().default(true),
+  sortOrder: int("sortOrder").notNull().default(0),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+}, (table) => [
+  uniqueIndex("uniq_accounts_businessId_code").on(table.businessId, table.code),
+  index("idx_accounts_businessId_accountType").on(table.businessId, table.accountType),
+  index("idx_accounts_bankAccountId").on(table.bankAccountId),
+]);
+
+export type Account = typeof accounts.$inferSelect;
+export type InsertAccount = typeof accounts.$inferInsert;
+
+// ─── Journal Entries (Header) — Double-Entry Bookkeeping ───
+export const journalEntries = mysqlTable("journal_entries", {
+  id: int("id").autoincrement().primaryKey(),
+  businessId: int("businessId").notNull().references(() => businesses.id),
+  entryNumber: varchar("entryNumber", { length: 30 }).notNull(), // "JE-20260418-001"
+  date: varchar("date", { length: 10 }).notNull(), // "2026-04-18"
+  description: text("description").notNull(),
+  sourceType: varchar("sourceType", { length: 30 }).notNull(), // pos_checkout, manual_income, etc.
+  sourceId: int("sourceId"), // FK to source record (receiptId, transactionId, etc.)
+  status: mysqlEnum("journalStatus", ["posted", "reversed"]).notNull().default("posted"),
+  reversalOfId: int("reversalOfId"), // FK to journal_entries.id (if this is a reversal)
+  totalAmount: bigint("totalAmount", { mode: "number" }).notNull(), // total debit = total credit
+  createdByUserId: int("createdByUserId"),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+}, (table) => [
+  uniqueIndex("uniq_journalEntries_businessId_entryNumber").on(table.businessId, table.entryNumber),
+  index("idx_journalEntries_businessId_date").on(table.businessId, table.date),
+  index("idx_journalEntries_sourceType_sourceId").on(table.businessId, table.sourceType, table.sourceId),
+  index("idx_journalEntries_reversalOfId").on(table.reversalOfId),
+  index("idx_journalEntries_status").on(table.status),
+]);
+
+export type JournalEntry = typeof journalEntries.$inferSelect;
+export type InsertJournalEntry = typeof journalEntries.$inferInsert;
+
+// ─── Journal Lines (Debit/Credit Rows) — Double-Entry Bookkeeping ───
+export const journalLines = mysqlTable("journal_lines", {
+  id: int("id").autoincrement().primaryKey(),
+  journalEntryId: int("journalEntryId").notNull().references(() => journalEntries.id),
+  accountId: int("accountId").notNull().references(() => accounts.id),
+  description: text("description"), // optional line-level memo
+  debitAmount: bigint("debitAmount", { mode: "number" }).notNull().default(0), // in Rupiah, 0 if credit
+  creditAmount: bigint("creditAmount", { mode: "number" }).notNull().default(0), // in Rupiah, 0 if debit
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+}, (table) => [
+  index("idx_journalLines_journalEntryId").on(table.journalEntryId),
+  index("idx_journalLines_accountId").on(table.accountId),
+]);
+
+export type JournalLine = typeof journalLines.$inferSelect;
+export type InsertJournalLine = typeof journalLines.$inferInsert;

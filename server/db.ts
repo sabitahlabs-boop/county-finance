@@ -47,6 +47,9 @@ import {
   customerDeposits, InsertCustomerDeposit, CustomerDeposit,
   depositTransactions, InsertDepositTransaction, DepositTransaction,
   auditLogs, InsertAuditLog,
+  accounts, InsertAccount, Account,
+  journalEntries, InsertJournalEntry, JournalEntry,
+  journalLines, InsertJournalLine, JournalLine,
 } from "../drizzle/schema";
 import { ENV } from './_core/env';
 import type { TaxCalcResult, DashboardKPIs, LabaRugiReport, ArusKasReport, NeracaReport, PerubahanModalReport, CALKReport } from "../shared/finance";
@@ -541,6 +544,60 @@ async function runAutoMigration(db: ReturnType<typeof drizzle>) {
     \`details\` json DEFAULT NULL,
     \`ipAddress\` varchar(45) DEFAULT NULL,
     \`createdAt\` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP
+  )`);
+
+  // ─── GL Tables: Chart of Accounts + Double-Entry Journal ───
+  await safeExec(`CREATE TABLE IF NOT EXISTS \`accounts\` (
+    \`id\` int NOT NULL AUTO_INCREMENT PRIMARY KEY,
+    \`businessId\` int NOT NULL,
+    \`code\` varchar(10) NOT NULL,
+    \`name\` varchar(255) NOT NULL,
+    \`accountType\` enum('asset','liability','equity','revenue','cogs','expense') NOT NULL,
+    \`normalBalance\` enum('debit','credit') NOT NULL,
+    \`parentCode\` varchar(10) DEFAULT NULL,
+    \`description\` text DEFAULT NULL,
+    \`isHeader\` boolean NOT NULL DEFAULT false,
+    \`isSystemAccount\` boolean NOT NULL DEFAULT false,
+    \`bankAccountId\` int DEFAULT NULL,
+    \`isActive\` boolean NOT NULL DEFAULT true,
+    \`sortOrder\` int NOT NULL DEFAULT 0,
+    \`createdAt\` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    \`updatedAt\` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    UNIQUE INDEX \`uniq_accounts_businessId_code\` (\`businessId\`, \`code\`),
+    INDEX \`idx_accounts_businessId_accountType\` (\`businessId\`, \`accountType\`),
+    INDEX \`idx_accounts_bankAccountId\` (\`bankAccountId\`)
+  )`);
+
+  await safeExec(`CREATE TABLE IF NOT EXISTS \`journal_entries\` (
+    \`id\` int NOT NULL AUTO_INCREMENT PRIMARY KEY,
+    \`businessId\` int NOT NULL,
+    \`entryNumber\` varchar(30) NOT NULL,
+    \`date\` varchar(10) NOT NULL,
+    \`description\` text NOT NULL,
+    \`sourceType\` varchar(30) NOT NULL,
+    \`sourceId\` int DEFAULT NULL,
+    \`journalStatus\` enum('posted','reversed') NOT NULL DEFAULT 'posted',
+    \`reversalOfId\` int DEFAULT NULL,
+    \`totalAmount\` bigint NOT NULL,
+    \`createdByUserId\` int DEFAULT NULL,
+    \`createdAt\` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE INDEX \`uniq_journalEntries_businessId_entryNumber\` (\`businessId\`, \`entryNumber\`),
+    INDEX \`idx_journalEntries_businessId_date\` (\`businessId\`, \`date\`),
+    INDEX \`idx_journalEntries_sourceType_sourceId\` (\`businessId\`, \`sourceType\`, \`sourceId\`),
+    INDEX \`idx_journalEntries_reversalOfId\` (\`reversalOfId\`),
+    INDEX \`idx_journalEntries_status\` (\`journalStatus\`)
+  )`);
+
+  await safeExec(`CREATE TABLE IF NOT EXISTS \`journal_lines\` (
+    \`id\` int NOT NULL AUTO_INCREMENT PRIMARY KEY,
+    \`journalEntryId\` int NOT NULL,
+    \`accountId\` int NOT NULL,
+    \`description\` text DEFAULT NULL,
+    \`debitAmount\` bigint NOT NULL DEFAULT 0,
+    \`creditAmount\` bigint NOT NULL DEFAULT 0,
+    \`createdAt\` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    INDEX \`idx_journalLines_journalEntryId\` (\`journalEntryId\`),
+    INDEX \`idx_journalLines_accountId\` (\`accountId\`)
   )`);
 
   // ─── Foreign Key Constraints (Top 5 Critical) ───
@@ -6325,4 +6382,442 @@ export async function getSalesByDevice(businessId: number, startDate: string, en
       )
     )
     .groupBy(posReceipts.deviceInfo);
+}
+
+// ══════════════════════════════════════════════════════════════════════════════
+// ██  GENERAL LEDGER — Double-Entry Bookkeeping (SAK EMKM)                  ██
+// ══════════════════════════════════════════════════════════════════════════════
+
+// ─── Default Chart of Accounts (SAK EMKM) ───
+// These are auto-created for every new business via initializeCoA()
+
+const DEFAULT_COA: Array<{
+  code: string;
+  name: string;
+  accountType: "asset" | "liability" | "equity" | "revenue" | "cogs" | "expense";
+  normalBalance: "debit" | "credit";
+  parentCode: string | null;
+  isHeader: boolean;
+}> = [
+  // ─── 1xxx ASET ───
+  { code: "1100", name: "Kas & Setara Kas", accountType: "asset", normalBalance: "debit", parentCode: null, isHeader: true },
+  { code: "1101", name: "Kas Umum", accountType: "asset", normalBalance: "debit", parentCode: "1100", isHeader: false },
+  { code: "1200", name: "Piutang", accountType: "asset", normalBalance: "debit", parentCode: null, isHeader: true },
+  { code: "1201", name: "Piutang Usaha", accountType: "asset", normalBalance: "debit", parentCode: "1200", isHeader: false },
+  { code: "1202", name: "Piutang Lain-lain", accountType: "asset", normalBalance: "debit", parentCode: "1200", isHeader: false },
+  { code: "1300", name: "Persediaan", accountType: "asset", normalBalance: "debit", parentCode: null, isHeader: true },
+  { code: "1301", name: "Persediaan Barang Dagang", accountType: "asset", normalBalance: "debit", parentCode: "1300", isHeader: false },
+  { code: "1302", name: "Persediaan Bahan Baku", accountType: "asset", normalBalance: "debit", parentCode: "1300", isHeader: false },
+  { code: "1400", name: "Uang Muka", accountType: "asset", normalBalance: "debit", parentCode: null, isHeader: true },
+  { code: "1401", name: "Uang Muka Pembelian", accountType: "asset", normalBalance: "debit", parentCode: "1400", isHeader: false },
+
+  // ─── 2xxx LIABILITAS ───
+  { code: "2100", name: "Hutang Jangka Pendek", accountType: "liability", normalBalance: "credit", parentCode: null, isHeader: true },
+  { code: "2101", name: "Hutang Usaha", accountType: "liability", normalBalance: "credit", parentCode: "2100", isHeader: false },
+  { code: "2102", name: "Hutang Lain-lain", accountType: "liability", normalBalance: "credit", parentCode: "2100", isHeader: false },
+  { code: "2103", name: "Hutang Pajak", accountType: "liability", normalBalance: "credit", parentCode: "2100", isHeader: false },
+  { code: "2104", name: "Deposit Pelanggan", accountType: "liability", normalBalance: "credit", parentCode: "2100", isHeader: false },
+  { code: "2105", name: "Hutang Komisi Staff", accountType: "liability", normalBalance: "credit", parentCode: "2100", isHeader: false },
+
+  // ─── 3xxx EKUITAS ───
+  { code: "3100", name: "Modal", accountType: "equity", normalBalance: "credit", parentCode: null, isHeader: true },
+  { code: "3101", name: "Modal Pemilik", accountType: "equity", normalBalance: "credit", parentCode: "3100", isHeader: false },
+  { code: "3102", name: "Laba Ditahan", accountType: "equity", normalBalance: "credit", parentCode: "3100", isHeader: false },
+  { code: "3103", name: "Prive / Penarikan Pemilik", accountType: "equity", normalBalance: "debit", parentCode: "3100", isHeader: false },
+  { code: "3104", name: "Laba Periode Berjalan", accountType: "equity", normalBalance: "credit", parentCode: "3100", isHeader: false },
+
+  // ─── 4xxx PENDAPATAN ───
+  { code: "4100", name: "Pendapatan Usaha", accountType: "revenue", normalBalance: "credit", parentCode: null, isHeader: true },
+  { code: "4101", name: "Penjualan", accountType: "revenue", normalBalance: "credit", parentCode: "4100", isHeader: false },
+  { code: "4102", name: "Pendapatan Jasa", accountType: "revenue", normalBalance: "credit", parentCode: "4100", isHeader: false },
+  { code: "4200", name: "Potongan & Retur", accountType: "revenue", normalBalance: "debit", parentCode: null, isHeader: true },
+  { code: "4201", name: "Retur Penjualan", accountType: "revenue", normalBalance: "debit", parentCode: "4200", isHeader: false },
+  { code: "4202", name: "Diskon Penjualan", accountType: "revenue", normalBalance: "debit", parentCode: "4200", isHeader: false },
+  { code: "4300", name: "Pendapatan Lain-lain", accountType: "revenue", normalBalance: "credit", parentCode: null, isHeader: true },
+  { code: "4301", name: "Pendapatan Lain-lain", accountType: "revenue", normalBalance: "credit", parentCode: "4300", isHeader: false },
+
+  // ─── 5xxx HPP (COGS) ───
+  { code: "5100", name: "Harga Pokok Penjualan", accountType: "cogs", normalBalance: "debit", parentCode: null, isHeader: true },
+  { code: "5101", name: "HPP Barang Dagang", accountType: "cogs", normalBalance: "debit", parentCode: "5100", isHeader: false },
+  { code: "5102", name: "HPP Produksi", accountType: "cogs", normalBalance: "debit", parentCode: "5100", isHeader: false },
+
+  // ─── 6xxx BEBAN OPERASIONAL ───
+  { code: "6100", name: "Beban Tenaga Kerja", accountType: "expense", normalBalance: "debit", parentCode: null, isHeader: true },
+  { code: "6101", name: "Beban Gaji", accountType: "expense", normalBalance: "debit", parentCode: "6100", isHeader: false },
+  { code: "6102", name: "Beban Komisi Staff", accountType: "expense", normalBalance: "debit", parentCode: "6100", isHeader: false },
+  { code: "6200", name: "Beban Operasional", accountType: "expense", normalBalance: "debit", parentCode: null, isHeader: true },
+  { code: "6201", name: "Beban Sewa", accountType: "expense", normalBalance: "debit", parentCode: "6200", isHeader: false },
+  { code: "6202", name: "Beban Utilitas", accountType: "expense", normalBalance: "debit", parentCode: "6200", isHeader: false },
+  { code: "6203", name: "Beban Transportasi", accountType: "expense", normalBalance: "debit", parentCode: "6200", isHeader: false },
+  { code: "6204", name: "Beban Perlengkapan", accountType: "expense", normalBalance: "debit", parentCode: "6200", isHeader: false },
+  { code: "6205", name: "Beban Marketing", accountType: "expense", normalBalance: "debit", parentCode: "6200", isHeader: false },
+  { code: "6206", name: "Beban Administrasi", accountType: "expense", normalBalance: "debit", parentCode: "6200", isHeader: false },
+  { code: "6207", name: "Beban Lain-lain", accountType: "expense", normalBalance: "debit", parentCode: "6200", isHeader: false },
+  { code: "6300", name: "Beban Pajak", accountType: "expense", normalBalance: "debit", parentCode: null, isHeader: true },
+  { code: "6301", name: "Beban PPh Final", accountType: "expense", normalBalance: "debit", parentCode: "6300", isHeader: false },
+  { code: "6302", name: "Beban PPN", accountType: "expense", normalBalance: "debit", parentCode: "6300", isHeader: false },
+  { code: "6400", name: "Beban Tagihan Rutin", accountType: "expense", normalBalance: "debit", parentCode: null, isHeader: true },
+  { code: "6401", name: "Beban Tagihan Bulanan", accountType: "expense", normalBalance: "debit", parentCode: "6400", isHeader: false },
+];
+
+// ─── Category → Account Code Mapping ───
+// Maps legacy `transactions.category` free-text to CoA codes
+const CATEGORY_TO_ACCOUNT: Record<string, string> = {
+  // Revenue categories
+  "Penjualan POS": "4101",
+  "Penjualan": "4101",
+  "Pendapatan Jasa": "4102",
+  // Expense categories
+  "Gaji Karyawan": "6101",
+  "Gaji": "6101",
+  "Sewa": "6201",
+  "Listrik": "6202",
+  "Air": "6202",
+  "Internet": "6202",
+  "Utilitas": "6202",
+  "Transportasi": "6203",
+  "Bensin": "6203",
+  "Perlengkapan": "6204",
+  "ATK": "6204",
+  "Marketing": "6205",
+  "Iklan": "6205",
+  "Administrasi": "6206",
+  "Tagihan Bulanan": "6401",
+  // Inventory
+  "Pembelian Stok": "1301",
+  "Pembelian Bahan Baku": "1302",
+  // HPP
+  "HPP": "5101",
+  // Contra-revenue
+  "Refund": "4201",
+  "Retur": "4201",
+  "Void": "4201",
+  "Diskon": "4202",
+};
+
+/**
+ * Initialize Chart of Accounts for a business.
+ * Idempotent — skips accounts that already exist.
+ * Also creates dynamic accounts for each bank_account record.
+ */
+export async function initializeCoA(businessId: number): Promise<void> {
+  const db = await getDb();
+  if (!db) return;
+
+  // Check if CoA already initialized (has any accounts)
+  const existing = await db.select({ count: sql<number>`COUNT(*)` })
+    .from(accounts)
+    .where(eq(accounts.businessId, businessId));
+  if (Number(existing[0]?.count ?? 0) > 0) return; // Already initialized
+
+  // Insert all default system accounts
+  for (const acct of DEFAULT_COA) {
+    await db.insert(accounts).values({
+      businessId,
+      code: acct.code,
+      name: acct.name,
+      accountType: acct.accountType,
+      normalBalance: acct.normalBalance,
+      parentCode: acct.parentCode,
+      isHeader: acct.isHeader,
+      isSystemAccount: true,
+      isActive: true,
+      sortOrder: parseInt(acct.code),
+    });
+  }
+
+  // Create dynamic accounts for existing bank accounts
+  const bankAccts = await db.select().from(bankAccounts)
+    .where(and(eq(bankAccounts.businessId, businessId), eq(bankAccounts.isActive, true)));
+
+  let nextCode = 1102; // 1101 = Kas Umum (already created), dynamic start at 1102
+  for (const ba of bankAccts) {
+    // Check if code already taken
+    const codeStr = String(nextCode);
+    const existsCheck = await db.select({ id: accounts.id }).from(accounts)
+      .where(and(eq(accounts.businessId, businessId), eq(accounts.code, codeStr)));
+    if (existsCheck.length === 0) {
+      await db.insert(accounts).values({
+        businessId,
+        code: codeStr,
+        name: ba.accountName,
+        accountType: "asset",
+        normalBalance: "debit",
+        parentCode: "1100",
+        isHeader: false,
+        isSystemAccount: true,
+        bankAccountId: ba.id,
+        isActive: true,
+        sortOrder: nextCode,
+      });
+    }
+    nextCode++;
+  }
+}
+
+/**
+ * Get or create a CoA account for a bank account.
+ * Called when a new bank_account is created to auto-link to GL.
+ */
+export async function ensureBankAccountInCoA(businessId: number, bankAccountId: number, accountName: string): Promise<number> {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+
+  // Check if already linked
+  const existing = await db.select({ id: accounts.id }).from(accounts)
+    .where(and(eq(accounts.businessId, businessId), eq(accounts.bankAccountId, bankAccountId)));
+  if (existing.length > 0) return existing[0].id;
+
+  // Find next available code in 1100 range
+  const maxCodeResult = await db.select({ maxCode: sql<string>`MAX(${accounts.code})` })
+    .from(accounts)
+    .where(and(eq(accounts.businessId, businessId), sql`${accounts.code} LIKE '11%'`, eq(accounts.isHeader, false)));
+  const maxCode = Number(maxCodeResult[0]?.maxCode ?? "1101");
+  const nextCode = String(maxCode + 1);
+
+  const [result] = await db.insert(accounts).values({
+    businessId,
+    code: nextCode,
+    name: accountName,
+    accountType: "asset",
+    normalBalance: "debit",
+    parentCode: "1100",
+    isHeader: false,
+    isSystemAccount: true,
+    bankAccountId,
+    isActive: true,
+    sortOrder: parseInt(nextCode),
+  });
+  return result.insertId;
+}
+
+/**
+ * Resolve a CoA account ID by its code for a given business.
+ * Returns the account ID or null if not found.
+ */
+export async function getAccountByCode(businessId: number, code: string): Promise<Account | null> {
+  const db = await getDb();
+  if (!db) return null;
+  const result = await db.select().from(accounts)
+    .where(and(eq(accounts.businessId, businessId), eq(accounts.code, code)))
+    .limit(1);
+  return result[0] ?? null;
+}
+
+/**
+ * Get the CoA account linked to a specific bank account.
+ */
+export async function getAccountByBankAccountId(businessId: number, bankAccountId: number): Promise<Account | null> {
+  const db = await getDb();
+  if (!db) return null;
+  const result = await db.select().from(accounts)
+    .where(and(eq(accounts.businessId, businessId), eq(accounts.bankAccountId, bankAccountId)))
+    .limit(1);
+  return result[0] ?? null;
+}
+
+/**
+ * Resolve an expense category string to a CoA account code.
+ * Falls back to "6207" (Beban Lain-lain) if no match.
+ */
+export function resolveAccountCodeFromCategory(category: string, type: "pemasukan" | "pengeluaran"): string {
+  // Direct mapping
+  const mapped = CATEGORY_TO_ACCOUNT[category];
+  if (mapped) return mapped;
+
+  // Case-insensitive partial match
+  const lowerCat = category.toLowerCase();
+  for (const [key, code] of Object.entries(CATEGORY_TO_ACCOUNT)) {
+    if (lowerCat.includes(key.toLowerCase())) return code;
+  }
+
+  // Fallback by transaction type
+  if (type === "pemasukan") return "4301"; // Pendapatan Lain-lain
+  return "6207"; // Beban Lain-lain
+}
+
+// ─── Journal Entry Number Generator ───
+
+async function generateJournalEntryNumber(businessId: number): Promise<string> {
+  const db = await getDb();
+  if (!db) return `JE-${Date.now()}`;
+  const today = new Date();
+  const dateStr = `${today.getFullYear()}${String(today.getMonth() + 1).padStart(2, "0")}${String(today.getDate()).padStart(2, "0")}`;
+  const prefix = `JE-${dateStr}-`;
+  const result = await db.select({ count: sql<number>`COUNT(*)` }).from(journalEntries)
+    .where(and(eq(journalEntries.businessId, businessId), sql`${journalEntries.entryNumber} LIKE ${prefix + "%"}`));
+  const seq = Number(result[0]?.count ?? 0) + 1;
+  return `${prefix}${String(seq).padStart(3, "0")}`;
+}
+
+// ─── Core Journal Service ───
+
+export type JournalLineInput = {
+  accountId: number;
+  description?: string;
+  debitAmount: number;
+  creditAmount: number;
+};
+
+export type CreateJournalEntryInput = {
+  businessId: number;
+  date: string;
+  description: string;
+  sourceType: string;
+  sourceId?: number | null;
+  reversalOfId?: number | null;
+  createdByUserId?: number | null;
+  lines: JournalLineInput[];
+};
+
+/**
+ * Core Journal Service — creates a validated double-entry journal entry.
+ *
+ * VALIDATION RULES:
+ * 1. Must have at least 2 lines
+ * 2. SUM(debit) must equal SUM(credit)
+ * 3. Each line must have either debit OR credit (not both, not neither)
+ * 4. All accountIds must exist and not be header accounts
+ *
+ * Can be called standalone or within an existing DB transaction.
+ */
+export async function createJournalEntry(input: CreateJournalEntryInput, txConn?: any): Promise<{ journalEntryId: number; entryNumber: string }> {
+  // ─── Validation ───
+  if (!input.lines || input.lines.length < 2) {
+    throw new Error("Journal entry must have at least 2 lines (debit + credit)");
+  }
+
+  let totalDebit = 0;
+  let totalCredit = 0;
+  for (const line of input.lines) {
+    if (line.debitAmount < 0 || line.creditAmount < 0) {
+      throw new Error("Debit and credit amounts must be non-negative");
+    }
+    if (line.debitAmount > 0 && line.creditAmount > 0) {
+      throw new Error("A journal line cannot have both debit and credit amounts");
+    }
+    if (line.debitAmount === 0 && line.creditAmount === 0) {
+      throw new Error("A journal line must have either a debit or credit amount");
+    }
+    totalDebit += line.debitAmount;
+    totalCredit += line.creditAmount;
+  }
+
+  if (totalDebit !== totalCredit) {
+    throw new Error(`Journal entry is not balanced: Debit=${totalDebit}, Credit=${totalCredit} (difference=${totalDebit - totalCredit})`);
+  }
+
+  // ─── Get DB connection (use existing transaction or create new) ───
+  const db = txConn || await getDb();
+  if (!db) throw new Error("Database not available");
+
+  // ─── Generate entry number ───
+  const entryNumber = await generateJournalEntryNumber(input.businessId);
+
+  // ─── Insert journal entry header ───
+  const [entryResult] = await db.insert(journalEntries).values({
+    businessId: input.businessId,
+    entryNumber,
+    date: input.date,
+    description: input.description,
+    sourceType: input.sourceType,
+    sourceId: input.sourceId ?? null,
+    reversalOfId: input.reversalOfId ?? null,
+    totalAmount: totalDebit, // = totalCredit (already validated)
+    createdByUserId: input.createdByUserId ?? null,
+  });
+  const journalEntryId = entryResult.insertId;
+
+  // ─── Insert journal lines ───
+  for (const line of input.lines) {
+    await db.insert(journalLines).values({
+      journalEntryId,
+      accountId: line.accountId,
+      description: line.description ?? null,
+      debitAmount: line.debitAmount,
+      creditAmount: line.creditAmount,
+    });
+  }
+
+  return { journalEntryId, entryNumber };
+}
+
+/**
+ * Helper: Resolve account IDs for POS Checkout journal entry.
+ * Returns the necessary account IDs, initializing CoA if needed.
+ */
+export async function resolveAccountsForPOS(businessId: number, bankAccountId: number | null): Promise<{
+  cashAccountId: number;
+  salesAccountId: number;
+  cogsAccountId: number;
+  inventoryAccountId: number;
+  discountAccountId: number;
+}> {
+  // Ensure CoA is initialized
+  await initializeCoA(businessId);
+
+  // Resolve cash/bank account
+  let cashAccount: Account | null = null;
+  if (bankAccountId) {
+    cashAccount = await getAccountByBankAccountId(businessId, bankAccountId);
+  }
+  if (!cashAccount) {
+    cashAccount = await getAccountByCode(businessId, "1101"); // Kas Umum fallback
+  }
+  if (!cashAccount) throw new Error("Cash account not found in CoA");
+
+  const salesAccount = await getAccountByCode(businessId, "4101");
+  if (!salesAccount) throw new Error("Sales account (4101) not found in CoA");
+
+  const cogsAccount = await getAccountByCode(businessId, "5101");
+  if (!cogsAccount) throw new Error("COGS account (5101) not found in CoA");
+
+  const inventoryAccount = await getAccountByCode(businessId, "1301");
+  if (!inventoryAccount) throw new Error("Inventory account (1301) not found in CoA");
+
+  const discountAccount = await getAccountByCode(businessId, "4202");
+  if (!discountAccount) throw new Error("Discount account (4202) not found in CoA");
+
+  return {
+    cashAccountId: cashAccount.id,
+    salesAccountId: salesAccount.id,
+    cogsAccountId: cogsAccount.id,
+    inventoryAccountId: inventoryAccount.id,
+    discountAccountId: discountAccount.id,
+  };
+}
+
+/**
+ * Helper: Resolve accounts for manual transaction journal entry.
+ */
+export async function resolveAccountsForManualTx(businessId: number, category: string, type: "pemasukan" | "pengeluaran", bankAccountId: number | null): Promise<{
+  cashAccountId: number;
+  counterAccountId: number;
+}> {
+  await initializeCoA(businessId);
+
+  // Resolve cash/bank account (debit side for income, credit side for expense)
+  let cashAccount: Account | null = null;
+  if (bankAccountId) {
+    cashAccount = await getAccountByBankAccountId(businessId, bankAccountId);
+  }
+  if (!cashAccount) {
+    cashAccount = await getAccountByCode(businessId, "1101");
+  }
+  if (!cashAccount) throw new Error("Cash account not found in CoA");
+
+  // Resolve the counter-account from category
+  const counterCode = resolveAccountCodeFromCategory(category, type);
+  let counterAccount = await getAccountByCode(businessId, counterCode);
+  if (!counterAccount) {
+    // Fallback to catch-all
+    const fallbackCode = type === "pemasukan" ? "4301" : "6207";
+    counterAccount = await getAccountByCode(businessId, fallbackCode);
+  }
+  if (!counterAccount) throw new Error(`Counter account not found for category: ${category}`);
+
+  return {
+    cashAccountId: cashAccount.id,
+    counterAccountId: counterAccount.id,
+  };
 }

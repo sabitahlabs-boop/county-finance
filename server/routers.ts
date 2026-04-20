@@ -72,6 +72,8 @@ import {
   createProductionLog, getProductionLogs, getProductionCostReport, runProduction, generateLabaRugiDetail,
   consumeStockFIFO, restoreStockFIFO,
   getDb, createAuditLog,
+  // GL Double-Entry
+  createJournalEntry, resolveAccountsForPOS, resolveAccountsForManualTx, initializeCoA,
 } from "./db";
 import { PLAN_LIMITS, BULAN_INDONESIA, formatRupiah } from "../shared/finance";
 import { notifyOwner } from "./_core/notification";
@@ -764,6 +766,35 @@ export const appRouter = router({
       }
 
       const id = await safeInsertTransaction({ ...input, businessId: biz.id, txCode, productHppSnapshot, taxRelated: true, bankAccountId });
+
+      // ─── GL Double-Entry Journal (best-effort) ───
+      try {
+        const glAccounts = await resolveAccountsForManualTx(biz.id, input.category, input.type, bankAccountId ?? null);
+        const lines: Array<{ accountId: number; description?: string; debitAmount: number; creditAmount: number }> = [];
+
+        if (input.type === "pemasukan") {
+          // DR: Kas/Bank, CR: Pendapatan/counter-account
+          lines.push({ accountId: glAccounts.cashAccountId, description: `Terima ${input.category}`, debitAmount: input.amount, creditAmount: 0 });
+          lines.push({ accountId: glAccounts.counterAccountId, description: input.description || input.category, debitAmount: 0, creditAmount: input.amount });
+        } else {
+          // DR: Beban/counter-account, CR: Kas/Bank
+          lines.push({ accountId: glAccounts.counterAccountId, description: input.description || input.category, debitAmount: input.amount, creditAmount: 0 });
+          lines.push({ accountId: glAccounts.cashAccountId, description: `Bayar ${input.category}`, debitAmount: 0, creditAmount: input.amount });
+        }
+
+        await createJournalEntry({
+          businessId: biz.id,
+          date: input.date,
+          description: `${input.type === "pemasukan" ? "Pemasukan" : "Pengeluaran"}: ${input.category} — ${txCode}`,
+          sourceType: input.type === "pemasukan" ? "manual_income" : "manual_expense",
+          sourceId: id,
+          createdByUserId: ctx.user.id,
+          lines,
+        });
+      } catch (glError) {
+        console.error("GL journal entry error (manual tx):", glError);
+      }
+
       return { id, txCode };
     }),
     update: protectedProcedure.input(z.object({
@@ -3003,6 +3034,100 @@ Penting: Kembalikan HANYA JSON valid, tidak ada teks penjelasan.`,
 
         return { receiptId: txReceiptId };
       });
+
+      // ─── BEST-EFFORT: GL Double-Entry Journal (outside atomic tx — non-critical) ───
+      try {
+        // Calculate total HPP from items
+        const totalHPP = input.items.reduce((sum, item) => {
+          const hpp = item.hppSnapshot ?? 0;
+          return sum + (hpp * item.productQty);
+        }, 0);
+
+        // Resolve the primary bank account for the first payment method
+        const primaryBankAccountId = (() => {
+          const firstPayment = input.payments[0];
+          if (!firstPayment) return null;
+          const isTunai = firstPayment.method.toLowerCase() === "tunai";
+          if (isTunai && kasirCashAccountId) return kasirCashAccountId;
+          return resolveBankAccountId(posAccounts, firstPayment.method) ?? null;
+        })();
+
+        const glAccounts = await resolveAccountsForPOS(bizId, primaryBankAccountId);
+
+        // Build journal lines
+        const journalLinesList: Array<{ accountId: number; description?: string; debitAmount: number; creditAmount: number }> = [];
+
+        // DR: Kas/Bank for each payment method
+        for (const payment of input.payments) {
+          const isTunai = payment.method.toLowerCase() === "tunai";
+          let paymentAccountId = glAccounts.cashAccountId; // default
+          if (isTunai && kasirCashAccountId) {
+            const bankCoAAccount = await import("./db").then(m => m.getAccountByBankAccountId(bizId, kasirCashAccountId!));
+            if (bankCoAAccount) paymentAccountId = bankCoAAccount.id;
+          } else {
+            const resolved = resolveBankAccountId(posAccounts, payment.method);
+            if (resolved) {
+              const bankCoAAccount = await import("./db").then(m => m.getAccountByBankAccountId(bizId, resolved));
+              if (bankCoAAccount) paymentAccountId = bankCoAAccount.id;
+            }
+          }
+          journalLinesList.push({
+            accountId: paymentAccountId,
+            description: `Pembayaran ${payment.method}`,
+            debitAmount: payment.amount,
+            creditAmount: 0,
+          });
+        }
+
+        // Handle discount as contra-revenue
+        if (input.discountAmount > 0) {
+          journalLinesList.push({
+            accountId: glAccounts.discountAccountId,
+            description: "Diskon penjualan",
+            debitAmount: input.discountAmount,
+            creditAmount: 0,
+          });
+        }
+
+        // CR: Penjualan (revenue) — subtotal (before discount)
+        journalLinesList.push({
+          accountId: glAccounts.salesAccountId,
+          description: `Penjualan POS ${receiptCode}`,
+          debitAmount: 0,
+          creditAmount: input.subtotal,
+        });
+
+        // HPP entry (if any items have HPP > 0)
+        if (totalHPP > 0) {
+          // DR: HPP (cost of goods sold)
+          journalLinesList.push({
+            accountId: glAccounts.cogsAccountId,
+            description: "Harga Pokok Penjualan",
+            debitAmount: totalHPP,
+            creditAmount: 0,
+          });
+          // CR: Persediaan (inventory decrease)
+          journalLinesList.push({
+            accountId: glAccounts.inventoryAccountId,
+            description: "Pengurangan persediaan",
+            debitAmount: 0,
+            creditAmount: totalHPP,
+          });
+        }
+
+        await createJournalEntry({
+          businessId: bizId,
+          date: saleDate,
+          description: `Penjualan POS ${receiptCode} — ${input.items.length} item`,
+          sourceType: "pos_checkout",
+          sourceId: receiptId,
+          createdByUserId: ctx.user.id,
+          lines: journalLinesList,
+        });
+      } catch (glError) {
+        // GL journaling is best-effort — don't fail the POS checkout
+        console.error("GL journal entry error (POS checkout):", glError);
+      }
 
       // ─── BEST-EFFORT: Commission, loyalty (outside tx — non-critical) ───
 
