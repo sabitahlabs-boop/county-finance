@@ -50,6 +50,7 @@ import PenjualanKredit from "./pages/PenjualanKredit";
 import RingkasanDiskon from "./pages/RingkasanDiskon";
 import VoidRefundAnalysis from "./pages/VoidRefundAnalysis";
 import KomisiStaff from "./pages/KomisiStaff";
+import LabaRugiDetail from "./pages/LabaRugiDetail";
 import LaporanShift from "./pages/LaporanShift";
 import TransaksiTunai from "./pages/TransaksiTunai";
 import ManajemenRekening from "./pages/ManajemenRekening";
@@ -186,6 +187,7 @@ function Router() {
       <Route path="/top-produk">{() => <AuthenticatedRoute component={TopProduk} />}</Route>
       <Route path="/laporan-index">{() => <AuthenticatedRoute component={LaporanIndex} />}</Route>
       <Route path="/laporan-gl">{() => <AuthenticatedRoute component={LaporanGL} />}</Route>
+      <Route path="/laba-rugi-detail">{() => <AuthenticatedRoute component={LabaRugiDetail} />}</Route>
       <Route path="/penjualan-pelanggan">{() => <AuthenticatedRoute component={PenjualanPelanggan} />}</Route>
       <Route path="/penjualan-jam">{() => <AuthenticatedRoute component={PenjualanJam} />}</Route>
       <Route path="/penjualan-tanggal">{() => <AuthenticatedRoute component={PenjualanTanggal} />}</Route>

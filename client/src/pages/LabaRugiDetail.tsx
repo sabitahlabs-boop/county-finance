@@ -137,7 +137,7 @@ export default function LabaRugiDetail() {
           <BarChart3 className="h-8 w-8 text-blue-600" />
           <div>
             <h1 className="text-3xl font-bold">Laporan Laba Rugi Detail</h1>
-            <p className="text-gray-600">Format detail Olsera dengan breakdown komprehensif</p>
+            <p className="text-gray-600">Laporan P&L terperinci dengan breakdown komprehensif</p>
           </div>
         </div>
         <div className="flex gap-2">

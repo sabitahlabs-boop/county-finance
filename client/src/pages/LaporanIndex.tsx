@@ -81,12 +81,21 @@ const REPORTS: ReportEntry[] = [
     keywords: ["calk", "catatan", "notes", "penjelasan"],
   },
   {
-    name: "Laba Rugi Detail (Olsera Format)",
+    name: "Laba Rugi Detail",
     description: "Laporan P&L terperinci dengan pendapatan, HPP, dan pengeluaran operasional",
     path: "/laba-rugi-detail",
     icon: BarChart3,
     category: "Laporan Keuangan",
-    keywords: ["laba", "rugi", "profit", "loss", "detail", "olsera", "pnl"],
+    keywords: ["laba", "rugi", "profit", "loss", "detail", "pnl"],
+  },
+
+  {
+    name: "Laporan GL (Jurnal Umum)",
+    description: "Trial Balance, Laba Rugi, Neraca, dan Buku Besar berbasis General Ledger — standar SAK EMKM",
+    path: "/laporan-gl",
+    icon: BarChart3,
+    category: "Laporan Keuangan",
+    keywords: ["gl", "general ledger", "jurnal umum", "trial balance", "neraca saldo", "buku besar", "double entry"],
   },
 
   // ── Laporan Penjualan ──
