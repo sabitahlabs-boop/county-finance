@@ -7067,3 +7067,345 @@ export async function resolveAccountsForBillPayment(businessId: number, bankAcco
   }
   return { billExpenseAccountId: billExpense.id, cashAccountId: cashAccount.id };
 }
+
+// ═══════════════════════════════════════════════════════════════════
+// FASE 4: GL-BASED FINANCIAL REPORTS
+// ═══════════════════════════════════════════════════════════════════
+
+/**
+ * Trial Balance — saldo per akun dari GL journal lines.
+ * Supports optional date range filter (for monthly reports).
+ */
+export async function getTrialBalanceGL(
+  businessId: number,
+  startDate?: string,
+  endDate?: string
+): Promise<{
+  accounts: Array<{
+    code: string;
+    name: string;
+    accountType: string;
+    normalBalance: string;
+    parentCode: string | null;
+    isHeader: boolean;
+    totalDebit: number;
+    totalCredit: number;
+    balance: number; // positive = normal direction
+  }>;
+  totalDebit: number;
+  totalCredit: number;
+}> {
+  const db = await getDb();
+  if (!db) return { accounts: [], totalDebit: 0, totalCredit: 0 };
+  await initializeCoA(businessId);
+
+  // Build date conditions
+  const conditions: any[] = [
+    eq(journalEntries.businessId, businessId),
+    eq(journalEntries.status, "posted"),
+  ];
+  if (startDate) conditions.push(gte(journalEntries.date, startDate));
+  if (endDate) conditions.push(lte(journalEntries.date, endDate));
+
+  // Get all account balances from journal lines
+  const rows = await db
+    .select({
+      accountId: journalLines.accountId,
+      totalDebit: sql<number>`COALESCE(SUM(${journalLines.debitAmount}), 0)`,
+      totalCredit: sql<number>`COALESCE(SUM(${journalLines.creditAmount}), 0)`,
+    })
+    .from(journalLines)
+    .innerJoin(journalEntries, eq(journalLines.journalEntryId, journalEntries.id))
+    .where(and(...conditions))
+    .groupBy(journalLines.accountId);
+
+  // Get all accounts for this business
+  const allAccounts = await db.select().from(accounts)
+    .where(and(eq(accounts.businessId, businessId), eq(accounts.isActive, true)))
+    .orderBy(accounts.code);
+
+  // Build balance map
+  const balanceMap = new Map<number, { totalDebit: number; totalCredit: number }>();
+  for (const row of rows) {
+    balanceMap.set(row.accountId, { totalDebit: Number(row.totalDebit), totalCredit: Number(row.totalCredit) });
+  }
+
+  let grandTotalDebit = 0;
+  let grandTotalCredit = 0;
+
+  const accountRows = allAccounts.map((acc) => {
+    const bal = balanceMap.get(acc.id) || { totalDebit: 0, totalCredit: 0 };
+    const balance = acc.normalBalance === "debit"
+      ? bal.totalDebit - bal.totalCredit
+      : bal.totalCredit - bal.totalDebit;
+
+    if (!acc.isHeader) {
+      grandTotalDebit += bal.totalDebit;
+      grandTotalCredit += bal.totalCredit;
+    }
+
+    return {
+      code: acc.code,
+      name: acc.name,
+      accountType: acc.accountType,
+      normalBalance: acc.normalBalance,
+      parentCode: acc.parentCode,
+      isHeader: acc.isHeader,
+      totalDebit: bal.totalDebit,
+      totalCredit: bal.totalCredit,
+      balance,
+    };
+  });
+
+  return {
+    accounts: accountRows,
+    totalDebit: grandTotalDebit,
+    totalCredit: grandTotalCredit,
+  };
+}
+
+/**
+ * Laba Rugi (Income Statement) dari GL.
+ * Revenue (4xxx) - COGS (5xxx) = Laba Kotor
+ * Laba Kotor - Expenses (6xxx) = Laba Bersih
+ */
+export async function getLabaRugiGL(
+  businessId: number,
+  startDate: string,
+  endDate: string
+): Promise<{
+  revenue: Array<{ code: string; name: string; parentCode: string | null; isHeader: boolean; amount: number }>;
+  cogs: Array<{ code: string; name: string; parentCode: string | null; isHeader: boolean; amount: number }>;
+  expenses: Array<{ code: string; name: string; parentCode: string | null; isHeader: boolean; amount: number }>;
+  totalRevenue: number;
+  totalCOGS: number;
+  grossProfit: number;
+  totalExpenses: number;
+  netProfit: number;
+}> {
+  const tb = await getTrialBalanceGL(businessId, startDate, endDate);
+
+  const revenue: typeof tb.accounts = [];
+  const cogs: typeof tb.accounts = [];
+  const expenses: typeof tb.accounts = [];
+
+  let totalRevenue = 0;
+  let totalCOGS = 0;
+  let totalExpenses = 0;
+
+  for (const acc of tb.accounts) {
+    if (acc.code.startsWith("4")) {
+      revenue.push(acc);
+      if (!acc.isHeader) {
+        // Revenue: credit-normal accounts add, debit-normal (discounts/returns) subtract
+        totalRevenue += acc.normalBalance === "credit" ? acc.balance : -acc.balance;
+      }
+    } else if (acc.code.startsWith("5")) {
+      cogs.push(acc);
+      if (!acc.isHeader) totalCOGS += acc.balance;
+    } else if (acc.code.startsWith("6")) {
+      expenses.push(acc);
+      if (!acc.isHeader) totalExpenses += acc.balance;
+    }
+  }
+
+  const grossProfit = totalRevenue - totalCOGS;
+  const netProfit = grossProfit - totalExpenses;
+
+  const mapRow = (a: typeof tb.accounts[0]) => ({
+    code: a.code,
+    name: a.name,
+    parentCode: a.parentCode,
+    isHeader: a.isHeader,
+    amount: a.balance,
+  });
+
+  return {
+    revenue: revenue.map(mapRow),
+    cogs: cogs.map(mapRow),
+    expenses: expenses.map(mapRow),
+    totalRevenue,
+    totalCOGS,
+    grossProfit,
+    totalExpenses,
+    netProfit,
+  };
+}
+
+/**
+ * Neraca (Balance Sheet) dari GL.
+ * Aset (1xxx) = Liabilitas (2xxx) + Ekuitas (3xxx) + Laba Berjalan
+ * Saldo kumulatif dari awal sampai endDate.
+ */
+export async function getNeracaGL(
+  businessId: number,
+  endDate: string
+): Promise<{
+  assets: Array<{ code: string; name: string; parentCode: string | null; isHeader: boolean; amount: number }>;
+  liabilities: Array<{ code: string; name: string; parentCode: string | null; isHeader: boolean; amount: number }>;
+  equity: Array<{ code: string; name: string; parentCode: string | null; isHeader: boolean; amount: number }>;
+  totalAssets: number;
+  totalLiabilities: number;
+  totalEquity: number;
+  netProfit: number; // laba berjalan (included in equity)
+  balanceCheck: boolean; // assets == liabilities + equity + netProfit
+}> {
+  // Get cumulative balances up to endDate
+  const tb = await getTrialBalanceGL(businessId, undefined, endDate);
+
+  // Also compute net profit (revenue - cogs - expenses) for laba berjalan
+  // Revenue/COGS/Expense are temporary accounts that close to equity
+  let totalRevenue = 0;
+  let totalCOGS = 0;
+  let totalExpenses = 0;
+
+  const assets: typeof tb.accounts = [];
+  const liabilities: typeof tb.accounts = [];
+  const equity: typeof tb.accounts = [];
+
+  let totalAssets = 0;
+  let totalLiabilities = 0;
+  let totalEquity = 0;
+
+  for (const acc of tb.accounts) {
+    if (acc.code.startsWith("1")) {
+      assets.push(acc);
+      if (!acc.isHeader) totalAssets += acc.balance;
+    } else if (acc.code.startsWith("2")) {
+      liabilities.push(acc);
+      if (!acc.isHeader) totalLiabilities += acc.balance;
+    } else if (acc.code.startsWith("3")) {
+      equity.push(acc);
+      if (!acc.isHeader) totalEquity += acc.balance;
+    } else if (acc.code.startsWith("4")) {
+      if (!acc.isHeader) {
+        totalRevenue += acc.normalBalance === "credit" ? acc.balance : -acc.balance;
+      }
+    } else if (acc.code.startsWith("5")) {
+      if (!acc.isHeader) totalCOGS += acc.balance;
+    } else if (acc.code.startsWith("6")) {
+      if (!acc.isHeader) totalExpenses += acc.balance;
+    }
+  }
+
+  const netProfit = totalRevenue - totalCOGS - totalExpenses;
+  const balanceCheck = totalAssets === (totalLiabilities + totalEquity + netProfit);
+
+  const mapRow = (a: typeof tb.accounts[0]) => ({
+    code: a.code,
+    name: a.name,
+    parentCode: a.parentCode,
+    isHeader: a.isHeader,
+    amount: a.balance,
+  });
+
+  return {
+    assets: assets.map(mapRow),
+    liabilities: liabilities.map(mapRow),
+    equity: equity.map(mapRow),
+    totalAssets,
+    totalLiabilities,
+    totalEquity,
+    netProfit,
+    balanceCheck,
+  };
+}
+
+/**
+ * Buku Besar (General Ledger) — detail transaksi per akun.
+ */
+export async function getBukuBesarGL(
+  businessId: number,
+  accountCode: string,
+  startDate?: string,
+  endDate?: string
+): Promise<{
+  account: { code: string; name: string; accountType: string; normalBalance: string } | null;
+  entries: Array<{
+    date: string;
+    entryNumber: string;
+    description: string;
+    debitAmount: number;
+    creditAmount: number;
+    runningBalance: number;
+  }>;
+  openingBalance: number;
+  closingBalance: number;
+}> {
+  const db = await getDb();
+  if (!db) return { account: null, entries: [], openingBalance: 0, closingBalance: 0 };
+
+  const account = await getAccountByCode(businessId, accountCode);
+  if (!account) return { account: null, entries: [], openingBalance: 0, closingBalance: 0 };
+
+  // Get opening balance (all entries BEFORE startDate)
+  let openingBalance = 0;
+  if (startDate) {
+    const [openingRow] = await db
+      .select({
+        totalDebit: sql<number>`COALESCE(SUM(${journalLines.debitAmount}), 0)`,
+        totalCredit: sql<number>`COALESCE(SUM(${journalLines.creditAmount}), 0)`,
+      })
+      .from(journalLines)
+      .innerJoin(journalEntries, eq(journalLines.journalEntryId, journalEntries.id))
+      .where(and(
+        eq(journalEntries.businessId, businessId),
+        eq(journalEntries.status, "posted"),
+        eq(journalLines.accountId, account.id),
+        sql`${journalEntries.date} < ${startDate}`,
+      ));
+    if (openingRow) {
+      openingBalance = account.normalBalance === "debit"
+        ? Number(openingRow.totalDebit) - Number(openingRow.totalCredit)
+        : Number(openingRow.totalCredit) - Number(openingRow.totalDebit);
+    }
+  }
+
+  // Get entries in range
+  const conditions: any[] = [
+    eq(journalEntries.businessId, businessId),
+    eq(journalEntries.status, "posted"),
+    eq(journalLines.accountId, account.id),
+  ];
+  if (startDate) conditions.push(gte(journalEntries.date, startDate));
+  if (endDate) conditions.push(lte(journalEntries.date, endDate));
+
+  const rows = await db
+    .select({
+      date: journalEntries.date,
+      entryNumber: journalEntries.entryNumber,
+      description: journalEntries.description,
+      debitAmount: journalLines.debitAmount,
+      creditAmount: journalLines.creditAmount,
+    })
+    .from(journalLines)
+    .innerJoin(journalEntries, eq(journalLines.journalEntryId, journalEntries.id))
+    .where(and(...conditions))
+    .orderBy(journalEntries.date, journalEntries.id);
+
+  let runningBalance = openingBalance;
+  const entries = rows.map((row) => {
+    const debit = Number(row.debitAmount);
+    const credit = Number(row.creditAmount);
+    if (account.normalBalance === "debit") {
+      runningBalance += debit - credit;
+    } else {
+      runningBalance += credit - debit;
+    }
+    return {
+      date: row.date,
+      entryNumber: row.entryNumber,
+      description: row.description || "",
+      debitAmount: debit,
+      creditAmount: credit,
+      runningBalance,
+    };
+  });
+
+  return {
+    account: { code: account.code, name: account.name, accountType: account.accountType, normalBalance: account.normalBalance },
+    entries,
+    openingBalance,
+    closingBalance: runningBalance,
+  };
+}

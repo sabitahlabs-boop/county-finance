@@ -162,6 +162,7 @@ const UMKM_SIDEBAR: SidebarItem[] = [
     children: [
       { icon: Search, label: "Daftar Laporan", path: "/laporan-index" },
       { icon: FileText, label: "Laporan Keuangan", path: "/laporan" },
+      { icon: BookOpen, label: "Laporan GL (Jurnal Umum)", path: "/laporan-gl" },
       { icon: FileText, label: "Rekening Koran", path: "/rekening-koran" },
       { icon: Package, label: "Mutasi Persediaan", path: "/mutasi-persediaan" },
       { icon: Package, label: "Penjualan per Produk", path: "/penjualan-produk" },

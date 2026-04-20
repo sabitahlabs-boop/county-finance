@@ -78,6 +78,7 @@ import {
   resolveAccountsForDebt, resolveAccountsForDeposit,
   resolveAccountsForProduction, resolveAccountsForBankTransfer, resolveAccountsForTaxPayment,
   resolveAccountsForCommission, resolveAccountsForBillPayment,
+  getTrialBalanceGL, getLabaRugiGL, getNeracaGL, getBukuBesarGL,
 } from "./db";
 import { PLAN_LIMITS, BULAN_INDONESIA, formatRupiah } from "../shared/finance";
 import { notifyOwner } from "./_core/notification";
@@ -1306,6 +1307,61 @@ export const appRouter = router({
       const biz = (await resolveBusinessForUser(ctx.user.id, ctx.requestedBusinessId, ctx.user.role))?.business;
       if (!biz) throw new TRPCError({ code: "NOT_FOUND" });
       return getSalesByDevice(biz.id, input.startDate, input.endDate);
+    }),
+
+    // ═══ Fase 4: GL Double-Entry Reports ═══
+
+    // ─── Trial Balance from GL ───
+    trialBalanceGL: protectedProcedure.input(z.object({
+      month: z.number().min(1).max(12).optional(),
+      year: z.number().min(2000).optional(),
+    })).query(async ({ ctx, input }) => {
+      const biz = (await resolveBusinessForUser(ctx.user.id, ctx.requestedBusinessId, ctx.user.role))?.business;
+      if (!biz) throw new TRPCError({ code: "NOT_FOUND" });
+      let startDate: string | undefined;
+      let endDate: string | undefined;
+      if (input.month && input.year) {
+        startDate = `${input.year}-${String(input.month).padStart(2, "0")}-01`;
+        const lastDay = new Date(input.year, input.month, 0).getDate();
+        endDate = `${input.year}-${String(input.month).padStart(2, "0")}-${String(lastDay).padStart(2, "0")}`;
+      }
+      return getTrialBalanceGL(biz.id, startDate, endDate);
+    }),
+
+    // ─── Laba Rugi (Income Statement) from GL ───
+    labaRugiGL: protectedProcedure.input(z.object({
+      month: z.number().min(1).max(12),
+      year: z.number().min(2000),
+    })).query(async ({ ctx, input }) => {
+      const biz = (await resolveBusinessForUser(ctx.user.id, ctx.requestedBusinessId, ctx.user.role))?.business;
+      if (!biz) throw new TRPCError({ code: "NOT_FOUND" });
+      const startDate = `${input.year}-${String(input.month).padStart(2, "0")}-01`;
+      const lastDay = new Date(input.year, input.month, 0).getDate();
+      const endDate = `${input.year}-${String(input.month).padStart(2, "0")}-${String(lastDay).padStart(2, "0")}`;
+      return getLabaRugiGL(biz.id, startDate, endDate);
+    }),
+
+    // ─── Neraca (Balance Sheet) from GL ───
+    neracaGL: protectedProcedure.input(z.object({
+      month: z.number().min(1).max(12),
+      year: z.number().min(2000),
+    })).query(async ({ ctx, input }) => {
+      const biz = (await resolveBusinessForUser(ctx.user.id, ctx.requestedBusinessId, ctx.user.role))?.business;
+      if (!biz) throw new TRPCError({ code: "NOT_FOUND" });
+      const lastDay = new Date(input.year, input.month, 0).getDate();
+      const endDate = `${input.year}-${String(input.month).padStart(2, "0")}-${String(lastDay).padStart(2, "0")}`;
+      return getNeracaGL(biz.id, endDate);
+    }),
+
+    // ─── Buku Besar (General Ledger Detail) from GL ───
+    bukuBesarGL: protectedProcedure.input(z.object({
+      accountCode: z.string(),
+      startDate: z.string().optional(),
+      endDate: z.string().optional(),
+    })).query(async ({ ctx, input }) => {
+      const biz = (await resolveBusinessForUser(ctx.user.id, ctx.requestedBusinessId, ctx.user.role))?.business;
+      if (!biz) throw new TRPCError({ code: "NOT_FOUND" });
+      return getBukuBesarGL(biz.id, input.accountCode, input.startDate, input.endDate);
     }),
   }),
 
