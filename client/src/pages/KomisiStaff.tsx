@@ -322,12 +322,12 @@ export default function KomisiStaff() {
             </div>
             <div>
               <Label htmlFor="staff-filter" className="text-sm mb-2 block">Filter Staff</Label>
-              <Select value={selectedUserId?.toString() ?? ""} onValueChange={(val) => setSelectedUserId(val ? parseInt(val) : undefined)}>
+              <Select value={selectedUserId?.toString() ?? "all"} onValueChange={(val) => setSelectedUserId(val === "all" ? undefined : parseInt(val))}>
                 <SelectTrigger id="staff-filter">
                   <SelectValue placeholder="Semua Staff" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="">Semua Staff</SelectItem>
+                  <SelectItem value="all">Semua Staff</SelectItem>
                   {summary?.map((s) => (
                     <SelectItem key={s.userId} value={s.userId.toString()}>
                       {s.userName}
