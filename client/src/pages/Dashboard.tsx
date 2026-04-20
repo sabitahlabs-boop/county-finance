@@ -361,16 +361,12 @@ function groupByDate(transactions: any[]) {
   return Object.entries(groups);
 }
 
-// ─── Personal Dashboard ───
-
-import PersonalSetupWizard from "@/pages/PersonalSetupWizard";
+// ─── Personal Dashboard (legacy — kept for UMKM personal KPIs if needed) ───
 
 function PersonalDashboard() {
   const [, setLocation] = useLocation();
-  const utils = trpc.useUtils();
   const { data: business } = trpc.business.mine.useQuery(undefined, { retry: false });
   const { data: kpis, isLoading: kpisLoading } = trpc.report.dashboard.useQuery(undefined, { retry: false });
-  const [setupDone, setSetupDone] = useState(false);
   const now = useMemo(() => new Date(), []);
   const { data: yearlyOmzet } = trpc.report.yearlyOmzet.useQuery({ year: now.getFullYear() }, { retry: false });
   const { data: recentTx } = trpc.transaction.list.useQuery({ limit: 8 }, { retry: false });
@@ -397,7 +393,6 @@ function PersonalDashboard() {
         cats[tx.category] = (cats[tx.category] || 0) + tx.amount;
       }
     });
-    // Use CSS variable-friendly colors from our design tokens
     const COLORS = [
       "oklch(0.38 0.15 250)", // county-blue
       "oklch(0.68 0.19 50)",  // county-orange
@@ -411,17 +406,6 @@ function PersonalDashboard() {
       .slice(0, 6)
       .map(([name, value], i) => ({ name, value, color: COLORS[i % COLORS.length] }));
   }, [recentTx]);
-
-  const showSetupWizard = business && !business.personalSetupDone && !setupDone;
-
-  if (showSetupWizard) {
-    return (
-      <PersonalSetupWizard onComplete={() => {
-        setSetupDone(true);
-        utils.business.mine.invalidate();
-      }} />
-    );
-  }
 
   const pctChange = (current: number, prev: number) => {
     if (prev === 0) return current > 0 ? 100 : 0;

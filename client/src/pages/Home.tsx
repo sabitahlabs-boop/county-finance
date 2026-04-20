@@ -5,6 +5,7 @@ import { useLocation } from "wouter";
 import DashboardLayout from "@/components/DashboardLayout";
 import Dashboard from "./Dashboard";
 import PersonalDashboard from "./PersonalDashboard";
+import PersonalSetupWizard from "./PersonalSetupWizard";
 import Onboarding from "./Onboarding";
 import LandingPage from "./LandingPage";
 import { DashboardLayoutSkeleton } from "@/components/DashboardLayoutSkeleton";
@@ -16,6 +17,7 @@ export default function Home() {
     retry: false,
   });
   const [, navigate] = useLocation();
+  const utils = trpc.useUtils();
 
   // After OAuth login, check if there's a pending pro activation token
   // If so, redirect back to the pro activation page
@@ -58,14 +60,41 @@ export default function Home() {
     );
   }
 
-  // Logged in with business — show dashboard
-  // Personal mode with setup done → show PINA-style dashboard
+  // Logged in with business — determine mode
   const isPersonal = business.appMode === "personal";
   const pfSetupDone = business.personalSetupDone;
 
+  // Personal mode but setup belum selesai → wajib setup wizard dulu
+  // Berlaku untuk SEMUA pengguna (baru maupun existing) yang switch ke personal mode
+  if (isPersonal && !pfSetupDone) {
+    return (
+      <PersonalSetupWizard
+        onComplete={() => {
+          utils.business.mine.invalidate();
+          refetch().then(() => {
+            const pendingToken = sessionStorage.getItem("pro_activation_token");
+            if (pendingToken) {
+              navigate(`/pro/${pendingToken}`);
+            }
+          });
+        }}
+      />
+    );
+  }
+
+  // Personal mode with setup done → PINA-style dashboard
+  if (isPersonal && pfSetupDone) {
+    return (
+      <DashboardLayout>
+        <PersonalDashboard />
+      </DashboardLayout>
+    );
+  }
+
+  // UMKM mode → standard dashboard
   return (
     <DashboardLayout>
-      {isPersonal && pfSetupDone ? <PersonalDashboard /> : <Dashboard />}
+      <Dashboard />
     </DashboardLayout>
   );
 }
