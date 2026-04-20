@@ -6959,3 +6959,111 @@ export async function resolveAccountsForDeposit(businessId: number): Promise<{
     salesAccountId: salesAccount.id,
   };
 }
+
+// ─── Batch C Resolvers ───
+
+export async function resolveAccountsForProduction(businessId: number): Promise<{
+  finishedGoodsAccountId: number;
+  rawMaterialAccountId: number;
+}> {
+  await initializeCoA(businessId);
+  const finishedGoods = await getAccountByCode(businessId, "1301"); // Persediaan Barang Dagang
+  const rawMaterial = await getAccountByCode(businessId, "1302");   // Persediaan Bahan Baku
+  if (!finishedGoods || !rawMaterial) {
+    throw new Error("Required accounts for production not found in CoA");
+  }
+  return { finishedGoodsAccountId: finishedGoods.id, rawMaterialAccountId: rawMaterial.id };
+}
+
+export async function resolveAccountsForBankTransfer(businessId: number, fromBankAccountId: number | null, toBankAccountId: number | null): Promise<{
+  fromCoAId: number;
+  toCoAId: number;
+}> {
+  await initializeCoA(businessId);
+  // Resolve source bank's CoA account
+  let fromCoA: any = null;
+  if (fromBankAccountId) {
+    fromCoA = await getAccountByBankAccountId(businessId, fromBankAccountId);
+  }
+  if (!fromCoA) {
+    fromCoA = await getAccountByCode(businessId, "1101"); // fallback to Kas
+  }
+  // Resolve target bank's CoA account
+  let toCoA: any = null;
+  if (toBankAccountId) {
+    toCoA = await getAccountByBankAccountId(businessId, toBankAccountId);
+  }
+  if (!toCoA) {
+    toCoA = await getAccountByCode(businessId, "1101"); // fallback to Kas
+  }
+  if (!fromCoA || !toCoA) {
+    throw new Error("Required accounts for bank transfer not found in CoA");
+  }
+  return { fromCoAId: fromCoA.id, toCoAId: toCoA.id };
+}
+
+export async function resolveAccountsForTaxPayment(businessId: number, taxCode: string, bankAccountId: number | null): Promise<{
+  taxExpenseAccountId: number;
+  cashAccountId: number;
+}> {
+  await initializeCoA(businessId);
+  // PPh Final → 6301, PPN → 6302, default → 6301
+  const taxAccountCode = taxCode.toLowerCase().includes("ppn") ? "6302" : "6301";
+  const taxExpense = await getAccountByCode(businessId, taxAccountCode);
+  // Resolve cash/bank account
+  let cashAccount: any = null;
+  if (bankAccountId) {
+    cashAccount = await getAccountByBankAccountId(businessId, bankAccountId);
+  }
+  if (!cashAccount) {
+    cashAccount = await getAccountByCode(businessId, "1101");
+  }
+  if (!taxExpense || !cashAccount) {
+    throw new Error("Required accounts for tax payment not found in CoA");
+  }
+  return { taxExpenseAccountId: taxExpense.id, cashAccountId: cashAccount.id };
+}
+
+export async function resolveAccountsForCommission(businessId: number, bankAccountId?: number | null): Promise<{
+  commissionExpenseAccountId: number;
+  commissionPayableAccountId: number;
+  cashAccountId: number;
+}> {
+  await initializeCoA(businessId);
+  const commExpense = await getAccountByCode(businessId, "6102");  // Beban Komisi Staff
+  const commPayable = await getAccountByCode(businessId, "2105");  // Hutang Komisi
+  let cashAccount: any = null;
+  if (bankAccountId) {
+    cashAccount = await getAccountByBankAccountId(businessId, bankAccountId);
+  }
+  if (!cashAccount) {
+    cashAccount = await getAccountByCode(businessId, "1101");
+  }
+  if (!commExpense || !commPayable || !cashAccount) {
+    throw new Error("Required accounts for commission not found in CoA");
+  }
+  return {
+    commissionExpenseAccountId: commExpense.id,
+    commissionPayableAccountId: commPayable.id,
+    cashAccountId: cashAccount.id,
+  };
+}
+
+export async function resolveAccountsForBillPayment(businessId: number, bankAccountId: number | null): Promise<{
+  billExpenseAccountId: number;
+  cashAccountId: number;
+}> {
+  await initializeCoA(businessId);
+  const billExpense = await getAccountByCode(businessId, "6401"); // Beban Tagihan Bulanan
+  let cashAccount: any = null;
+  if (bankAccountId) {
+    cashAccount = await getAccountByBankAccountId(businessId, bankAccountId);
+  }
+  if (!cashAccount) {
+    cashAccount = await getAccountByCode(businessId, "1101");
+  }
+  if (!billExpense || !cashAccount) {
+    throw new Error("Required accounts for bill payment not found in CoA");
+  }
+  return { billExpenseAccountId: billExpense.id, cashAccountId: cashAccount.id };
+}

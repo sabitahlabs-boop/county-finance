@@ -76,6 +76,8 @@ import {
   createJournalEntry, resolveAccountsForPOS, resolveAccountsForManualTx, initializeCoA,
   resolveAccountsForPOSRefund, resolveAccountsForCreditSale, resolveAccountsForCreditPayment,
   resolveAccountsForDebt, resolveAccountsForDeposit,
+  resolveAccountsForProduction, resolveAccountsForBankTransfer, resolveAccountsForTaxPayment,
+  resolveAccountsForCommission, resolveAccountsForBillPayment,
 } from "./db";
 import { PLAN_LIMITS, BULAN_INDONESIA, formatRupiah } from "../shared/finance";
 import { notifyOwner } from "./_core/notification";
@@ -440,10 +442,11 @@ export const appRouter = router({
         bankAccountId = matchedAccount.id;
       }
 
+      const billPayDate = new Date().toISOString().slice(0, 10);
       const txId = await safeInsertTransaction({
         businessId: biz.id,
         txCode,
-        date: new Date().toISOString().slice(0, 10),
+        date: billPayDate,
         type: "pengeluaran",
         category: "Tagihan Bulanan",
         description: `Bayar tagihan: ${bill.name}`,
@@ -453,6 +456,23 @@ export const appRouter = router({
         bankAccountId,
         notes: `Tagihan rutin "${bill.name}" (${bill.category}) — jatuh tempo tgl ${bill.dueDay}${input.notes ? " | " + input.notes : ""}`,
       });
+
+      // ─── GL: Bill Payment — DR Beban Tagihan, CR Kas/Bank ───
+      try {
+        const billAccounts = await resolveAccountsForBillPayment(biz.id, bankAccountId || null);
+        await createJournalEntry({
+          businessId: biz.id,
+          date: billPayDate,
+          description: `Bayar tagihan: ${bill.name}`,
+          sourceType: "bill_payment",
+          sourceId: txId,
+          lines: [
+            { accountId: billAccounts.billExpenseAccountId, debitAmount: input.amount, creditAmount: 0, description: `Beban tagihan ${bill.name}` },
+            { accountId: billAccounts.cashAccountId, debitAmount: 0, creditAmount: input.amount, description: `Pembayaran via ${paymentMethod}` },
+          ],
+        });
+      } catch (e) { console.error("GL Bill Payment error:", e); }
+
       return { txId, success: true };
     }),
   }),
@@ -997,6 +1017,25 @@ export const appRouter = router({
       const biz = (await resolveBusinessForUser(ctx.user.id, ctx.requestedBusinessId, ctx.user.role))?.business;
       if (!biz) throw new TRPCError({ code: "NOT_FOUND" });
       const id = await createTaxPayment({ ...input, businessId: biz.id });
+
+      // ─── GL: Tax Payment — DR Beban Pajak, CR Kas ───
+      if (input.taxAmount > 0 && input.status === "LUNAS") {
+        try {
+          const taxAccounts = await resolveAccountsForTaxPayment(biz.id, input.taxCode, null);
+          await createJournalEntry({
+            businessId: biz.id,
+            date: input.paymentDate,
+            description: `Pembayaran pajak ${input.taxCode} periode ${input.periodMonth}`,
+            sourceType: "tax_payment",
+            sourceId: id,
+            lines: [
+              { accountId: taxAccounts.taxExpenseAccountId, debitAmount: input.taxAmount, creditAmount: 0, description: `Beban ${input.taxCode}` },
+              { accountId: taxAccounts.cashAccountId, debitAmount: 0, creditAmount: input.taxAmount, description: "Pembayaran dari kas" },
+            ],
+          });
+        } catch (e) { console.error("GL Tax Payment error:", e); }
+      }
+
       return { id };
     }),
     updateRule: adminProcedure.input(z.object({
@@ -1909,7 +1948,27 @@ Penting: Kembalikan HANYA JSON valid, tidak ada teks penjelasan.`,
     })).mutation(async ({ ctx, input }) => {
       const biz = (await resolveBusinessForUser(ctx.user.id, ctx.requestedBusinessId, ctx.user.role))?.business;
       if (!biz) throw new TRPCError({ code: "NOT_FOUND" });
-      return runProduction(biz.id, input.productId, input.qty, input.date, input.notes);
+      const result = await runProduction(biz.id, input.productId, input.qty, input.date, input.notes);
+
+      // ─── GL: Production — DR Persediaan Barang Jadi, CR Bahan Baku ───
+      if (result.totalCost > 0) {
+        try {
+          const prodAccounts = await resolveAccountsForProduction(biz.id);
+          await createJournalEntry({
+            businessId: biz.id,
+            date: input.date,
+            description: `Produksi: ${input.notes || `Produk #${input.productId}`} x${input.qty}`,
+            sourceType: "production",
+            sourceId: result.logId || 0,
+            lines: [
+              { accountId: prodAccounts.finishedGoodsAccountId, debitAmount: result.totalCost, creditAmount: 0, description: "Persediaan barang jadi bertambah" },
+              { accountId: prodAccounts.rawMaterialAccountId, debitAmount: 0, creditAmount: result.totalCost, description: "Bahan baku berkurang" },
+            ],
+          });
+        } catch (e) { console.error("GL Production error:", e); }
+      }
+
+      return result;
     }),
 
     logs: protectedProcedure.input(z.object({
@@ -2153,6 +2212,27 @@ Penting: Kembalikan HANYA JSON valid, tidak ada teks penjelasan.`,
       if (!biz) throw new TRPCError({ code: "NOT_FOUND" });
       if (input.fromAccount === input.toAccount) throw new TRPCError({ code: "BAD_REQUEST", message: "Akun asal dan tujuan harus berbeda" });
       const result = await createTransferBetweenAccounts(biz.id, input.fromAccount, input.toAccount, input.amount, input.date, input.notes);
+
+      // ─── GL: Bank Transfer — DR Bank-target, CR Bank-source ───
+      try {
+        // Resolve bank account IDs from names
+        const bankAccounts = await getBankAccountsByBusiness(biz.id);
+        const fromBA = bankAccounts.find((a: any) => a.accountName === input.fromAccount || a.id === Number(input.fromAccount));
+        const toBA = bankAccounts.find((a: any) => a.accountName === input.toAccount || a.id === Number(input.toAccount));
+        const transferAccounts = await resolveAccountsForBankTransfer(biz.id, fromBA?.id || null, toBA?.id || null);
+        await createJournalEntry({
+          businessId: biz.id,
+          date: input.date,
+          description: `Transfer: ${input.fromAccount} → ${input.toAccount}`,
+          sourceType: "bank_transfer",
+          sourceId: result.outTxId,
+          lines: [
+            { accountId: transferAccounts.toCoAId, debitAmount: input.amount, creditAmount: 0, description: `Masuk ke ${input.toAccount}` },
+            { accountId: transferAccounts.fromCoAId, debitAmount: 0, creditAmount: input.amount, description: `Keluar dari ${input.fromAccount}` },
+          ],
+        });
+      } catch (e) { console.error("GL Bank Transfer error:", e); }
+
       return result;
     }),
   }),
@@ -3434,7 +3514,7 @@ Penting: Kembalikan HANYA JSON valid, tidak ada teks penjelasan.`,
             commAmount = commConfig.commissionRate;
           }
           if (commAmount > 0) {
-            await createStaffCommission({
+            const commId = await createStaffCommission({
               businessId: bizId,
               userId: ctx.user.id,
               receiptId,
@@ -3443,6 +3523,24 @@ Penting: Kembalikan HANYA JSON valid, tidak ada teks penjelasan.`,
               commissionAmount: commAmount,
               date: saleDate,
             });
+
+            // ─── GL: Commission Accrual — DR Beban Komisi, CR Hutang Komisi ───
+            if (commId > 0) {
+              try {
+                const commAccounts = await resolveAccountsForCommission(bizId);
+                await createJournalEntry({
+                  businessId: bizId,
+                  date: saleDate,
+                  description: `Komisi staff dari POS ${receiptCode}`,
+                  sourceType: "commission_accrual",
+                  sourceId: commId,
+                  lines: [
+                    { accountId: commAccounts.commissionExpenseAccountId, debitAmount: commAmount, creditAmount: 0, description: "Beban komisi staff" },
+                    { accountId: commAccounts.commissionPayableAccountId, debitAmount: 0, creditAmount: commAmount, description: "Hutang komisi" },
+                  ],
+                });
+              } catch (glErr) { console.error("GL Commission accrual error:", glErr); }
+            }
           }
         }
       } catch (e) {
@@ -3950,16 +4048,69 @@ Penting: Kembalikan HANYA JSON valid, tidak ada teks penjelasan.`,
     markPaid: protectedProcedure.input(z.object({
       id: z.number(),
     })).mutation(async ({ ctx, input }) => {
-      const { markCommissionPaid } = await import("./db");
+      const { markCommissionPaid, getCommissionReport } = await import("./db");
+      const biz = (await resolveBusinessForUser(ctx.user.id, ctx.requestedBusinessId, ctx.user.role))?.business;
       await markCommissionPaid(input.id);
+
+      // ─── GL: Commission Payment — DR Hutang Komisi, CR Kas ───
+      if (biz) {
+        try {
+          // Get commission details for amount
+          const allComm = await getCommissionReport(biz.id);
+          const comm = allComm.find((c: any) => c.id === input.id);
+          if (comm && comm.commissionAmount > 0) {
+            const commAccounts = await resolveAccountsForCommission(biz.id);
+            const today = new Date().toISOString().slice(0, 10);
+            await createJournalEntry({
+              businessId: biz.id,
+              date: today,
+              description: `Pembayaran komisi staff #${input.id}`,
+              sourceType: "commission_payment",
+              sourceId: input.id,
+              lines: [
+                { accountId: commAccounts.commissionPayableAccountId, debitAmount: comm.commissionAmount, creditAmount: 0, description: "Pelunasan hutang komisi" },
+                { accountId: commAccounts.cashAccountId, debitAmount: 0, creditAmount: comm.commissionAmount, description: "Pembayaran dari kas" },
+              ],
+            });
+          }
+        } catch (e) { console.error("GL Commission payment error:", e); }
+      }
+
       return { success: true };
     }),
 
     markBulkPaid: protectedProcedure.input(z.object({
       ids: z.array(z.number()),
     })).mutation(async ({ ctx, input }) => {
-      const { markCommissionsPaidBulk } = await import("./db");
+      const { markCommissionsPaidBulk, getCommissionReport } = await import("./db");
+      const biz = (await resolveBusinessForUser(ctx.user.id, ctx.requestedBusinessId, ctx.user.role))?.business;
       await markCommissionsPaidBulk(input.ids);
+
+      // ─── GL: Bulk Commission Payment — one journal per commission ───
+      if (biz) {
+        try {
+          const allComm = await getCommissionReport(biz.id);
+          const commAccounts = await resolveAccountsForCommission(biz.id);
+          const today = new Date().toISOString().slice(0, 10);
+          for (const commId of input.ids) {
+            const comm = allComm.find((c: any) => c.id === commId);
+            if (comm && comm.commissionAmount > 0) {
+              await createJournalEntry({
+                businessId: biz.id,
+                date: today,
+                description: `Pembayaran komisi staff #${commId}`,
+                sourceType: "commission_payment",
+                sourceId: commId,
+                lines: [
+                  { accountId: commAccounts.commissionPayableAccountId, debitAmount: comm.commissionAmount, creditAmount: 0, description: "Pelunasan hutang komisi" },
+                  { accountId: commAccounts.cashAccountId, debitAmount: 0, creditAmount: comm.commissionAmount, description: "Pembayaran dari kas" },
+                ],
+              });
+            }
+          }
+        } catch (e) { console.error("GL Bulk commission payment error:", e); }
+      }
+
       return { success: true };
     }),
   }),
