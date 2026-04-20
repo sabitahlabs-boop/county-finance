@@ -1196,7 +1196,7 @@ export async function getVoidedTransactions(businessId: number, startDate?: stri
   if (!db) return [];
   const conditions = [
     eq(transactions.businessId, businessId),
-    eq(transactions.status, "voided"),
+    or(eq(transactions.status, "voided"), eq(transactions.isDeleted, true)),
   ];
   if (startDate) conditions.push(gte(transactions.date, startDate));
   if (endDate) conditions.push(lte(transactions.date, endDate));
@@ -1813,7 +1813,7 @@ export async function generateTxCode(businessId: number): Promise<string> {
   const prefix = `TX-${dateStr}-`;
   const result = await db.select({ count: sql<number>`count(*)` }).from(transactions)
     .where(and(eq(transactions.businessId, businessId), sql`${transactions.txCode} LIKE ${prefix + "%"}`));
-  const seq = (result[0]?.count ?? 0) + 1;
+  const seq = Number(result[0]?.count ?? 0) + 1;
   return `${prefix}${String(seq).padStart(3, "0")}`;
 }
 
@@ -4873,11 +4873,11 @@ export async function getKasReconciliation(businessId: number, startDate: string
       )
     );
 
-  const cashIncome = posRows[0]?.totalCashIncome ?? 0;
-  const cashRefund = refundRows[0]?.totalCashRefund ?? 0;
-  const manualCashIn = txCashIn[0]?.total ?? 0;
-  const manualCashOut = txCashOut[0]?.total ?? 0;
-  const totalChange = changeRows[0]?.totalChange ?? 0;
+  const cashIncome = Number(posRows[0]?.totalCashIncome ?? 0);
+  const cashRefund = Number(refundRows[0]?.totalCashRefund ?? 0);
+  const manualCashIn = Number(txCashIn[0]?.total ?? 0);
+  const manualCashOut = Number(txCashOut[0]?.total ?? 0);
+  const totalChange = Number(changeRows[0]?.totalChange ?? 0);
 
   const totalKasMasuk = cashIncome + manualCashIn;
   const totalKasKeluar = cashRefund + manualCashOut + totalChange;
@@ -4892,10 +4892,10 @@ export async function getKasReconciliation(businessId: number, startDate: string
     kembalianPelanggan: totalChange,
     totalKasKeluar,
     netKas,
-    posTransactionCount: posRows[0]?.transactionCount ?? 0,
-    refundCount: refundRows[0]?.refundCount ?? 0,
-    manualInCount: txCashIn[0]?.count ?? 0,
-    manualOutCount: txCashOut[0]?.count ?? 0,
+    posTransactionCount: Number(posRows[0]?.transactionCount ?? 0),
+    refundCount: Number(refundRows[0]?.refundCount ?? 0),
+    manualInCount: Number(txCashIn[0]?.count ?? 0),
+    manualOutCount: Number(txCashOut[0]?.count ?? 0),
   };
 }
 
@@ -5450,7 +5450,7 @@ export async function getLowStockAlerts(businessId: number) {
         )
       );
 
-    const totalSold = salesData[0]?.totalQty || 0;
+    const totalSold = Number(salesData[0]?.totalQty || 0);
     const avgDailySales = totalSold / 30;
 
     // Calculate days until stockout
@@ -5721,7 +5721,7 @@ export async function generateLabaRugiDetail(
       )
     );
 
-  const totalPendapatan = salesData[0]?.total || 0;
+  const totalPendapatan = Number(salesData[0]?.total || 0);
 
   // For detail breakdown, split into POS (has receiptId) and manual (no receiptId)
   const posSalesData = await db
@@ -5740,7 +5740,7 @@ export async function generateLabaRugiDetail(
       )
     );
 
-  const penjualanPOS = posSalesData[0]?.total || 0;
+  const penjualanPOS = Number(posSalesData[0]?.total || 0);
   const penjualanManual = totalPendapatan - penjualanPOS;
 
   // FIXED: HPP now comes ONLY from transactions table
@@ -5761,8 +5761,8 @@ export async function generateLabaRugiDetail(
       )
     );
 
-  const hppPenjualan = (hppData[0]?.pembelianStok || 0);
-  const biayaProduksi = (hppData[0]?.hppProduksi || 0);
+  const hppPenjualan = Number(hppData[0]?.pembelianStok || 0);
+  const biayaProduksi = Number(hppData[0]?.hppProduksi || 0);
   const totalHPP = hppPenjualan + biayaProduksi;
   const labaKotor = totalPendapatan - totalHPP;
   const marginKotor = totalPendapatan > 0 ? (labaKotor / totalPendapatan) * 100 : 0;
@@ -5797,7 +5797,7 @@ export async function generateLabaRugiDetail(
           lte(transactions.date, endDate)
         )
       );
-    expenses[cat] = data[0]?.total || 0;
+    expenses[cat] = Number(data[0]?.total || 0);
   }
 
   // FIXED: Refunds now from transactions table (pengeluaran with category matching refund patterns)
@@ -5817,7 +5817,7 @@ export async function generateLabaRugiDetail(
         eq(transactions.isDeleted, false)
       )
     );
-  expenses.refund = refundData[0]?.total || 0;
+  expenses.refund = Number(refundData[0]?.total || 0);
 
   // Staff commissions
   const commData = await db
@@ -5832,7 +5832,7 @@ export async function generateLabaRugiDetail(
         lte(staffCommissions.date, endDate)
       )
     );
-  expenses.komisiStaff = commData[0]?.total || 0;
+  expenses.komisiStaff = Number(commData[0]?.total || 0);
 
   const totalPengeluaran = Object.values(expenses).reduce((a, b) => a + b, 0);
   const labaBersih = labaKotor - totalPengeluaran;
