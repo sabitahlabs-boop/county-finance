@@ -75,6 +75,7 @@ import {
   // GL Double-Entry
   createJournalEntry, resolveAccountsForPOS, resolveAccountsForManualTx, initializeCoA,
   resolveAccountsForPOSRefund, resolveAccountsForCreditSale, resolveAccountsForCreditPayment,
+  resolveAccountsForDebt, resolveAccountsForDeposit,
 } from "./db";
 import { PLAN_LIMITS, BULAN_INDONESIA, formatRupiah } from "../shared/finance";
 import { notifyOwner } from "./_core/notification";
@@ -1385,6 +1386,25 @@ export const appRouter = router({
       const biz = (await resolveBusinessForUser(ctx.user.id, ctx.requestedBusinessId, ctx.user.role))?.business;
       if (!biz) throw new TRPCError({ code: "NOT_FOUND" });
       await topUpDeposit(biz.id, input.clientId, input.amount, input.notes);
+
+      // ─── GL JOURNAL: Deposit TopUp (best-effort) ───
+      try {
+        const depAccounts = await resolveAccountsForDeposit(biz.id);
+        await createJournalEntry({
+          businessId: biz.id,
+          date: new Date().toISOString().substring(0, 10),
+          description: `Deposit TopUp — Client #${input.clientId} — Rp ${input.amount.toLocaleString("id-ID")}`,
+          sourceType: "deposit_topup",
+          sourceId: input.clientId,
+          lines: [
+            { accountId: depAccounts.cashAccountId, description: "Terima deposit pelanggan", debitAmount: Number(input.amount), creditAmount: 0 },
+            { accountId: depAccounts.depositAccountId, description: "Deposit pelanggan (liability)", debitAmount: 0, creditAmount: Number(input.amount) },
+          ],
+        });
+      } catch (glErr) {
+        console.error("[GL] Deposit TopUp journal failed (non-blocking):", glErr);
+      }
+
       return { success: true };
     }),
     use: protectedProcedure.input(z.object({
@@ -1395,6 +1415,25 @@ export const appRouter = router({
       const biz = (await resolveBusinessForUser(ctx.user.id, ctx.requestedBusinessId, ctx.user.role))?.business;
       if (!biz) throw new TRPCError({ code: "NOT_FOUND" });
       await useDeposit(biz.id, input.clientId, input.amount, input.notes);
+
+      // ─── GL JOURNAL: Deposit Use (best-effort) ───
+      try {
+        const depAccounts = await resolveAccountsForDeposit(biz.id);
+        await createJournalEntry({
+          businessId: biz.id,
+          date: new Date().toISOString().substring(0, 10),
+          description: `Deposit Use — Client #${input.clientId} — Rp ${input.amount.toLocaleString("id-ID")}`,
+          sourceType: "deposit_use",
+          sourceId: input.clientId,
+          lines: [
+            { accountId: depAccounts.depositAccountId, description: "Penggunaan deposit pelanggan", debitAmount: Number(input.amount), creditAmount: 0 },
+            { accountId: depAccounts.salesAccountId, description: "Penjualan via deposit", debitAmount: 0, creditAmount: Number(input.amount) },
+          ],
+        });
+      } catch (glErr) {
+        console.error("[GL] Deposit Use journal failed (non-blocking):", glErr);
+      }
+
       return { success: true };
     }),
     refund: protectedProcedure.input(z.object({
@@ -1405,6 +1444,25 @@ export const appRouter = router({
       const biz = (await resolveBusinessForUser(ctx.user.id, ctx.requestedBusinessId, ctx.user.role))?.business;
       if (!biz) throw new TRPCError({ code: "NOT_FOUND" });
       await refundDeposit(biz.id, input.clientId, input.amount, input.notes);
+
+      // ─── GL JOURNAL: Deposit Refund (best-effort) ───
+      try {
+        const depAccounts = await resolveAccountsForDeposit(biz.id);
+        await createJournalEntry({
+          businessId: biz.id,
+          date: new Date().toISOString().substring(0, 10),
+          description: `Deposit Refund — Client #${input.clientId} — Rp ${input.amount.toLocaleString("id-ID")}`,
+          sourceType: "deposit_refund",
+          sourceId: input.clientId,
+          lines: [
+            { accountId: depAccounts.depositAccountId, description: "Refund deposit pelanggan", debitAmount: Number(input.amount), creditAmount: 0 },
+            { accountId: depAccounts.cashAccountId, description: "Pengembalian deposit", debitAmount: 0, creditAmount: Number(input.amount) },
+          ],
+        });
+      } catch (glErr) {
+        console.error("[GL] Deposit Refund journal failed (non-blocking):", glErr);
+      }
+
       return { success: true };
     }),
     history: protectedProcedure.input(z.object({
@@ -2184,6 +2242,55 @@ Penting: Kembalikan HANYA JSON valid, tidak ada teks penjelasan.`,
       const biz = (await resolveBusinessForUser(ctx.user.id, ctx.requestedBusinessId, ctx.user.role))?.business;
       if (!biz) throw new TRPCError({ code: "NOT_FOUND" });
       const id = await createDebt({ ...input, businessId: biz.id });
+
+      // ─── GL JOURNAL: Debt Create (best-effort, non-blocking) ───
+      try {
+        const debtAccounts = await resolveAccountsForDebt(biz.id, input.type, null);
+
+        const journalLines: Array<{ accountId: number; description: string; debitAmount: number; creditAmount: number }> = [];
+
+        if (input.type === "hutang") {
+          // Kita berhutang: DR Kas (uang masuk), CR Hutang Lain-lain
+          journalLines.push({
+            accountId: debtAccounts.cashAccountId,
+            description: `Terima pinjaman dari ${input.counterpartyName}`,
+            debitAmount: Number(input.totalAmount),
+            creditAmount: 0,
+          });
+          journalLines.push({
+            accountId: debtAccounts.debtAccountId,
+            description: `Hutang ke ${input.counterpartyName}`,
+            debitAmount: 0,
+            creditAmount: Number(input.totalAmount),
+          });
+        } else {
+          // Orang berhutang ke kita: DR Piutang Lain-lain, CR Kas (uang keluar)
+          journalLines.push({
+            accountId: debtAccounts.debtAccountId,
+            description: `Piutang dari ${input.counterpartyName}`,
+            debitAmount: Number(input.totalAmount),
+            creditAmount: 0,
+          });
+          journalLines.push({
+            accountId: debtAccounts.cashAccountId,
+            description: `Pinjamkan uang ke ${input.counterpartyName}`,
+            debitAmount: 0,
+            creditAmount: Number(input.totalAmount),
+          });
+        }
+
+        await createJournalEntry({
+          businessId: biz.id,
+          date: new Date().toISOString().substring(0, 10),
+          description: `${input.type === "hutang" ? "Hutang" : "Piutang"}: ${input.counterpartyName} — Rp ${input.totalAmount.toLocaleString("id-ID")}`,
+          sourceType: "debt_create",
+          sourceId: id,
+          lines: journalLines,
+        });
+      } catch (glErr) {
+        console.error("[GL] Debt Create journal failed (non-blocking):", glErr);
+      }
+
       return { id };
     }),
     update: protectedProcedure.input(z.object({
@@ -2302,6 +2409,56 @@ Penting: Kembalikan HANYA JSON valid, tidak ada teks penjelasan.`,
 
         return result.insertId;
       });
+
+      // ─── GL JOURNAL: Debt Payment (best-effort, non-blocking) ───
+      try {
+        const accounts = await getBankAccountsByBusiness(biz.id);
+        const matchedBankId = resolveBankAccountId(accounts, input.bankAccountName || input.paymentMethod);
+        const dpAccounts = await resolveAccountsForDebt(biz.id, debt.type as "hutang" | "piutang", matchedBankId ?? null);
+
+        const journalLines: Array<{ accountId: number; description: string; debitAmount: number; creditAmount: number }> = [];
+
+        if (debt.type === "hutang") {
+          // Bayar hutang: DR Hutang Lain-lain, CR Kas/Bank
+          journalLines.push({
+            accountId: dpAccounts.debtAccountId,
+            description: `Bayar hutang ke ${debt.counterpartyName}`,
+            debitAmount: Number(input.amount),
+            creditAmount: 0,
+          });
+          journalLines.push({
+            accountId: dpAccounts.cashAccountId,
+            description: `Pembayaran hutang`,
+            debitAmount: 0,
+            creditAmount: Number(input.amount),
+          });
+        } else {
+          // Terima piutang: DR Kas/Bank, CR Piutang Lain-lain
+          journalLines.push({
+            accountId: dpAccounts.cashAccountId,
+            description: `Terima piutang dari ${debt.counterpartyName}`,
+            debitAmount: Number(input.amount),
+            creditAmount: 0,
+          });
+          journalLines.push({
+            accountId: dpAccounts.debtAccountId,
+            description: `Pelunasan piutang`,
+            debitAmount: 0,
+            creditAmount: Number(input.amount),
+          });
+        }
+
+        await createJournalEntry({
+          businessId: biz.id,
+          date: input.paymentDate,
+          description: `${debt.type === "hutang" ? "Bayar Hutang" : "Terima Piutang"}: ${debt.counterpartyName} — Rp ${input.amount.toLocaleString("id-ID")}`,
+          sourceType: "debt_payment",
+          sourceId: id,
+          lines: journalLines,
+        });
+      } catch (glErr) {
+        console.error("[GL] Debt Payment journal failed (non-blocking):", glErr);
+      }
 
       // ─── AUDIT LOG: Log successful debt payment ───
       await createAuditLog({

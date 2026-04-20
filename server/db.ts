@@ -6909,3 +6909,53 @@ export async function resolveAccountsForCreditPayment(businessId: number, bankAc
     receivableAccountId: receivableAccount.id,
   };
 }
+
+// ─── GL Resolver: Debt Create & Payment ───
+export async function resolveAccountsForDebt(businessId: number, debtType: "hutang" | "piutang", bankAccountId: number | null): Promise<{
+  cashAccountId: number;
+  debtAccountId: number;
+}> {
+  await initializeCoA(businessId);
+
+  let cashAccount: Account | null = null;
+  if (bankAccountId) {
+    cashAccount = await getAccountByBankAccountId(businessId, bankAccountId);
+  }
+  if (!cashAccount) {
+    cashAccount = await getAccountByCode(businessId, "1101");
+  }
+  if (!cashAccount) throw new Error("Cash account not found in CoA");
+
+  // Hutang → 2102 (Hutang Lain-lain), Piutang → 1202 (Piutang Lain-lain)
+  const debtCode = debtType === "hutang" ? "2102" : "1202";
+  const debtAccount = await getAccountByCode(businessId, debtCode);
+  if (!debtAccount) throw new Error(`Debt account ${debtCode} not found in CoA`);
+
+  return {
+    cashAccountId: cashAccount.id,
+    debtAccountId: debtAccount.id,
+  };
+}
+
+// ─── GL Resolver: Deposit Operations ───
+export async function resolveAccountsForDeposit(businessId: number): Promise<{
+  cashAccountId: number;
+  depositAccountId: number;
+  salesAccountId: number;
+}> {
+  await initializeCoA(businessId);
+
+  const cashAccount = await getAccountByCode(businessId, "1101");
+  const depositAccount = await getAccountByCode(businessId, "2104"); // Deposit Pelanggan (liability)
+  const salesAccount = await getAccountByCode(businessId, "4101");   // Penjualan
+
+  if (!cashAccount || !depositAccount || !salesAccount) {
+    throw new Error("Required accounts for deposit not found in CoA");
+  }
+
+  return {
+    cashAccountId: cashAccount.id,
+    depositAccountId: depositAccount.id,
+    salesAccountId: salesAccount.id,
+  };
+}
