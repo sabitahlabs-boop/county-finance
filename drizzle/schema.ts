@@ -142,6 +142,11 @@ export const transactions = mysqlTable("transactions", {
   productHppSnapshot: bigint("productHppSnapshot", { mode: "number" }),
   taxRelated: boolean("taxRelated").notNull().default(true),
   isDeleted: boolean("isDeleted").notNull().default(false),
+  status: mysqlEnum("status", ["active", "voided"]).notNull().default("active"),
+  voidReason: text("voidReason"),
+  voidedAt: timestamp("voidedAt"),
+  voidedBy: int("voidedBy"),
+  reversalOfId: int("reversalOfId"), // points to original tx if this is a reversal entry
   notes: text("notes"),
   shiftId: int("shiftId"), // link to pos_shifts (for POS transactions)
   receiptId: int("receiptId").references(() => posReceipts.id), // link to pos_receipts (for grouped POS checkout)

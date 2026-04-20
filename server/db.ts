@@ -699,6 +699,11 @@ async function runAutoMigration(db: ReturnType<typeof drizzle>) {
       shiftId: "int DEFAULT NULL",
       receiptId: "int DEFAULT NULL",
       bankAccountId: "int DEFAULT NULL",
+      status: "enum('active','voided') NOT NULL DEFAULT 'active'",
+      voidReason: "text DEFAULT NULL",
+      voidedAt: "timestamp NULL DEFAULT NULL",
+      voidedBy: "int DEFAULT NULL",
+      reversalOfId: "int DEFAULT NULL",
     };
     const missing = Object.keys(txRequired).filter(c => !colNames.includes(c));
     if (missing.length > 0) {
@@ -1112,6 +1117,7 @@ export async function safeInsertTransaction(input: {
   shiftId?: number | null;
   receiptId?: number | null;
   bankAccountId?: number | null;
+  reversalOfId?: number | null;
 }): Promise<number> {
   const sanitized: InsertTransaction = {
     businessId: input.businessId,
@@ -1128,10 +1134,12 @@ export async function safeInsertTransaction(input: {
     productHppSnapshot: input.productHppSnapshot ?? null,
     taxRelated: input.taxRelated !== false, // default true
     isDeleted: false,
+    status: "active",
     notes: input.notes || null,
     shiftId: input.shiftId ?? null,
     receiptId: input.receiptId ?? null,
     bankAccountId: input.bankAccountId ?? null,
+    reversalOfId: input.reversalOfId ?? null,
   };
 
   return createTransaction(sanitized);
@@ -1170,6 +1178,29 @@ export async function softDeleteTransaction(id: number) {
   const db = await getDb();
   if (!db) throw new Error("Database not available");
   await db.update(transactions).set({ isDeleted: true }).where(eq(transactions.id, id));
+}
+
+export async function voidTransaction(id: number, reason: string, voidedByUserId: number) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+  await db.update(transactions).set({
+    status: "voided",
+    voidReason: reason,
+    voidedAt: new Date(),
+    voidedBy: voidedByUserId,
+  }).where(eq(transactions.id, id));
+}
+
+export async function getVoidedTransactions(businessId: number, startDate?: string, endDate?: string) {
+  const db = await getDb();
+  if (!db) return [];
+  const conditions = [
+    eq(transactions.businessId, businessId),
+    eq(transactions.status, "voided"),
+  ];
+  if (startDate) conditions.push(gte(transactions.date, startDate));
+  if (endDate) conditions.push(lte(transactions.date, endDate));
+  return db.select().from(transactions).where(and(...conditions)).orderBy(desc(transactions.voidedAt));
 }
 
 export async function getTransactionById(id: number): Promise<Transaction | undefined> {

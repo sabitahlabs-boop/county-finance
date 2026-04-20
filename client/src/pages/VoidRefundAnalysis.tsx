@@ -5,7 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { RotateCcw, Download, FileText } from "lucide-react";
+import { RotateCcw, Download, FileText, Ban } from "lucide-react";
 import { formatRupiah } from "../../../shared/finance";
 import { exportToPDF, exportToExcel, fmtRp, fmtDate } from "@/lib/export";
 import { toast } from "sonner";
@@ -15,11 +15,25 @@ export default function VoidRefundAnalysis() {
   const [startDate, setStartDate] = useState(today);
   const [endDate, setEndDate] = useState(today);
 
-  // Query void/refund analysis
+  // Query void/refund analysis (POS receipts)
   const { data: reportData, isLoading } = trpc.report.voidRefundAnalysis.useQuery(
     { startDate, endDate },
     { retry: false, enabled: startDate <= endDate }
   );
+
+  // Query voided transactions (non-POS)
+  const { data: voidedTxs, isLoading: voidedLoading } = trpc.transaction.voided.useQuery(
+    { startDate, endDate },
+    { retry: false, enabled: startDate <= endDate }
+  );
+
+  const voidedTxMetrics = useMemo(() => {
+    if (!voidedTxs || voidedTxs.length === 0) return { count: 0, total: 0 };
+    return {
+      count: voidedTxs.length,
+      total: voidedTxs.reduce((sum: number, tx: any) => sum + tx.amount, 0),
+    };
+  }, [voidedTxs]);
 
   // Calculate derived metrics
   const metrics = useMemo(() => {
@@ -329,10 +343,64 @@ export default function VoidRefundAnalysis() {
         </Card>
       )}
 
-      {/* Refunded Receipts Table */}
+      {/* Voided Transactions (non-POS) */}
+      {!voidedLoading && voidedTxs && voidedTxs.length > 0 && (
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-base flex items-center gap-2">
+              <Ban className="h-4 w-4 text-amber-600" />
+              Transaksi Void (Manual)
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="grid grid-cols-2 gap-4 mb-4">
+              <div className="rounded-lg border border-amber-200 bg-amber-50 p-3 dark:border-amber-800 dark:bg-amber-950/30">
+                <p className="text-xs font-semibold text-muted-foreground">Jumlah Void</p>
+                <p className="text-2xl font-bold text-amber-600 mt-1">{voidedTxMetrics.count}</p>
+              </div>
+              <div className="rounded-lg border border-amber-200 bg-amber-50 p-3 dark:border-amber-800 dark:bg-amber-950/30">
+                <p className="text-xs font-semibold text-muted-foreground">Total Nominal</p>
+                <p className="text-2xl font-bold text-amber-600 mt-1">{formatRupiah(voidedTxMetrics.total)}</p>
+              </div>
+            </div>
+            <ScrollArea className="w-full">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="border-b bg-muted/50">
+                    <th className="px-4 py-2 text-left font-semibold text-xs">No</th>
+                    <th className="px-4 py-2 text-left font-semibold text-xs">Kode TX</th>
+                    <th className="px-4 py-2 text-left font-semibold text-xs">Tanggal</th>
+                    <th className="px-4 py-2 text-left font-semibold text-xs">Kategori</th>
+                    <th className="px-4 py-2 text-right font-semibold text-xs">Nominal (Rp)</th>
+                    <th className="px-4 py-2 text-left font-semibold text-xs">Alasan Void</th>
+                    <th className="px-4 py-2 text-left font-semibold text-xs">Waktu Void</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {voidedTxs.map((tx: any, idx: number) => (
+                    <tr key={tx.id} className="border-b hover:bg-muted/30">
+                      <td className="px-4 py-2">{idx + 1}</td>
+                      <td className="px-4 py-2 font-mono text-xs">{tx.txCode}</td>
+                      <td className="px-4 py-2">{tx.date}</td>
+                      <td className="px-4 py-2">{tx.category}</td>
+                      <td className="px-4 py-2 text-right font-semibold text-amber-600">
+                        {formatRupiah(tx.amount)}
+                      </td>
+                      <td className="px-4 py-2 text-xs">{tx.voidReason ?? "-"}</td>
+                      <td className="px-4 py-2 text-xs">{tx.voidedAt ? new Date(tx.voidedAt).toLocaleString("id-ID") : "-"}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </ScrollArea>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Refunded Receipts Table (POS) */}
       <Card>
         <CardHeader>
-          <CardTitle className="text-base">Detail Transaksi Refund</CardTitle>
+          <CardTitle className="text-base">Detail Transaksi Refund (POS)</CardTitle>
         </CardHeader>
         <CardContent>
           {isLoading ? (

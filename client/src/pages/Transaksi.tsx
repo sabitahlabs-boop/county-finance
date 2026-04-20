@@ -9,7 +9,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/u
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Plus, Trash2, Search, ArrowUpRight, ArrowDownRight, Camera, Loader2, CheckCircle2, X, ImageIcon, Receipt, Package, Printer, Pencil, ArrowLeftRight } from "lucide-react";
+import { Plus, Trash2, Search, ArrowUpRight, ArrowDownRight, Camera, Loader2, CheckCircle2, X, ImageIcon, Receipt, Package, Printer, Pencil, ArrowLeftRight, Ban } from "lucide-react";
 import { InvoicePrintDialog } from "@/components/InvoicePrintDialog";
 import { formatRupiah, PEMASUKAN_CATEGORIES, PENGELUARAN_CATEGORIES, PAYMENT_METHODS } from "../../../shared/finance";
 import { toast } from "sonner";
@@ -574,6 +574,19 @@ export default function Transaksi() {
     },
     onError: (err) => toast.error(err.message),
   });
+  const voidTx = trpc.transaction.void.useMutation({
+    onSuccess: (data) => {
+      utils.transaction.list.invalidate();
+      utils.report.dashboard.invalidate();
+      utils.product.list.invalidate();
+      setVoidDialog(null);
+      setVoidReason("");
+      toast.success(`Transaksi di-void. Jurnal reversal: ${data.reversalCode}`);
+    },
+    onError: (err) => toast.error(err.message),
+  });
+  const [voidDialog, setVoidDialog] = useState<any>(null);
+  const [voidReason, setVoidReason] = useState("");
 
   // Form state
   const [form, setForm] = useState({
@@ -859,11 +872,10 @@ export default function Transaksi() {
                             variant="ghost"
                             size="sm"
                             className="h-7 w-7 p-0 text-muted-foreground hover:text-destructive"
-                            onClick={() => {
-                              if (confirm("Hapus transaksi ini?")) deleteTx.mutate({ id: tx.id });
-                            }}
+                            title="Void Transaksi"
+                            onClick={() => setVoidDialog(tx)}
                           >
-                            <Trash2 className="h-3.5 w-3.5" />
+                            <Ban className="h-3.5 w-3.5" />
                           </Button>
                         </div>
                       </td>
@@ -1121,6 +1133,74 @@ export default function Transaksi() {
               </Button>
             </div>
           </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Void Transaction Dialog */}
+      <Dialog open={!!voidDialog} onOpenChange={(open) => { if (!open) { setVoidDialog(null); setVoidReason(""); } }}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 text-destructive">
+              <Ban className="h-5 w-5" />
+              Void Transaksi
+            </DialogTitle>
+          </DialogHeader>
+          {voidDialog && (
+            <div className="space-y-4 pt-2">
+              <div className="rounded-lg border border-border bg-muted/30 p-3 space-y-1.5">
+                <div className="flex justify-between text-sm">
+                  <span className="text-muted-foreground">Kode</span>
+                  <span className="font-mono font-semibold">{voidDialog.txCode}</span>
+                </div>
+                <div className="flex justify-between text-sm">
+                  <span className="text-muted-foreground">Tanggal</span>
+                  <span>{voidDialog.date}</span>
+                </div>
+                <div className="flex justify-between text-sm">
+                  <span className="text-muted-foreground">Kategori</span>
+                  <span>{voidDialog.category}</span>
+                </div>
+                <div className="flex justify-between text-sm">
+                  <span className="text-muted-foreground">Jumlah</span>
+                  <span className={`font-semibold ${voidDialog.type === "pemasukan" ? "text-emerald-600" : "text-red-600"}`}>
+                    {voidDialog.type === "pemasukan" ? "+" : "-"}{formatRupiah(voidDialog.amount)}
+                  </span>
+                </div>
+              </div>
+
+              <div className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800 dark:border-amber-800 dark:bg-amber-950/30 dark:text-amber-300">
+                <strong>Perhatian:</strong> Void akan membuat jurnal reversal otomatis (transaksi pembalik) dan mengembalikan stok jika ada produk terkait. Transaksi asli tetap tercatat sebagai "voided".
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="voidReason">Alasan Void <span className="text-destructive">*</span></Label>
+                <textarea
+                  id="voidReason"
+                  placeholder="Contoh: Salah input jumlah, transaksi duplikat, pelanggan batal..."
+                  value={voidReason}
+                  onChange={(e) => setVoidReason(e.target.value)}
+                  rows={3}
+                  className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+                />
+              </div>
+
+              <div className="flex gap-2 justify-end">
+                <Button variant="outline" onClick={() => { setVoidDialog(null); setVoidReason(""); }}>
+                  Batal
+                </Button>
+                <Button
+                  variant="destructive"
+                  disabled={!voidReason.trim() || voidTx.isPending}
+                  onClick={() => {
+                    voidTx.mutate({ id: voidDialog.id, reason: voidReason.trim() });
+                  }}
+                >
+                  {voidTx.isPending ? <Loader2 className="h-4 w-4 animate-spin mr-1" /> : <Ban className="h-4 w-4 mr-1" />}
+                  Void Transaksi
+                </Button>
+              </div>
+            </div>
+          )}
         </DialogContent>
       </Dialog>
     </div>

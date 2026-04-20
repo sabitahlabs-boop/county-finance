@@ -10,7 +10,7 @@ import {
   getBusinessByOwnerId, getBusinessesByOwnerId, getBusinessByOwnerAndMode, getBusinessById, getBusinessBySlug, createBusiness, updateBusiness, getAllBusinesses,
   getActiveTaxRules, seedDefaultTaxRules, updateTaxRule,
   getProductsByBusiness, getProductById, createProduct, safeInsertProduct, updateProduct, countProductsByBusiness, getLowStockProducts,
-  createTransaction, safeInsertTransaction, updateTransaction, getTransactionsByBusiness, countTransactionsForMonth, softDeleteTransaction, getTransactionById, generateTxCode,
+  createTransaction, safeInsertTransaction, updateTransaction, getTransactionsByBusiness, countTransactionsForMonth, softDeleteTransaction, voidTransaction, getVoidedTransactions, getTransactionById, generateTxCode,
   createStockLog, getStockLogsByBusiness,
   createTaxPayment, getTaxPaymentsByBusiness,
   getTransactionSummary, getYearlyOmzet, calcTaxForMonth,
@@ -805,6 +805,82 @@ export const appRouter = router({
       }
       await softDeleteTransaction(input.id);
       return { success: true };
+    }),
+    void: protectedProcedure.input(z.object({
+      id: z.number(),
+      reason: z.string().min(1, "Alasan void wajib diisi"),
+    })).mutation(async ({ ctx, input }) => {
+      const biz = (await resolveBusinessForUser(ctx.user.id, ctx.requestedBusinessId, ctx.user.role))?.business;
+      if (!biz) throw new TRPCError({ code: "NOT_FOUND" });
+      // Only owner, admin, or manager can void
+      await checkRolePermission(ctx.user.id, biz.id, ["owner", "manager"]);
+
+      const tx = await getTransactionById(input.id);
+      if (!tx || tx.businessId !== biz.id) throw new TRPCError({ code: "NOT_FOUND" });
+      if (tx.status === "voided") throw new TRPCError({ code: "BAD_REQUEST", message: "Transaksi sudah di-void" });
+
+      // 1. Mark original transaction as voided
+      await voidTransaction(input.id, input.reason, ctx.user.id);
+
+      // 2. Create reversal journal entry (opposite type)
+      const reversalType = tx.type === "pemasukan" ? "pengeluaran" : "pemasukan";
+      const reversalCode = await generateTxCode(biz.id);
+      await safeInsertTransaction({
+        businessId: biz.id,
+        txCode: reversalCode,
+        date: new Date().toISOString().substring(0, 10),
+        type: reversalType,
+        category: `Void: ${tx.category}`,
+        description: `Void ${tx.txCode} — ${input.reason}`,
+        amount: tx.amount,
+        paymentMethod: tx.paymentMethod,
+        bankAccountId: tx.bankAccountId,
+        taxRelated: false,
+        notes: `Reversal dari ${tx.txCode}. Alasan: ${input.reason}`,
+        reversalOfId: tx.id,
+      });
+
+      // 3. Reverse stock if product linked
+      if (tx.productId && tx.productQty) {
+        const product = await getProductById(tx.productId);
+        if (product) {
+          const wasOut = tx.category !== "Pembelian Stok";
+          const reverseDir = wasOut ? 1 : -1;
+          const newStock = product.stockCurrent + (tx.productQty * reverseDir);
+          await createStockLog({
+            businessId: biz.id,
+            productId: product.id,
+            date: new Date().toISOString().substring(0, 10),
+            movementType: "adjustment",
+            qty: tx.productQty,
+            direction: reverseDir,
+            stockBefore: product.stockCurrent,
+            stockAfter: newStock,
+            notes: `Void ${tx.txCode}: ${input.reason}`,
+          });
+          await updateProduct(product.id, { stockCurrent: newStock });
+        }
+      }
+
+      // 4. Audit log
+      await createAuditLog({
+        businessId: biz.id,
+        userId: ctx.user.id,
+        action: "void_transaction",
+        entityType: "transaction",
+        entityId: tx.id,
+        details: { txCode: tx.txCode, reason: input.reason, amount: tx.amount, reversalCode },
+      });
+
+      return { success: true, reversalCode };
+    }),
+    voided: protectedProcedure.input(z.object({
+      startDate: z.string().optional(),
+      endDate: z.string().optional(),
+    }).optional()).query(async ({ ctx, input }) => {
+      const biz = (await resolveBusinessForUser(ctx.user.id, ctx.requestedBusinessId, ctx.user.role))?.business;
+      if (!biz) return [];
+      return getVoidedTransactions(biz.id, input?.startDate, input?.endDate);
     }),
   }),
 
