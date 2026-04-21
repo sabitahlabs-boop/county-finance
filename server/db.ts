@@ -5947,10 +5947,11 @@ export async function generateLabaRugiDetail(
   const startDate = `${year}-${String(month).padStart(2, "0")}-01`;
   const endDate = `${year}-${String(month).padStart(2, "0")}-31`;
 
-  // FIXED: Revenue now comes ONLY from transactions table (all income categories)
-  // POS checkouts automatically create journal entries with type="pemasukan"
-  const salesData = await db
+  // FIXED: Revenue only from OPERATIONAL revenue categories (not Pelunasan Kredit, Penerimaan Piutang, etc.)
+  const REVENUE_CATS_DETAIL = ["Penjualan POS", "Penjualan Produk", "Penjualan Jasa", "Pendapatan Lain-lain"];
+  const revenueData = await db
     .select({
+      category: transactions.category,
       total: sql<number>`SUM(${transactions.amount})`,
     })
     .from(transactions)
@@ -5958,33 +5959,24 @@ export async function generateLabaRugiDetail(
       and(
         eq(transactions.businessId, businessId),
         eq(transactions.type, "pemasukan"),
+        sql`${transactions.category} IN (${sql.join(REVENUE_CATS_DETAIL.map(c => sql`${c}`), sql`, `)})`,
         gte(transactions.date, startDate),
         lte(transactions.date, endDate),
         eq(transactions.isDeleted, false)
       )
-    );
+    )
+    .groupBy(transactions.category);
 
-  const totalPendapatan = Number(salesData[0]?.total || 0);
+  const revByCategory: Record<string, number> = {};
+  for (const row of revenueData) {
+    revByCategory[row.category || ""] = Number(row.total || 0);
+  }
 
-  // For detail breakdown, split into POS (has receiptId) and manual (no receiptId)
-  const posSalesData = await db
-    .select({
-      total: sql<number>`SUM(${transactions.amount})`,
-    })
-    .from(transactions)
-    .where(
-      and(
-        eq(transactions.businessId, businessId),
-        eq(transactions.type, "pemasukan"),
-        isNotNull(transactions.receiptId),
-        gte(transactions.date, startDate),
-        lte(transactions.date, endDate),
-        eq(transactions.isDeleted, false)
-      )
-    );
-
-  const penjualanPOS = Number(posSalesData[0]?.total || 0);
-  const penjualanManual = totalPendapatan - penjualanPOS;
+  const penjualanPOS = revByCategory["Penjualan POS"] || 0;
+  const penjualanManual = revByCategory["Penjualan Produk"] || 0;
+  const pendapatanJasa = revByCategory["Penjualan Jasa"] || 0;
+  const pendapatanLainDetail = revByCategory["Pendapatan Lain-lain"] || 0;
+  const totalPendapatan = penjualanPOS + penjualanManual + pendapatanJasa + pendapatanLainDetail;
 
   // FIXED: HPP now comes ONLY from transactions table
   // Categories "Pembelian Stok" and "HPP Produksi" represent COGS in the journal
@@ -6006,18 +5998,22 @@ export async function generateLabaRugiDetail(
 
   const hppPenjualan = Number(hppData[0]?.pembelianStok || 0);
   const biayaProduksi = Number(hppData[0]?.hppProduksi || 0);
-  const totalHPP = hppPenjualan + biayaProduksi;
+
+  // FIXED: Include POS HPP from pos_receipt_items (hppSnapshot × qty)
+  const posHppDetail = await getPosHppForPeriod(businessId, month, year);
+  const totalHPP = hppPenjualan + biayaProduksi + posHppDetail;
   const labaKotor = totalPendapatan - totalHPP;
   const marginKotor = totalPendapatan > 0 ? (labaKotor / totalPendapatan) * 100 : 0;
 
-  // Operating expenses
-  const expenseCategories = [
-    "gaji",
-    "sewa",
-    "utilitas",
-    "transportasi",
-    "operasionalLain",
-  ];
+  // Operating expenses — FIXED: use correct capitalized category names matching actual data
+  const EXPENSE_CAT_MAP: Record<string, string> = {
+    "Gaji": "gaji",
+    "Sewa": "sewa",
+    "Utilitas": "utilitas",
+    "Transportasi": "transportasi",
+    "Operasional": "operasionalLain",
+    "Pengeluaran Lain-lain": "operasionalLain",
+  };
   const expenses: Record<string, number> = {
     gaji: 0,
     sewa: 0,
@@ -6028,19 +6024,30 @@ export async function generateLabaRugiDetail(
     komisiStaff: 0,
   };
 
-  for (const cat of expenseCategories) {
-    const data = await db
-      .select({ total: sql<number>`SUM(${transactions.amount})` })
-      .from(transactions)
-      .where(
-        and(
-          eq(transactions.businessId, businessId),
-          eq(transactions.category, cat),
-          gte(transactions.date, startDate),
-          lte(transactions.date, endDate)
-        )
-      );
-    expenses[cat] = Number(data[0]?.total || 0);
+  // Single query for all expense categories
+  const expenseData = await db
+    .select({
+      category: transactions.category,
+      total: sql<number>`SUM(${transactions.amount})`,
+    })
+    .from(transactions)
+    .where(
+      and(
+        eq(transactions.businessId, businessId),
+        eq(transactions.type, "pengeluaran"),
+        sql`${transactions.category} IN (${sql.join(Object.keys(EXPENSE_CAT_MAP).map(c => sql`${c}`), sql`, `)})`,
+        gte(transactions.date, startDate),
+        lte(transactions.date, endDate),
+        eq(transactions.isDeleted, false)
+      )
+    )
+    .groupBy(transactions.category);
+
+  for (const row of expenseData) {
+    const key = EXPENSE_CAT_MAP[row.category || ""];
+    if (key) {
+      expenses[key] += Number(row.total || 0);
+    }
   }
 
   // FIXED: Refunds now from transactions table (pengeluaran with category matching refund patterns)
@@ -6086,14 +6093,15 @@ export async function generateLabaRugiDetail(
     pendapatan: {
       penjualanPOS,
       penjualanManual,
-      pendapatanJasa: 0,
-      pendapatanLain: 0,
+      pendapatanJasa,
+      pendapatanLain: pendapatanLainDetail,
       totalPendapatan,
     },
     hpp: {
       hppPenjualan,
       pembelianBarang: 0,
       biayaProduksi,
+      hppPOS: posHppDetail,
       stokOpname: 0,
       totalHPP,
     },

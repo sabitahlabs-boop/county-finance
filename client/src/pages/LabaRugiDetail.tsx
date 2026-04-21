@@ -52,7 +52,7 @@ export default function LabaRugiDetail() {
     const data = [
       { label: "PENDAPATAN", value: 0, pct: null },
       { label: "  Penjualan POS", value: report.pendapatan.penjualanPOS, pct: calculatePct(report.pendapatan.penjualanPOS, report.pendapatan.totalPendapatan) },
-      { label: "  Penjualan Manual", value: report.pendapatan.penjualanManual, pct: calculatePct(report.pendapatan.penjualanManual, report.pendapatan.totalPendapatan) },
+      { label: "  Penjualan Manual Produk", value: report.pendapatan.penjualanManual, pct: calculatePct(report.pendapatan.penjualanManual, report.pendapatan.totalPendapatan) },
       { label: "  Pendapatan Jasa", value: report.pendapatan.pendapatanJasa, pct: calculatePct(report.pendapatan.pendapatanJasa, report.pendapatan.totalPendapatan) },
       { label: "  Pendapatan Lain", value: report.pendapatan.pendapatanLain, pct: calculatePct(report.pendapatan.pendapatanLain, report.pendapatan.totalPendapatan) },
       { label: "Total Pendapatan", value: report.pendapatan.totalPendapatan, pct: 100 },
@@ -61,6 +61,7 @@ export default function LabaRugiDetail() {
       { label: "  HPP Penjualan", value: report.hpp.hppPenjualan, pct: calculatePct(report.hpp.hppPenjualan, report.pendapatan.totalPendapatan) },
       { label: "  Pembelian Barang", value: report.hpp.pembelianBarang, pct: calculatePct(report.hpp.pembelianBarang, report.pendapatan.totalPendapatan) },
       { label: "  Biaya Produksi", value: report.hpp.biayaProduksi, pct: calculatePct(report.hpp.biayaProduksi, report.pendapatan.totalPendapatan) },
+      { label: "  HPP POS (dari Receipt)", value: report.hpp.hppPOS || 0, pct: calculatePct(report.hpp.hppPOS || 0, report.pendapatan.totalPendapatan) },
       { label: "  Stok Opname", value: report.hpp.stokOpname, pct: calculatePct(report.hpp.stokOpname, report.pendapatan.totalPendapatan) },
       { label: "Total HPP", value: report.hpp.totalHPP, pct: calculatePct(report.hpp.totalHPP, report.pendapatan.totalPendapatan) },
       { label: "", value: 0, pct: null },
@@ -292,6 +293,11 @@ export default function LabaRugiDetail() {
             <LineItem
               label="Biaya Produksi"
               value={report.hpp.biayaProduksi}
+              total={report.pendapatan.totalPendapatan}
+            />
+            <LineItem
+              label="HPP POS (dari Receipt Items)"
+              value={report.hpp.hppPOS || 0}
               total={report.pendapatan.totalPendapatan}
             />
             <LineItem
