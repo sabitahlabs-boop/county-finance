@@ -4262,7 +4262,7 @@ export async function getPurchaseOrderItems(poId: number): Promise<PurchaseOrder
 export async function createPurchaseOrderItem(data: InsertPurchaseOrderItem): Promise<{ id: number }> {
   const db = await getDb();
   if (!db) throw new Error("Database not available");
-  requireFields(data, ["purchaseOrderId", "productId", "quantity", "unitPrice"], "purchase_order_items");
+  requireFields(data, ["purchaseOrderId", "productName", "qty", "unitPrice"], "purchase_order_items");
   const result = await db.insert(purchaseOrderItems).values(stripUndefined(data));
   return { id: result[0].insertId };
 }

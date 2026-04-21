@@ -5,7 +5,7 @@ import { publicProcedure, protectedProcedure, adminProcedure, router } from "./_
 import { z } from "zod";
 import { TRPCError } from "@trpc/server";
 import { eq, and, sql } from "drizzle-orm";
-import { transactions, posReceipts, posReceiptItems, discountCodes, debtPayments, debts, creditPayments, creditSales } from "../drizzle/schema";
+import { transactions, posReceipts, posReceiptItems, discountCodes, debtPayments, debts, creditPayments, creditSales, purchaseOrderItems } from "../drizzle/schema";
 import {
   getBusinessByOwnerId, getBusinessesByOwnerId, getBusinessByOwnerAndMode, getBusinessById, getBusinessBySlug, createBusiness, updateBusiness, getAllBusinesses,
   getActiveTaxRules, seedDefaultTaxRules, updateTaxRule,
@@ -3952,6 +3952,7 @@ Penting: Kembalikan HANYA JSON valid, tidak ada teks penjelasan.`,
 
       // ─── STOCK INTEGRATION: PO received → increase inventory ───
       // When goods are received, add qty to warehouse stock + product stockCurrent + stockLog
+      // If item has no productId (manual entry), auto-create product in catalog first
       if (newReceipt === "received" && prevReceipt !== "received") {
         try {
           const poItems = await getPurchaseOrderItems(id);
@@ -3959,21 +3960,46 @@ Penting: Kembalikan HANYA JSON valid, tidak ada teks penjelasan.`,
           const journalDate = new Date().toISOString().substring(0, 10);
 
           for (const item of poItems) {
-            if (!item.productId || item.qty <= 0) continue;
+            if (item.qty <= 0) continue;
 
-            const product = await getProductById(item.productId);
+            let productId = item.productId;
+
+            // If no productId — auto-create product from PO item data
+            if (!productId) {
+              productId = await safeInsertProduct({
+                businessId,
+                name: item.productName,
+                sku: "",
+                category: "Pembelian PO",
+                hpp: Number(item.unitPrice) || 0,
+                sellingPrice: 0,
+                stockCurrent: 0,
+                stockMinimum: 0,
+                unit: "pcs",
+              });
+
+              // Link PO item back to the newly created product
+              const db = await getDb();
+              if (db) {
+                await db.update(purchaseOrderItems)
+                  .set({ productId })
+                  .where(eq(purchaseOrderItems.id, item.id));
+              }
+            }
+
+            const product = await getProductById(productId);
             if (!product) continue;
 
             // Update warehouse stock
-            const ws = await getOrCreateWarehouseStock(defaultWarehouse.id, item.productId);
+            const ws = await getOrCreateWarehouseStock(defaultWarehouse.id, productId);
             const newQty = ws.quantity + item.qty;
-            await updateWarehouseStockQty(defaultWarehouse.id, item.productId, newQty);
-            await recalcProductStockFromWarehouses(item.productId);
+            await updateWarehouseStockQty(defaultWarehouse.id, productId, newQty);
+            await recalcProductStockFromWarehouses(productId);
 
             // Create stock log
             await createStockLog({
               businessId,
-              productId: item.productId,
+              productId,
               date: journalDate,
               movementType: "in",
               qty: item.qty,
