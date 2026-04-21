@@ -131,6 +131,7 @@ export default function SuperAdmin() {
   });
 
   // Stock reconciliation
+  const [selectedBizForReconcile, setSelectedBizForReconcile] = useState<number | null>(null);
   const [reconcileResult, setReconcileResult] = useState<{ totalFixed: number; details: { businessId: number; businessName: string; productId: number; productName: string; oldStock: number; newStock: number }[] } | null>(null);
   const reconcileStock = trpc.admin.reconcileStock.useMutation({
     onSuccess: (result) => {
@@ -688,15 +689,25 @@ export default function SuperAdmin() {
                   Hitung ulang semua products.stockCurrent dari total warehouse_stock. Gunakan ini untuk memperbaiki stok yang tidak sinkron (misalnya karena double-counting).
                 </p>
               </div>
-              <div className="flex gap-2 flex-wrap">
+              <div className="flex gap-2 flex-wrap items-center">
+                <Select value={selectedBizForReconcile?.toString() ?? ""} onValueChange={(v) => { setSelectedBizForReconcile(Number(v)); setReconcileResult(null); }}>
+                  <SelectTrigger className="w-64"><SelectValue placeholder="Pilih bisnis..." /></SelectTrigger>
+                  <SelectContent>
+                    {businesses?.map((biz: any) => (
+                      <SelectItem key={biz.id} value={biz.id.toString()}>
+                        {biz.businessName} (#{biz.id})
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
                 <Button
-                  onClick={() => reconcileStock.mutate({})}
-                  disabled={reconcileStock.isPending}
+                  onClick={() => selectedBizForReconcile && reconcileStock.mutate({ businessId: selectedBizForReconcile })}
+                  disabled={!selectedBizForReconcile || reconcileStock.isPending}
                 >
                   {reconcileStock.isPending ? (
-                    <><Loader2 className="h-4 w-4 mr-1 animate-spin" /> Reconciling semua bisnis...</>
+                    <><Loader2 className="h-4 w-4 mr-1 animate-spin" /> Reconciling...</>
                   ) : (
-                    <><RefreshCw className="h-4 w-4 mr-1" /> Reconcile Semua Bisnis</>
+                    <><RefreshCw className="h-4 w-4 mr-1" /> Reconcile Stok</>
                   )}
                 </Button>
               </div>
