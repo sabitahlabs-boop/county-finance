@@ -4,7 +4,6 @@
  */
 import { useState, useCallback } from "react";
 import * as XLSX from "xlsx";
-import DashboardLayout from "../components/DashboardLayout";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -271,7 +270,6 @@ export default function SetupKlien() {
   const totalItems = parsed ? parsed.gudang.length + parsed.produk.length + parsed.rekening.length + parsed.supplier.length : 0;
 
   return (
-    <DashboardLayout>
       <div className="max-w-4xl mx-auto space-y-6 p-4 sm:p-6">
         {/* Header */}
         <div>
@@ -487,6 +485,5 @@ export default function SetupKlien() {
           </Card>
         )}
       </div>
-    </DashboardLayout>
   );
 }

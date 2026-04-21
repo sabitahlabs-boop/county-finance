@@ -63,7 +63,6 @@ import PeringatanStok from "./pages/PeringatanStok";
 import LaporanGL from "./pages/LaporanGL";
 import JurnalAdjustment from "./pages/JurnalAdjustment";
 import PersonalGoals from "./pages/PersonalGoals";
-import SetupKlien from "./pages/SetupKlien";
 import { BusinessProvider } from "./contexts/BusinessContext";
 
 function AccessDenied() {
@@ -245,7 +244,6 @@ function Router() {
       <Route path="/usia-stok">{() => <AuthenticatedRoute component={UsiaStok} />}</Route>
       <Route path="/peringatan-stok">{() => <AuthenticatedRoute component={PeringatanStok} />}</Route>
       <Route path="/pf-goals">{() => <AuthenticatedRoute component={PersonalGoals} />}</Route>
-      <Route path="/setup-klien">{() => <ProtectedRoute component={SetupKlien} allowedRoles={["admin"]} />}</Route>
       <Route path="/onboarding" component={Home} />
       <Route path="/landing" component={LandingPage} />
       <Route path="/accept-invite" component={AcceptInvite} />

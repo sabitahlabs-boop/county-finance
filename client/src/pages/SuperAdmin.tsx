@@ -10,8 +10,9 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Skeleton } from "@/components/ui/skeleton";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
-import { Shield, Building2, Users, Crown, Trash2, AlertTriangle, Link2, Plus, Copy, CheckCircle, Clock, ExternalLink, Loader2, Megaphone, ToggleLeft, ToggleRight, BarChart3, Database, RefreshCw, Sparkles, LogIn } from "lucide-react";
+import { Shield, Building2, Users, Crown, Trash2, AlertTriangle, Link2, Plus, Copy, CheckCircle, Clock, ExternalLink, Loader2, Megaphone, ToggleLeft, ToggleRight, BarChart3, Database, RefreshCw, Sparkles, LogIn, FileUp } from "lucide-react";
 import { toast } from "sonner";
+import SetupKlien from "./SetupKlien";
 
 export default function SuperAdmin() {
   const { user } = useAuth();
@@ -226,6 +227,7 @@ export default function SuperAdmin() {
           <TabsTrigger value="users"><Users className="h-4 w-4 mr-1.5" /> Pengguna</TabsTrigger>
           <TabsTrigger value="affiliates"><Megaphone className="h-4 w-4 mr-1.5" /> Affiliate</TabsTrigger>
           <TabsTrigger value="dummy"><Database className="h-4 w-4 mr-1.5" /> Dummy Data</TabsTrigger>
+          <TabsTrigger value="setup-klien"><FileUp className="h-4 w-4 mr-1.5" /> Setup Klien</TabsTrigger>
           <TabsTrigger value="tools"><RefreshCw className="h-4 w-4 mr-1.5" /> Tools</TabsTrigger>
         </TabsList>
 
@@ -671,6 +673,10 @@ export default function SuperAdmin() {
               </div>
             </CardContent>
           </Card>
+        </TabsContent>
+
+        <TabsContent value="setup-klien" className="mt-4">
+          <SetupKlien />
         </TabsContent>
 
         <TabsContent value="tools" className="mt-4 space-y-4">
