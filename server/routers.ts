@@ -76,7 +76,7 @@ import {
   createJournalEntry, resolveAccountsForPOS, resolveAccountsForManualTx, initializeCoA,
   resolveAccountsForPOSRefund, resolveAccountsForCreditSale, resolveAccountsForCreditPayment,
   resolveAccountsForDebt, resolveAccountsForDeposit,
-  resolveAccountsForProduction, resolveAccountsForBankTransfer, resolveAccountsForTaxPayment,
+  resolveAccountsForProduction, resolveAccountsForPurchaseOrder, resolveAccountsForBankTransfer, resolveAccountsForTaxPayment,
   resolveAccountsForCommission, resolveAccountsForBillPayment,
   getTrialBalanceGL, getLabaRugiGL, getNeracaGL, getBukuBesarGL,
   // Personal Finance (pf_)
@@ -3928,10 +3928,115 @@ Penting: Kembalikan HANYA JSON valid, tidak ada teks penjelasan.`,
       id: z.number(),
       paymentStatus: z.enum(["unpaid", "partial", "paid"]).optional(),
       receiptStatus: z.enum(["pending", "partial", "received"]).optional(),
+      paidAmount: z.number().optional(),
+      bankAccountId: z.number().optional(),
       notes: z.string().optional(),
-    })).mutation(async ({ input }) => {
-      const { id, ...data } = input;
-      await updatePurchaseOrder(id, data);
+    })).mutation(async ({ ctx, input }) => {
+      const resolved = await resolveBusinessForUser(ctx.user.id, ctx.requestedBusinessId, ctx.user.role);
+      if (!resolved) throw new TRPCError({ code: "NOT_FOUND" });
+      const businessId = resolved.business.id;
+
+      // Fetch current PO state before update
+      const po = await getPurchaseOrderById(input.id);
+      if (!po) throw new TRPCError({ code: "NOT_FOUND", message: "PO tidak ditemukan" });
+
+      const prevPayment = po.paymentStatus;
+      const prevReceipt = po.receiptStatus;
+      const newPayment = input.paymentStatus || prevPayment;
+      const newReceipt = input.receiptStatus || prevReceipt;
+      const poAmount = Number(po.totalAmount);
+
+      // Update PO record
+      const { id, paidAmount, bankAccountId, ...updateData } = input;
+      await updatePurchaseOrder(id, updateData);
+
+      // ─── GL JOURNAL INTEGRATION (best-effort, non-blocking) ───
+      // Accounting rules (SAK EMKM):
+      // 1. PO created (unpaid, not received) → No journal (off-balance sheet)
+      // 2. Barang diterima + unpaid → DR Persediaan, CR Hutang Usaha
+      // 3. Payment (paid) → DR Hutang Usaha, CR Kas/Bank
+      // 4. Partial payment → DR Hutang Usaha (partial), CR Kas/Bank (partial)
+      // 5. Received + paid sekaligus → DR Persediaan, CR Kas/Bank
+      try {
+        const poAccounts = await resolveAccountsForPurchaseOrder(businessId, bankAccountId ?? null);
+        const supplierName = po.description || `PO ${po.poNumber}`;
+        const journalDate = new Date().toISOString().substring(0, 10);
+
+        // ─── Scenario A: Receipt status changed to "received" (goods arrived) ───
+        if (newReceipt === "received" && prevReceipt !== "received") {
+          if (newPayment === "paid" && prevPayment !== "paid") {
+            // Scenario 5: Received + Paid sekaligus
+            // DR Persediaan Barang Dagang  (asset +)
+            // CR Kas/Bank                   (asset -)
+            await createJournalEntry({
+              businessId,
+              date: journalDate,
+              description: `Pembelian tunai — ${supplierName}`,
+              sourceType: "po_received_paid",
+              sourceId: po.id,
+              lines: [
+                { accountId: poAccounts.inventoryAccountId, debitAmount: poAmount, creditAmount: 0, description: `Persediaan masuk — ${po.poNumber}` },
+                { accountId: poAccounts.cashAccountId, debitAmount: 0, creditAmount: poAmount, description: `Bayar pembelian — ${po.poNumber}` },
+              ],
+            });
+          } else {
+            // Scenario 2: Received but unpaid/partial → recognize inventory + liability
+            // DR Persediaan Barang Dagang  (asset +)
+            // CR Hutang Usaha              (liability +)
+            await createJournalEntry({
+              businessId,
+              date: journalDate,
+              description: `Barang diterima (kredit) — ${supplierName}`,
+              sourceType: "po_received",
+              sourceId: po.id,
+              lines: [
+                { accountId: poAccounts.inventoryAccountId, debitAmount: poAmount, creditAmount: 0, description: `Persediaan masuk — ${po.poNumber}` },
+                { accountId: poAccounts.payableAccountId, debitAmount: 0, creditAmount: poAmount, description: `Hutang usaha — ${po.poNumber}` },
+              ],
+            });
+          }
+        }
+
+        // ─── Scenario B: Payment status changed (goods already received previously) ───
+        if (prevReceipt === "received" && newReceipt === "received") {
+          const payAmount = paidAmount || poAmount;
+
+          if (newPayment === "paid" && prevPayment !== "paid") {
+            // Scenario 3: Full payment (hutang was already recognized)
+            // DR Hutang Usaha     (liability -)
+            // CR Kas/Bank         (asset -)
+            await createJournalEntry({
+              businessId,
+              date: journalDate,
+              description: `Pelunasan hutang — ${supplierName}`,
+              sourceType: "po_payment",
+              sourceId: po.id,
+              lines: [
+                { accountId: poAccounts.payableAccountId, debitAmount: poAmount, creditAmount: 0, description: `Lunasi hutang — ${po.poNumber}` },
+                { accountId: poAccounts.cashAccountId, debitAmount: 0, creditAmount: poAmount, description: `Bayar supplier — ${po.poNumber}` },
+              ],
+            });
+          } else if (newPayment === "partial" && prevPayment === "unpaid" && payAmount > 0) {
+            // Scenario 4: Partial payment
+            // DR Hutang Usaha     (liability -, partial)
+            // CR Kas/Bank         (asset -, partial)
+            await createJournalEntry({
+              businessId,
+              date: journalDate,
+              description: `Cicilan hutang Rp ${payAmount.toLocaleString("id-ID")} — ${supplierName}`,
+              sourceType: "po_partial_payment",
+              sourceId: po.id,
+              lines: [
+                { accountId: poAccounts.payableAccountId, debitAmount: payAmount, creditAmount: 0, description: `Cicilan hutang — ${po.poNumber}` },
+                { accountId: poAccounts.cashAccountId, debitAmount: 0, creditAmount: payAmount, description: `Bayar sebagian — ${po.poNumber}` },
+              ],
+            });
+          }
+        }
+      } catch (glErr) {
+        console.error("[GL] PO update journal failed (non-blocking):", glErr);
+      }
+
       return { success: true };
     }),
     delete: protectedProcedure.input(z.object({ id: z.number() })).mutation(async ({ input }) => {

@@ -7111,6 +7111,38 @@ export async function resolveAccountsForProduction(businessId: number): Promise<
   return { finishedGoodsAccountId: finishedGoods.id, rawMaterialAccountId: rawMaterial.id };
 }
 
+export async function resolveAccountsForPurchaseOrder(businessId: number, bankAccountId: number | null): Promise<{
+  inventoryAccountId: number;
+  payableAccountId: number;
+  cashAccountId: number;
+}> {
+  await initializeCoA(businessId);
+
+  // 1301 Persediaan Barang Dagang
+  const inventoryAccount = await getAccountByCode(businessId, "1301");
+  // 2101 Hutang Usaha (Accounts Payable)
+  const payableAccount = await getAccountByCode(businessId, "2101");
+
+  // Cash/bank account
+  let cashAccount: Account | null = null;
+  if (bankAccountId) {
+    cashAccount = await getAccountByBankAccountId(businessId, bankAccountId);
+  }
+  if (!cashAccount) {
+    cashAccount = await getAccountByCode(businessId, "1101"); // Kas Umum fallback
+  }
+
+  if (!inventoryAccount || !payableAccount || !cashAccount) {
+    throw new Error("Required accounts for Purchase Order not found in CoA");
+  }
+
+  return {
+    inventoryAccountId: inventoryAccount.id,
+    payableAccountId: payableAccount.id,
+    cashAccountId: cashAccount.id,
+  };
+}
+
 export async function resolveAccountsForBankTransfer(businessId: number, fromBankAccountId: number | null, toBankAccountId: number | null): Promise<{
   fromCoAId: number;
   toCoAId: number;

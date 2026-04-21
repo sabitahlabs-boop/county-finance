@@ -225,18 +225,32 @@ const UpdateStatusDialog = ({ po, onClose }: { po: any; onClose: () => void }) =
   const utils = trpc.useUtils();
   const [paymentStatus, setPaymentStatus] = useState(po.paymentStatus || 'unpaid');
   const [receiptStatus, setReceiptStatus] = useState(po.receiptStatus || 'pending');
+  const [bankAccountId, setBankAccountId] = useState<string>("");
+  const [paidAmount, setPaidAmount] = useState(0);
+
+  const { data: bankAccounts } = trpc.bankAccount.list.useQuery();
 
   const updatePO = trpc.purchaseOrder.update.useMutation({
     onSuccess: () => {
       utils.purchaseOrder.list.invalidate();
-      toast.success("Status PO berhasil diupdate");
+      toast.success("Status PO berhasil diupdate — jurnal otomatis tercatat");
       onClose();
     },
     onError: (err) => toast.error(err.message),
   });
 
+  // Determine if payment is changing (need bank account selection)
+  const isPaymentChanging = paymentStatus !== po.paymentStatus && paymentStatus !== 'unpaid';
+
   return (
     <div className="space-y-5">
+      {/* Accounting info banner */}
+      <div className="p-3 rounded-lg bg-blue-900/20 border border-blue-500/20 text-xs text-blue-300">
+        <strong>Info Akuntansi:</strong> Perubahan status akan otomatis membuat jurnal GL.
+        Barang diterima + belum bayar = Hutang Usaha tercatat di neraca.
+        Saat dibayar = Hutang berkurang, Kas berkurang.
+      </div>
+
       <div>
         <label className="block text-sm font-medium text-slate-300 mb-2">Status Pembayaran</label>
         <div className="grid grid-cols-3 gap-2">
@@ -281,10 +295,53 @@ const UpdateStatusDialog = ({ po, onClose }: { po: any; onClose: () => void }) =
         </div>
       </div>
 
+      {/* Bank account selection - shown when payment is changing */}
+      {isPaymentChanging && (
+        <div>
+          <label className="block text-sm font-medium text-slate-300 mb-2">
+            Bayar dari Rekening
+          </label>
+          <Select value={bankAccountId} onValueChange={setBankAccountId}>
+            <SelectTrigger className="bg-slate-800 border-slate-700 text-white h-11">
+              <SelectValue placeholder="Pilih rekening pembayaran" />
+            </SelectTrigger>
+            <SelectContent className="bg-slate-800 border-slate-700">
+              {bankAccounts?.map((ba) => (
+                <SelectItem key={ba.id} value={String(ba.id)} className="text-white hover:bg-slate-700">
+                  {ba.accountName} {ba.initialBalance ? `(${formatRupiah(ba.initialBalance)})` : ''}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+      )}
+
+      {/* Partial payment amount */}
+      {paymentStatus === 'partial' && paymentStatus !== po.paymentStatus && (
+        <div>
+          <label className="block text-sm font-medium text-slate-300 mb-2">
+            Jumlah yang Dibayar
+          </label>
+          <RupiahInput
+            value={paidAmount}
+            onChange={setPaidAmount}
+            placeholder="Jumlah cicilan"
+            className="bg-slate-800 border-slate-700 text-white h-11"
+          />
+          <p className="text-xs text-slate-500 mt-1">Total PO: {formatRupiah(po.totalAmount)}</p>
+        </div>
+      )}
+
       <div className="flex gap-2 justify-end pt-2">
         <Button variant="outline" onClick={onClose} className="border-slate-700">Batal</Button>
         <Button
-          onClick={() => updatePO.mutate({ id: po.id, paymentStatus, receiptStatus })}
+          onClick={() => updatePO.mutate({
+            id: po.id,
+            paymentStatus,
+            receiptStatus,
+            ...(bankAccountId ? { bankAccountId: Number(bankAccountId) } : {}),
+            ...(paymentStatus === 'partial' && paidAmount > 0 ? { paidAmount } : {}),
+          })}
           className="bg-emerald-600 hover:bg-emerald-700 text-white"
           disabled={updatePO.isPending}
         >
