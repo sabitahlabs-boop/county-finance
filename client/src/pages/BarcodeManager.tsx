@@ -1,7 +1,8 @@
-import React, { useState, useMemo, useRef } from 'react';
+import React, { useState, useMemo, useRef, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Search, Printer, Check, X } from 'lucide-react';
 import { trpc } from '@/lib/trpc';
+import JsBarcode from 'jsbarcode';
 
 type LayoutOption = '1x1' | '2x1' | '3x1';
 
@@ -23,7 +24,7 @@ interface Product {
 }
 
 /**
- * Barcode Component - Creates a simple Code128-style barcode visualization
+ * Barcode Component - Renders real scannable barcodes using JsBarcode (Code128)
  */
 const BarcodeDisplay: React.FC<{ barcode: string; productName: string }> = ({
   barcode,
@@ -32,42 +33,70 @@ const BarcodeDisplay: React.FC<{ barcode: string; productName: string }> = ({
   barcode: string;
   productName: string;
 }) => {
-  // Generate a pattern based on the barcode string
-  const generateBarcodePattern = (code: string) => {
-    const pattern: boolean[] = [];
-    for (let i = 0; i < code.length; i++) {
-      const char = code.charCodeAt(i);
-      for (let j = 0; j < 8; j++) {
-        pattern.push(((char >> j) & 1) === 1);
+  const svgRef = useRef<SVGSVGElement>(null);
+
+  useEffect(() => {
+    if (svgRef.current && barcode) {
+      try {
+        // Use CODE128 (supports alphanumeric) — most universal format
+        JsBarcode(svgRef.current, barcode, {
+          format: "CODE128",
+          width: 2,
+          height: 60,
+          displayValue: true,
+          fontSize: 14,
+          font: "monospace",
+          margin: 10,
+          background: "#ffffff",
+          lineColor: "#000000",
+        });
+      } catch {
+        // Fallback: if barcode value is invalid for CODE128, show error text
+        if (svgRef.current) {
+          svgRef.current.innerHTML = "";
+        }
       }
     }
-    return pattern;
-  };
-
-  const pattern = generateBarcodePattern(barcode);
+  }, [barcode]);
 
   return (
-    <div className="flex flex-col items-center gap-2 bg-white dark:bg-gray-900 p-6 rounded-lg border border-gray-200 dark:border-gray-700">
-      {/* Barcode bars */}
-      <div className="flex items-end gap-px h-20 justify-center">
-        {pattern.map((isBlack, idx) => (
-          <div
-            key={idx}
-            className={`${
-              isBlack ? 'bg-black' : 'bg-white dark:bg-gray-900'
-            } transition-all duration-200`}
-            style={{
-              width: isBlack ? '2px' : '1px',
-              height: `${20 + (isBlack ? 4 : 0)}px`,
-            }}
-          />
-        ))}
-      </div>
+    <div className="flex flex-col items-center gap-2 bg-white p-6 rounded-lg border border-gray-200 dark:border-gray-700">
+      <svg ref={svgRef} />
+      <p className="text-xs text-gray-600 mt-1 max-w-xs truncate">{productName}</p>
+    </div>
+  );
+};
 
-      {/* Barcode number */}
-      <div className="text-center">
-        <p className="font-mono text-sm font-semibold text-black">{barcode}</p>
-        <p className="text-xs text-gray-600 dark:text-gray-400 mt-1 max-w-xs truncate">{productName}</p>
+/**
+ * Mini Barcode Preview for product cards
+ */
+const MiniBarcodePreview: React.FC<{ value: string }> = ({ value }) => {
+  const svgRef = useRef<SVGSVGElement>(null);
+
+  useEffect(() => {
+    if (svgRef.current && value) {
+      try {
+        JsBarcode(svgRef.current, value, {
+          format: "CODE128",
+          width: 1,
+          height: 30,
+          displayValue: true,
+          fontSize: 10,
+          font: "monospace",
+          margin: 4,
+          background: "#ffffff",
+          lineColor: "#000000",
+        });
+      } catch {
+        // Invalid barcode value
+      }
+    }
+  }, [value]);
+
+  return (
+    <div className="mt-3 bg-gray-800 p-2 rounded">
+      <div className="flex items-center justify-center bg-white rounded p-1">
+        <svg ref={svgRef} className="max-w-full" />
       </div>
     </div>
   );
@@ -132,29 +161,8 @@ const ProductCard: React.FC<{
           </div>
         </div>
 
-        {/* Mini barcode preview */}
-        <div className="mt-3 bg-gray-800 p-2 rounded">
-          <div className="flex items-center gap-1 h-12 justify-center bg-white dark:bg-gray-900 rounded p-1">
-            <div className="flex items-end gap-px">
-              {(product.barcode || product.sku || String(product.id)).substring(0, 16).split('').map((char: string, idx: number) => {
-                const code = char.charCodeAt(0);
-                return (
-                  <div
-                    key={idx}
-                    className={`${(code % 2 === 0) ? 'bg-black' : 'bg-white dark:bg-gray-900'}`}
-                    style={{
-                      width: '3px',
-                      height: `${8 + ((code % 3) * 2)}px`,
-                    }}
-                  />
-                );
-              })}
-            </div>
-          </div>
-          <p className="text-center text-xs text-gray-400 mt-1 font-mono">
-            {product.barcode || product.sku || '-'}
-          </p>
-        </div>
+        {/* Mini barcode preview using real Code128 */}
+        <MiniBarcodePreview value={product.barcode || product.sku || String(product.id)} />
       </div>
     </motion.div>
   );

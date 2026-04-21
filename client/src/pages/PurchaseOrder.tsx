@@ -301,18 +301,33 @@ const UpdateStatusDialog = ({ po, onClose }: { po: any; onClose: () => void }) =
         </div>
       )}
 
+      {/* F1.5: Warning if payment changing but no bank account selected */}
+      {isPaymentChanging && !bankAccountId && (
+        <p className="text-xs text-red-400 flex items-center gap-1.5">
+          <span className="inline-block w-1.5 h-1.5 rounded-full bg-red-400" />
+          Wajib pilih rekening pembayaran agar jurnal GL tercatat dengan benar
+        </p>
+      )}
+
       <div className="flex gap-2 justify-end pt-2">
         <Button variant="outline" onClick={onClose} className="border-slate-700">Batal</Button>
         <Button
-          onClick={() => updatePO.mutate({
-            id: po.id,
-            paymentStatus,
-            receiptStatus,
-            ...(bankAccountId ? { bankAccountId: Number(bankAccountId) } : {}),
-            ...(paymentStatus === 'partial' && paidAmount > 0 ? { paidAmount } : {}),
-          })}
+          onClick={() => {
+            // F1.5: Block if payment is changing but no bank account selected
+            if (isPaymentChanging && !bankAccountId) {
+              toast.error("Pilih rekening pembayaran terlebih dahulu");
+              return;
+            }
+            updatePO.mutate({
+              id: po.id,
+              paymentStatus,
+              receiptStatus,
+              ...(bankAccountId ? { bankAccountId: Number(bankAccountId) } : {}),
+              ...(paymentStatus === 'partial' && paidAmount > 0 ? { paidAmount } : {}),
+            });
+          }}
           className="bg-emerald-600 hover:bg-emerald-700 text-white"
-          disabled={updatePO.isPending}
+          disabled={updatePO.isPending || (isPaymentChanging && !bankAccountId)}
         >
           {updatePO.isPending ? "Menyimpan..." : "Simpan Perubahan"}
         </Button>

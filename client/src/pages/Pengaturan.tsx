@@ -165,6 +165,7 @@ export default function Pengaturan() {
   }
 
   const isPro = business?.plan === "pro";
+  const isProPlus = business?.plan === "pro_plus";
 
   return (
     <div className="space-y-6">
@@ -187,7 +188,7 @@ export default function Pengaturan() {
           <TabsTrigger value="paket" className="gap-1.5"><Crown className="h-3.5 w-3.5" /> Paket</TabsTrigger>
           <TabsTrigger value="kategori" className="gap-1.5"><Tag className="h-3.5 w-3.5" /> Kategori</TabsTrigger>
           <TabsTrigger value="fitur" className="gap-1.5"><Settings2 className="h-3.5 w-3.5" /> Fitur</TabsTrigger>
-          <TabsTrigger value="team" className="gap-1.5"><Users2 className="h-3.5 w-3.5" /> Pegawai</TabsTrigger>
+          {isProPlus && <TabsTrigger value="team" className="gap-1.5"><Users2 className="h-3.5 w-3.5" /> Pegawai</TabsTrigger>}
         </TabsList>
 
         {/* ─── Mode ─── */}
@@ -788,10 +789,12 @@ export default function Pengaturan() {
           <FiturTab business={business} updateBiz={updateBiz} />
         </TabsContent>
 
-        {/* ─── Pegawai (Team Management) ─── */}
-        <TabsContent value="team" className="mt-4">
-          <TeamManagementTab />
-        </TabsContent>
+        {/* ─── Pegawai (Team Management) — Pro+ only ─── */}
+        {isProPlus && (
+          <TabsContent value="team" className="mt-4">
+            <TeamManagementTab />
+          </TabsContent>
+        )}
       </Tabs>
     </div>
   );

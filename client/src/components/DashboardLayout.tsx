@@ -85,7 +85,7 @@ import { useLocation } from "wouter";
 import { DashboardLayoutSkeleton } from "./DashboardLayoutSkeleton";
 import { Button } from "./ui/button";
 import { trpc } from "@/lib/trpc";
-import { formatRupiah } from "../../../shared/finance";
+import { formatRupiah, PRO_PLUS_PATHS } from "../../../shared/finance";
 import { PATH_PERMISSION_MAP } from "../../../shared/permissions";
 import NotificationCenter from "./NotificationCenter";
 import MiniCalculator from "./MiniCalculator";
@@ -379,6 +379,20 @@ function DashboardLayoutContent({
       items = items.filter((item) => !isGroup(item) || item.children.length > 0);
     }
 
+    // Plan-based feature gating: hide Pro+ only items for non-Pro+ users
+    const plan = business?.plan ?? "free";
+    if (plan !== "pro_plus") {
+      items = items.map((item) => {
+        if (isGroup(item)) {
+          return { ...item, children: item.children.filter((c) => !PRO_PLUS_PATHS.includes(c.path)) };
+        }
+        const mi = item as MenuItem;
+        if (PRO_PLUS_PATHS.includes(mi.path)) return null;
+        return item;
+      }).filter(Boolean) as SidebarItem[];
+      items = items.filter((item) => !isGroup(item) || item.children.length > 0);
+    }
+
     const flat: MenuItem[] = [];
     items.forEach((item) => {
       if (isGroup(item)) flat.push(...item.children);
@@ -386,7 +400,7 @@ function DashboardLayoutContent({
     });
 
     return { sidebarItems: items, flatItems: flat };
-  }, [appMode, posEnabled, debtEnabled, isAdmin, isTeamMember, memberPermissions]);
+  }, [appMode, posEnabled, debtEnabled, isAdmin, isTeamMember, memberPermissions, business?.plan]);
 
   const locationPath = location.split("?")[0];
   const activeMenuItem = flatItems.find((item) => item.path.split("?")[0] === locationPath);

@@ -152,6 +152,42 @@ function ProtectedRoute({
   );
 }
 
+function ProPlusRoute({ component: Component }: { component: React.ComponentType }) {
+  const { user, loading: authLoading } = useAuth();
+  const { data: business, isLoading: bizLoading, refetch } = trpc.business.mine.useQuery(undefined, {
+    enabled: !!user,
+    retry: false,
+  });
+
+  if (authLoading || (user && bizLoading)) {
+    return <DashboardLayoutSkeleton />;
+  }
+
+  if (!user) {
+    return (
+      <DashboardLayout>
+        <Component />
+      </DashboardLayout>
+    );
+  }
+
+  if (!business) {
+    return <Onboarding onComplete={() => refetch()} />;
+  }
+
+  // Redirect non-Pro+ users to upgrade page
+  if (business.plan !== "pro_plus") {
+    window.location.replace("/upgrade");
+    return null;
+  }
+
+  return (
+    <DashboardLayout>
+      <Component />
+    </DashboardLayout>
+  );
+}
+
 function Router() {
   return (
     <Switch>
@@ -176,10 +212,10 @@ function Router() {
       <Route path="/hutang-piutang">{() => <AuthenticatedRoute component={HutangPiutang} />}</Route>
       <Route path="/anggaran">{() => <ProtectedRoute component={Anggaran} allowedRoles={["admin", "owner"]} />}</Route>
       <Route path="/analitik">{() => <AuthenticatedRoute component={SalesAnalytics} />}</Route>
-      <Route path="/gudang">{() => <AuthenticatedRoute component={GudangPage} />}</Route>
+      <Route path="/gudang">{() => <ProPlusRoute component={GudangPage} />}</Route>
       <Route path="/purchase-order">{() => <AuthenticatedRoute component={PurchaseOrderPage} />}</Route>
-      <Route path="/marketing">{() => <ProtectedRoute component={MarketingPage} allowedRoles={["admin", "owner"]} />}</Route>
-      <Route path="/staff">{() => <ProtectedRoute component={StaffManagementPage} allowedRoles={["admin", "owner"]} />}</Route>
+      <Route path="/marketing">{() => <ProPlusRoute component={MarketingPage} />}</Route>
+      <Route path="/staff">{() => <ProPlusRoute component={StaffManagementPage} />}</Route>
       <Route path="/invoice-settings">{() => <ProtectedRoute component={InvoiceSettingsPage} allowedRoles={["admin", "owner"]} />}</Route>
       <Route path="/barcode">{() => <AuthenticatedRoute component={BarcodeManagerPage} />}</Route>
       <Route path="/select-warehouse" component={WarehouseSelectPage} />

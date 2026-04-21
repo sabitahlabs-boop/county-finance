@@ -1,10 +1,10 @@
-import { useState, useMemo, useEffect, useCallback } from "react";
+import { useState, useMemo, useEffect, useCallback, useRef } from "react";
 import { trpc } from "@/lib/trpc";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
 import { ScrollArea } from "@/components/ui/scroll-area";
@@ -12,6 +12,7 @@ import {
   ShoppingCart, Search, Plus, Minus, Trash2, CreditCard, Banknote,
   QrCode, Receipt, CheckCircle2, Package, X, Loader2, Printer, Warehouse,
   SplitSquareHorizontal, Tag, Percent, Wallet, CalendarDays, UserPlus, Users, Phone, User,
+  AlertTriangle, Undo2,
 } from "lucide-react";
 import { formatRupiah } from "../../../shared/finance";
 import { getProxiedImageUrl } from "@/lib/utils";
@@ -82,6 +83,13 @@ export default function POS() {
 
   // Receipt print dialog state
   const [receiptPrintOpen, setReceiptPrintOpen] = useState(false);
+
+  // F1.1: Checkout confirmation state
+  const [confirmCheckoutOpen, setConfirmCheckoutOpen] = useState(false);
+  // F1.3: Clear cart confirmation state
+  const [confirmClearCartOpen, setConfirmClearCartOpen] = useState(false);
+  // F1.2: Undo remove item
+  const undoTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // Payment categories: Tunai, Transfer, QRIS
   const [paymentCategory, setPaymentCategory] = useState<"Tunai" | "Transfer" | "QRIS">("Tunai");
@@ -288,7 +296,20 @@ export default function POS() {
   };
 
   const removeFromCart = (productId: number) => {
+    const removedItem = cart.find(c => c.productId === productId);
+    if (!removedItem) return;
     setCart(prev => prev.filter(c => c.productId !== productId));
+    // F1.2: Undo toast — user has 4 seconds to undo
+    if (undoTimerRef.current) clearTimeout(undoTimerRef.current);
+    toast(`"${removedItem.name}" dihapus dari keranjang`, {
+      action: {
+        label: "Urungkan",
+        onClick: () => {
+          setCart(prev => [...prev, removedItem]);
+        },
+      },
+      duration: 4000,
+    });
   };
 
   // ─── Calculations ───
@@ -587,7 +608,7 @@ export default function POS() {
             <span className="text-lg font-bold text-primary">{formatRupiah(subtotal)}</span>
           </div>
           <div className="flex gap-2">
-            <Button variant="outline" className="flex-1" disabled={cart.length === 0} onClick={() => { setCart([]); toast.info("Keranjang dikosongkan"); }}>
+            <Button variant="outline" className="flex-1" disabled={cart.length === 0} onClick={() => setConfirmClearCartOpen(true)}>
               <Trash2 className="h-4 w-4 mr-1.5" /> Hapus
             </Button>
             <Button className="flex-1" disabled={cart.length === 0} onClick={() => setCheckoutOpen(true)}>
@@ -979,7 +1000,7 @@ export default function POS() {
             <Button
               className="w-full h-12 text-base"
               disabled={isPending || (splitMode ? totalPaid < grandTotal : (paymentCategory === "Tunai" && (parseInt(customerPaid) || 0) < grandTotal))}
-              onClick={handleCheckout}
+              onClick={() => setConfirmCheckoutOpen(true)}
             >
               {isPending ? (
                 <><Loader2 className="h-4 w-4 mr-2 animate-spin" /> Memproses...</>
@@ -1077,6 +1098,81 @@ export default function POS() {
           }}
         />
       )}
+
+      {/* F1.1: Checkout Confirmation Dialog */}
+      <Dialog open={confirmCheckoutOpen} onOpenChange={setConfirmCheckoutOpen}>
+        <DialogContent className="max-w-sm">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <AlertTriangle className="h-5 w-5 text-amber-500" />
+              Konfirmasi Pembayaran
+            </DialogTitle>
+          </DialogHeader>
+          <div className="space-y-3 py-2">
+            <div className="rounded-lg bg-muted/50 p-3 space-y-2 text-sm">
+              <div className="flex justify-between">
+                <span className="text-muted-foreground">Total item</span>
+                <span className="font-semibold">{totalItems} item</span>
+              </div>
+              {discountAmount > 0 && (
+                <div className="flex justify-between text-orange-500">
+                  <span>Diskon</span>
+                  <span>-{formatRupiah(discountAmount)}</span>
+                </div>
+              )}
+              <div className="flex justify-between border-t pt-2">
+                <span className="font-semibold">Total Bayar</span>
+                <span className="text-lg font-bold text-primary">{formatRupiah(grandTotal)}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-muted-foreground">Metode</span>
+                <span className="font-medium">{splitMode ? `Split (${payments.filter(p => p.amount > 0).length} metode)` : (payments[0]?.method ?? "Tunai")}</span>
+              </div>
+              {selectedClientName && (
+                <div className="flex justify-between">
+                  <span className="text-muted-foreground">Customer</span>
+                  <span className="font-medium">{selectedClientName}</span>
+                </div>
+              )}
+            </div>
+            <p className="text-xs text-muted-foreground text-center">Transaksi tidak bisa dibatalkan setelah diproses</p>
+          </div>
+          <DialogFooter className="flex gap-2 sm:gap-2">
+            <Button variant="outline" className="flex-1" onClick={() => setConfirmCheckoutOpen(false)}>
+              Batal
+            </Button>
+            <Button className="flex-1" disabled={isPending} onClick={() => { setConfirmCheckoutOpen(false); handleCheckout(); }}>
+              {isPending ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <CheckCircle2 className="h-4 w-4 mr-2" />}
+              Ya, Proses Bayar
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* F1.3: Clear Cart Confirmation Dialog */}
+      <Dialog open={confirmClearCartOpen} onOpenChange={setConfirmClearCartOpen}>
+        <DialogContent className="max-w-sm">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Trash2 className="h-5 w-5 text-destructive" />
+              Hapus Semua Item?
+            </DialogTitle>
+          </DialogHeader>
+          <div className="py-2">
+            <p className="text-sm text-muted-foreground">
+              Yakin ingin menghapus <strong>{cart.length} item</strong> ({formatRupiah(subtotal)}) dari keranjang? Aksi ini tidak bisa di-undo.
+            </p>
+          </div>
+          <DialogFooter className="flex gap-2 sm:gap-2">
+            <Button variant="outline" className="flex-1" onClick={() => setConfirmClearCartOpen(false)}>
+              Batal
+            </Button>
+            <Button variant="destructive" className="flex-1" onClick={() => { setCart([]); setConfirmClearCartOpen(false); toast.info("Keranjang dikosongkan"); }}>
+              <Trash2 className="h-4 w-4 mr-2" /> Ya, Hapus Semua
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
