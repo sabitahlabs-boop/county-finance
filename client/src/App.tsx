@@ -60,6 +60,7 @@ import StokKedaluwarsa from "./pages/StokKedaluwarsa";
 import UsiaStok from "./pages/UsiaStok";
 import PeringatanStok from "./pages/PeringatanStok";
 import LaporanGL from "./pages/LaporanGL";
+import JurnalAdjustment from "./pages/JurnalAdjustment";
 import PersonalGoals from "./pages/PersonalGoals";
 import { BusinessProvider } from "./contexts/BusinessContext";
 
@@ -188,6 +189,7 @@ function Router() {
       <Route path="/top-produk">{() => <AuthenticatedRoute component={TopProduk} />}</Route>
       <Route path="/laporan-index">{() => <AuthenticatedRoute component={LaporanIndex} />}</Route>
       <Route path="/laporan-gl">{() => <AuthenticatedRoute component={LaporanGL} />}</Route>
+      <Route path="/jurnal-adjustment">{() => <AuthenticatedRoute component={JurnalAdjustment} />}</Route>
       <Route path="/laba-rugi-detail">{() => <AuthenticatedRoute component={LabaRugiDetail} />}</Route>
       <Route path="/penjualan-pelanggan">{() => <AuthenticatedRoute component={PenjualanPelanggan} />}</Route>
       <Route path="/penjualan-jam">{() => <AuthenticatedRoute component={PenjualanJam} />}</Route>

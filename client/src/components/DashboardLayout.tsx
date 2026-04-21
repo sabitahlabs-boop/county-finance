@@ -156,6 +156,7 @@ const UMKM_SIDEBAR: SidebarItem[] = [
       { icon: BarChart3, label: "Analitik", path: "/analitik" },
       { icon: Calculator, label: "Pajak", path: "/pajak" },
       { icon: Wallet, label: "Manajemen Rekening", path: "/manajemen-rekening" },
+      { icon: BookOpen, label: "Jurnal Penyesuaian", path: "/jurnal-adjustment" },
     ],
   },
   {

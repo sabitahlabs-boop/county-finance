@@ -5,7 +5,7 @@ import { publicProcedure, protectedProcedure, adminProcedure, router } from "./_
 import { z } from "zod";
 import { TRPCError } from "@trpc/server";
 import { eq, and, sql } from "drizzle-orm";
-import { transactions, posReceipts, posReceiptItems, discountCodes, debtPayments, debts, creditPayments, creditSales, purchaseOrderItems } from "../drizzle/schema";
+import { transactions, posReceipts, posReceiptItems, discountCodes, debtPayments, debts, creditPayments, creditSales, purchaseOrderItems, journalEntries } from "../drizzle/schema";
 import {
   getBusinessByOwnerId, getBusinessesByOwnerId, getBusinessByOwnerAndMode, getBusinessById, getBusinessBySlug, createBusiness, updateBusiness, getAllBusinesses,
   getActiveTaxRules, seedDefaultTaxRules, updateTaxRule,
@@ -79,6 +79,8 @@ import {
   resolveAccountsForProduction, resolveAccountsForPurchaseOrder, resolveAccountsForBankTransfer, resolveAccountsForTaxPayment,
   resolveAccountsForCommission, resolveAccountsForBillPayment,
   getTrialBalanceGL, getLabaRugiGL, getNeracaGL, getBukuBesarGL,
+  reverseJournalEntriesBySource, createManualJournalAdjustment, getAccountsByBusiness,
+  getJournalEntriesByBusiness, getJournalLinesByEntry,
   // Personal Finance (pf_)
   getPfProfile, upsertPfProfile,
   getPfIncomeSources, upsertPfIncomeSource, deletePfIncomeSource,
@@ -1372,6 +1374,125 @@ export const appRouter = router({
       const biz = (await resolveBusinessForUser(ctx.user.id, ctx.requestedBusinessId, ctx.user.role))?.business;
       if (!biz) throw new TRPCError({ code: "NOT_FOUND" });
       return getBukuBesarGL(biz.id, input.accountCode, input.startDate, input.endDate);
+    }),
+  }),
+
+  // ═══ Journal Management (Manual Adjustment — master/owner only) ═══
+  journal: router({
+    // List all accounts for the adjustment form dropdown
+    accounts: protectedProcedure.query(async ({ ctx }) => {
+      const biz = (await resolveBusinessForUser(ctx.user.id, ctx.requestedBusinessId, ctx.user.role))?.business;
+      if (!biz) throw new TRPCError({ code: "NOT_FOUND" });
+      return getAccountsByBusiness(biz.id);
+    }),
+
+    // List journal entries with optional status filter
+    list: protectedProcedure.input(z.object({
+      limit: z.number().min(1).max(200).default(50),
+      offset: z.number().min(0).default(0),
+      status: z.string().optional(),
+    }).optional()).query(async ({ ctx, input }) => {
+      const biz = (await resolveBusinessForUser(ctx.user.id, ctx.requestedBusinessId, ctx.user.role))?.business;
+      if (!biz) throw new TRPCError({ code: "NOT_FOUND" });
+      return getJournalEntriesByBusiness(biz.id, {
+        limit: input?.limit ?? 50,
+        offset: input?.offset ?? 0,
+        status: input?.status,
+      });
+    }),
+
+    // Get lines for a specific journal entry
+    lines: protectedProcedure.input(z.object({ journalEntryId: z.number() })).query(async ({ input }) => {
+      return getJournalLinesByEntry(input.journalEntryId);
+    }),
+
+    // Create manual journal adjustment — OWNER ONLY
+    adjust: protectedProcedure.input(z.object({
+      date: z.string(),
+      description: z.string().min(1),
+      lines: z.array(z.object({
+        accountId: z.number(),
+        debitAmount: z.number().min(0),
+        creditAmount: z.number().min(0),
+        description: z.string().optional(),
+      })).min(2),
+    })).mutation(async ({ ctx, input }) => {
+      const resolved = await resolveBusinessForUser(ctx.user.id, ctx.requestedBusinessId, ctx.user.role);
+      if (!resolved) throw new TRPCError({ code: "NOT_FOUND" });
+
+      // ─── OWNER-ONLY CHECK ───
+      if (!resolved.isOwner) {
+        throw new TRPCError({
+          code: "FORBIDDEN",
+          message: "Hanya akun master/owner yang bisa membuat jurnal penyesuaian",
+        });
+      }
+
+      const result = await createManualJournalAdjustment({
+        businessId: resolved.business.id,
+        date: input.date,
+        description: input.description,
+        createdByUserId: ctx.user.id,
+        lines: input.lines,
+      });
+
+      return result;
+    }),
+
+    // Reverse a specific journal entry — OWNER ONLY
+    reverse: protectedProcedure.input(z.object({
+      journalEntryId: z.number(),
+      reason: z.string().optional(),
+    })).mutation(async ({ ctx, input }) => {
+      const resolved = await resolveBusinessForUser(ctx.user.id, ctx.requestedBusinessId, ctx.user.role);
+      if (!resolved) throw new TRPCError({ code: "NOT_FOUND" });
+
+      // ─── OWNER-ONLY CHECK ───
+      if (!resolved.isOwner) {
+        throw new TRPCError({
+          code: "FORBIDDEN",
+          message: "Hanya akun master/owner yang bisa me-reverse jurnal",
+        });
+      }
+
+      const biz = resolved.business;
+
+      // Get the entry to reverse
+      const db = await getDb();
+      if (!db) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR" });
+
+      const [entry] = await db.select().from(journalEntries)
+        .where(and(eq(journalEntries.id, input.journalEntryId), eq(journalEntries.businessId, biz.id)))
+        .limit(1);
+
+      if (!entry) throw new TRPCError({ code: "NOT_FOUND", message: "Jurnal tidak ditemukan" });
+      if (entry.status === "reversed") throw new TRPCError({ code: "BAD_REQUEST", message: "Jurnal sudah di-reverse" });
+
+      // Get lines and create reversal
+      const lines = await getJournalLinesByEntry(entry.id);
+      const reversalLines = lines.map((line) => ({
+        accountId: line.accountId,
+        debitAmount: line.creditAmount,
+        creditAmount: line.debitAmount,
+        description: `[REVERSAL] ${line.description || ""}`,
+      }));
+
+      const result = await createJournalEntry({
+        businessId: biz.id,
+        date: new Date().toISOString().substring(0, 10),
+        description: input.reason || `[REVERSAL] ${entry.description}`,
+        sourceType: `${entry.sourceType}_reversal`,
+        sourceId: entry.sourceId ?? undefined,
+        reversalOfId: entry.id,
+        lines: reversalLines,
+      });
+
+      // Mark original as reversed
+      await db.update(journalEntries)
+        .set({ status: "reversed" })
+        .where(eq(journalEntries.id, entry.id));
+
+      return result;
     }),
   }),
 
@@ -4103,8 +4224,63 @@ Penting: Kembalikan HANYA JSON valid, tidak ada teks penjelasan.`,
 
       return { success: true };
     }),
-    delete: protectedProcedure.input(z.object({ id: z.number() })).mutation(async ({ input }) => {
-      await deletePurchaseOrder(input.id);
+    delete: protectedProcedure.input(z.object({ id: z.number() })).mutation(async ({ ctx, input }) => {
+      const { id } = input;
+      const resolved = await resolveBusinessForUser(ctx.user.id, ctx.requestedBusinessId, ctx.user.role);
+      if (!resolved) throw new TRPCError({ code: "NOT_FOUND" });
+      const businessId = resolved.business.id;
+
+      // ─── 1. Get PO data before delete ───
+      const po = await getPurchaseOrderById(id);
+
+      // ─── 2. Reverse stock if PO was received ───
+      if (po && po.receiptStatus === "received") {
+        try {
+          const poItems = await getPurchaseOrderItems(id);
+          const defaultWarehouse = await ensureDefaultWarehouse(businessId);
+          const journalDate = new Date().toISOString().substring(0, 10);
+
+          for (const item of poItems) {
+            if (!item.productId || item.qty <= 0) continue;
+            const ws = await getOrCreateWarehouseStock(defaultWarehouse.id, item.productId);
+            const newQty = Math.max(0, ws.quantity - item.qty);
+            await updateWarehouseStockQty(defaultWarehouse.id, item.productId, newQty);
+            await recalcProductStockFromWarehouses(item.productId);
+            await createStockLog({
+              businessId,
+              productId: item.productId,
+              date: journalDate,
+              movementType: "out",
+              qty: item.qty,
+              direction: -1,
+              stockBefore: ws.quantity,
+              stockAfter: newQty,
+              notes: `[REVERSAL] Hapus PO ${po.poNumber} — ${item.productName}`,
+            });
+          }
+        } catch (stockErr) {
+          console.error("[STOCK] PO delete stock reversal failed:", stockErr);
+        }
+      }
+
+      // ─── 3. Reverse all GL journal entries for this PO ───
+      try {
+        // Reverse all PO-related journal entries (po_received, po_payment, po_received_paid, po_partial_payment)
+        const reversedCount = await reverseJournalEntriesBySource(
+          businessId,
+          "po_received", // will auto-detect all related po_ source types
+          id,
+          `[REVERSAL] PO dihapus — ${po?.poNumber || `PO#${id}`}`
+        );
+        if (reversedCount > 0) {
+          console.log(`[GL] Reversed ${reversedCount} journal entries for PO ${id}`);
+        }
+      } catch (glErr) {
+        console.error("[GL] PO delete journal reversal failed:", glErr);
+      }
+
+      // ─── 4. Delete PO + items ───
+      await deletePurchaseOrder(id);
       return { success: true };
     }),
   }),

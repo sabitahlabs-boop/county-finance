@@ -6879,6 +6879,155 @@ export async function createJournalEntry(input: CreateJournalEntryInput, txConn?
 }
 
 /**
+ * Find all journal entries by sourceType and sourceId.
+ * Used for reversing journal entries when a PO (or other source) is deleted.
+ */
+export async function getJournalEntriesBySource(
+  businessId: number,
+  sourceType: string,
+  sourceId: number
+): Promise<JournalEntry[]> {
+  const db = await getDb();
+  if (!db) return [];
+  return db.select().from(journalEntries).where(
+    and(
+      eq(journalEntries.businessId, businessId),
+      eq(journalEntries.sourceType, sourceType),
+      eq(journalEntries.sourceId, sourceId),
+      eq(journalEntries.status, "posted"),
+    )
+  );
+}
+
+/**
+ * Get journal lines for a specific journal entry.
+ */
+export async function getJournalLinesByEntry(journalEntryId: number): Promise<JournalLine[]> {
+  const db = await getDb();
+  if (!db) return [];
+  return db.select().from(journalLines).where(eq(journalLines.journalEntryId, journalEntryId));
+}
+
+/**
+ * Reverse all posted journal entries for a given source (e.g. PO deleted).
+ * Creates new reversal entries (swap debit/credit) and marks originals as "reversed".
+ */
+export async function reverseJournalEntriesBySource(
+  businessId: number,
+  sourceType: string,
+  sourceId: number,
+  reason?: string
+): Promise<number> {
+  const entries = await getJournalEntriesBySource(businessId, sourceType, sourceId);
+  if (entries.length === 0) return 0;
+
+  // Also find entries with related source types (e.g. po_received, po_payment, po_received_paid, po_partial_payment)
+  const relatedTypes = getRelatedPOSourceTypes(sourceType);
+  let allEntries = [...entries];
+  for (const rt of relatedTypes) {
+    if (rt !== sourceType) {
+      const more = await getJournalEntriesBySource(businessId, rt, sourceId);
+      allEntries = allEntries.concat(more);
+    }
+  }
+
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+
+  let reversedCount = 0;
+  for (const entry of allEntries) {
+    // Get original lines
+    const lines = await getJournalLinesByEntry(entry.id);
+    if (lines.length === 0) continue;
+
+    // Create reversal entry — swap debit/credit
+    const reversalLines = lines.map((line) => ({
+      accountId: line.accountId,
+      debitAmount: line.creditAmount,   // swap
+      creditAmount: line.debitAmount,   // swap
+      description: `[REVERSAL] ${line.description || ""}`,
+    }));
+
+    await createJournalEntry({
+      businessId,
+      date: new Date().toISOString().substring(0, 10),
+      description: reason || `[REVERSAL] ${entry.description}`,
+      sourceType: `${entry.sourceType}_reversal`,
+      sourceId,
+      reversalOfId: entry.id,
+      lines: reversalLines,
+    });
+
+    // Mark original as reversed
+    await db.update(journalEntries)
+      .set({ status: "reversed" })
+      .where(eq(journalEntries.id, entry.id));
+
+    reversedCount++;
+  }
+
+  return reversedCount;
+}
+
+/** Helper: get all related PO source types for full reversal */
+function getRelatedPOSourceTypes(sourceType: string): string[] {
+  if (sourceType.startsWith("po_") || sourceType === "purchase_order") {
+    return ["po_received", "po_payment", "po_received_paid", "po_partial_payment", "purchase_order"];
+  }
+  return [sourceType];
+}
+
+/**
+ * Create a manual journal adjustment entry (master/owner only).
+ * This is for correcting GL entries manually.
+ */
+export async function createManualJournalAdjustment(input: {
+  businessId: number;
+  date: string;
+  description: string;
+  createdByUserId: number;
+  lines: JournalLineInput[];
+}): Promise<{ journalEntryId: number; entryNumber: string }> {
+  return createJournalEntry({
+    businessId: input.businessId,
+    date: input.date,
+    description: `[ADJUSTMENT] ${input.description}`,
+    sourceType: "manual_adjustment",
+    createdByUserId: input.createdByUserId,
+    lines: input.lines,
+  });
+}
+
+/**
+ * Get all accounts for a business (for manual journal adjustment form).
+ */
+export async function getAccountsByBusiness(businessId: number): Promise<Account[]> {
+  const db = await getDb();
+  if (!db) return [];
+  return db.select().from(accounts).where(eq(accounts.businessId, businessId));
+}
+
+/**
+ * Get all journal entries for a business (for journal list/review).
+ */
+export async function getJournalEntriesByBusiness(
+  businessId: number,
+  options?: { limit?: number; offset?: number; status?: string }
+): Promise<JournalEntry[]> {
+  const db = await getDb();
+  if (!db) return [];
+  const conditions = [eq(journalEntries.businessId, businessId)];
+  if (options?.status) conditions.push(eq(journalEntries.status, options.status as any));
+  const lim = options?.limit ?? 50;
+  const off = options?.offset ?? 0;
+  return db.select().from(journalEntries)
+    .where(and(...conditions))
+    .orderBy(sql`${journalEntries.id} DESC`)
+    .limit(lim)
+    .offset(off);
+}
+
+/**
  * Helper: Resolve account IDs for POS Checkout journal entry.
  * Returns the necessary account IDs, initializing CoA if needed.
  */
