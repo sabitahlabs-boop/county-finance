@@ -59,6 +59,7 @@ import {
   Megaphone,
   Truck,
   ScanBarcode,
+  FileUp,
   FileCheck,
   Store,
   ArrowRightLeft,
@@ -362,8 +363,8 @@ function DashboardLayoutContent({
 
     if (isAdmin) {
       const settingsIdx = items.findIndex((i) => !isGroup(i) && (i as MenuItem).path === "/pengaturan");
-      if (settingsIdx >= 0) items.splice(settingsIdx, 0, { icon: Shield, label: "Super Admin", path: "/admin" });
-      else items.push({ icon: Shield, label: "Super Admin", path: "/admin" });
+      if (settingsIdx >= 0) items.splice(settingsIdx, 0, { icon: Shield, label: "Super Admin", path: "/admin" }, { icon: FileUp, label: "Setup Klien", path: "/setup-klien" });
+      else items.push({ icon: Shield, label: "Super Admin", path: "/admin" }, { icon: FileUp, label: "Setup Klien", path: "/setup-klien" });
     }
 
     if (isTeamMember && memberPermissions) {

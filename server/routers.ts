@@ -309,6 +309,100 @@ export const appRouter = router({
       await updateBusinessPersonalSetupDone(biz.id);
       return { success: true };
     }),
+
+    // ─── Bulk Setup (Client Onboarding from Excel Template) ───
+    bulkSetup: protectedProcedure.input(z.object({
+      gudang: z.array(z.object({ name: z.string().min(1), address: z.string().optional() })).default([]),
+      produk: z.array(z.object({
+        name: z.string().min(1), sku: z.string().optional(), category: z.string().optional(), subcategory: z.string().optional(),
+        productType: z.enum(["barang", "jasa"]).default("barang"),
+        hpp: z.number().min(0).default(0), sellingPrice: z.number().min(0).default(0),
+        priceType: z.enum(["fixed", "dynamic"]).default("fixed"),
+        discountPercent: z.number().min(0).max(100).default(0),
+        unit: z.string().default("pcs"), stockMinimum: z.number().min(0).default(0),
+      })).default([]),
+      stokGudang: z.array(z.object({ productName: z.string(), warehouseName: z.string(), qty: z.number().min(0) })).default([]),
+      rekening: z.array(z.object({
+        accountName: z.string().min(1), accountType: z.enum(["bank", "ewallet", "cash"]),
+        bankName: z.string().optional(), accountNumber: z.string().optional(),
+        initialBalance: z.number().default(0),
+      })).default([]),
+      supplier: z.array(z.object({
+        name: z.string().min(1), phone: z.string().optional(), email: z.string().optional(), address: z.string().optional(),
+      })).default([]),
+    })).mutation(async ({ ctx, input }) => {
+      const biz = (await resolveBusinessForUser(ctx.user.id, ctx.requestedBusinessId, ctx.user.role))?.business;
+      if (!biz) throw new TRPCError({ code: "NOT_FOUND", message: "Bisnis tidak ditemukan" });
+      // Only admin (superadmin) can do bulk setup; regular users go through normal UI
+      if (ctx.user.role !== "admin") throw new TRPCError({ code: "FORBIDDEN", message: "Hanya admin yang bisa bulk setup" });
+
+      const today = new Date().toISOString().substring(0, 10);
+      const result = { gudang: 0, produk: 0, stokGudang: 0, rekening: 0, supplier: 0, errors: [] as string[] };
+
+      // 1. Create warehouses — track name→id mapping
+      const warehouseMap: Record<string, number> = {};
+      for (const g of input.gudang) {
+        try {
+          const id = await createWarehouse({ businessId: biz.id, name: g.name, address: g.address, isDefault: result.gudang === 0, isActive: true });
+          warehouseMap[g.name] = id;
+          result.gudang++;
+        } catch (e: any) { result.errors.push(`Gudang "${g.name}": ${e.message}`); }
+      }
+
+      // 2. Create products — track name→id mapping
+      const productMap: Record<string, number> = {};
+      for (const p of input.produk) {
+        try {
+          const categoryStr = p.subcategory ? `${p.category} / ${p.subcategory}` : (p.category || undefined);
+          const id = await safeInsertProduct({
+            businessId: biz.id, name: p.name, sku: p.sku || undefined, category: categoryStr,
+            productType: p.productType, hpp: p.hpp, sellingPrice: p.sellingPrice,
+            priceType: p.priceType, discountPercent: p.discountPercent,
+            unit: p.unit, stockMinimum: p.productType === "jasa" ? 0 : p.stockMinimum,
+            stockCurrent: 0,
+          });
+          productMap[p.name] = id;
+          result.produk++;
+        } catch (e: any) { result.errors.push(`Produk "${p.name}": ${e.message}`); }
+      }
+
+      // 3. Set warehouse stock + create stock logs
+      for (const s of input.stokGudang) {
+        const productId = productMap[s.productName];
+        const warehouseId = warehouseMap[s.warehouseName];
+        if (!productId) { result.errors.push(`Stok: produk "${s.productName}" tidak ditemukan`); continue; }
+        if (!warehouseId) { result.errors.push(`Stok: gudang "${s.warehouseName}" tidak ditemukan`); continue; }
+        if (s.qty <= 0) continue;
+        try {
+          await updateWarehouseStockQty(warehouseId, productId, s.qty);
+          await createStockLog({ businessId: biz.id, productId, date: today, movementType: "opening", qty: s.qty, direction: 1, stockBefore: 0, stockAfter: s.qty, notes: `Stok awal (bulk setup) — Gudang: ${s.warehouseName}` });
+          await recalcProductStockFromWarehouses(productId);
+          result.stokGudang++;
+        } catch (e: any) { result.errors.push(`Stok "${s.productName}" @ "${s.warehouseName}": ${e.message}`); }
+      }
+
+      // 4. Create bank accounts
+      for (const r of input.rekening) {
+        try {
+          await safeInsertBankAccount({
+            businessId: biz.id, accountName: r.accountName, accountType: r.accountType,
+            description: [r.bankName, r.accountNumber].filter(Boolean).join(" — ") || undefined,
+            initialBalance: r.initialBalance,
+          });
+          result.rekening++;
+        } catch (e: any) { result.errors.push(`Rekening "${r.accountName}": ${e.message}`); }
+      }
+
+      // 5. Create suppliers
+      for (const s of input.supplier) {
+        try {
+          await createSupplier({ businessId: biz.id, name: s.name, phone: s.phone, email: s.email, address: s.address });
+          result.supplier++;
+        } catch (e: any) { result.errors.push(`Supplier "${s.name}": ${e.message}`); }
+      }
+
+      return result;
+    }),
   }),
 
   // ─── Savings Goals (Tabungan Impian) ───
