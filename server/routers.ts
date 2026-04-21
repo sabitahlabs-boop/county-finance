@@ -665,23 +665,33 @@ export const appRouter = router({
       const product = await getProductById(input.productId);
       if (!product || product.businessId !== biz.id) throw new TRPCError({ code: "NOT_FOUND" });
       const direction = input.type === "out" ? -1 : 1;
-      const newStock = product.stockCurrent + (input.qty * direction);
-      if (newStock < 0) throw new TRPCError({ code: "BAD_REQUEST", message: `Stok tidak cukup. Stok saat ini: ${product.stockCurrent}` });
-      const today = new Date().toISOString().substring(0, 10);
-      await createStockLog({ businessId: biz.id, productId: product.id, date: today, movementType: input.type, qty: input.qty, direction, stockBefore: product.stockCurrent, stockAfter: newStock, notes: input.notes || "" });
-      await updateProduct(product.id, { stockCurrent: newStock });
-      // Also update warehouse stock if warehouseId provided
+      const stockBefore = product.stockCurrent;
+
+      // Resolve warehouse — use provided or default
       let whId = input.warehouseId;
       if (!whId) {
         const defWh = await getDefaultWarehouse(biz.id);
         if (defWh) whId = defWh.id;
       }
+
+      let stockAfter: number;
       if (whId) {
+        // Update warehouse stock first → recalculates products.stockCurrent automatically
         try {
-              await adjustWarehouseStock({ warehouseId: whId, productId: product.id, qty: input.qty, direction: direction as 1 | -1 });
-        } catch { /* warehouse stock sync best-effort */ }
+          stockAfter = await adjustWarehouseStock({ warehouseId: whId, productId: product.id, qty: input.qty, direction: direction as 1 | -1 });
+        } catch (err: any) {
+          throw new TRPCError({ code: "BAD_REQUEST", message: err?.message || `Stok tidak cukup. Stok saat ini: ${stockBefore}` });
+        }
+      } else {
+        // Fallback: no warehouse found, update product directly (edge case)
+        stockAfter = stockBefore + (input.qty * direction);
+        if (stockAfter < 0) throw new TRPCError({ code: "BAD_REQUEST", message: `Stok tidak cukup. Stok saat ini: ${stockBefore}` });
+        await updateProduct(product.id, { stockCurrent: stockAfter });
       }
-      return { stockBefore: product.stockCurrent, stockAfter: newStock };
+
+      const today = new Date().toISOString().substring(0, 10);
+      await createStockLog({ businessId: biz.id, productId: product.id, date: today, movementType: input.type, qty: input.qty, direction, stockBefore, stockAfter, notes: input.notes || "" });
+      return { stockBefore, stockAfter };
     }),
     delete: protectedProcedure.input(z.object({ id: z.number() })).mutation(async ({ ctx, input }) => {
       const biz = (await resolveBusinessForUser(ctx.user.id, ctx.requestedBusinessId, ctx.user.role))?.business;
@@ -2364,6 +2374,29 @@ Penting: Kembalikan HANYA JSON valid, tidak ada teks penjelasan.`,
     })).mutation(async ({ input }) => {
       const result = await clearBusinessData(input.businessId);
       return result;
+    }),
+    // Reconcile stock: recalculate products.stockCurrent from SUM(warehouse_stock)
+    reconcileStock: adminProcedure.input(z.object({
+      businessId: z.number().optional(), // if omitted, reconcile ALL businesses
+    })).mutation(async ({ input }) => {
+      const businesses = input.businessId
+        ? [await getBusinessById(input.businessId)].filter(Boolean)
+        : await getAllBusinesses();
+      let totalFixed = 0;
+      const details: { businessId: number; businessName: string; productId: number; productName: string; oldStock: number; newStock: number }[] = [];
+      for (const biz of businesses) {
+        if (!biz) continue;
+        const products = await getProductsByBusiness(biz.id);
+        for (const p of products) {
+          const oldStock = p.stockCurrent;
+          const newStock = await recalcProductStockFromWarehouses(p.id);
+          if (oldStock !== newStock) {
+            totalFixed++;
+            details.push({ businessId: biz.id, businessName: biz.name, productId: p.id, productName: p.name, oldStock, newStock });
+          }
+        }
+      }
+      return { totalFixed, details };
     }),
   }),
 

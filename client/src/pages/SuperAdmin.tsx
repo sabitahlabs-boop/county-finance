@@ -129,6 +129,20 @@ export default function SuperAdmin() {
     onError: (err) => toast.error("Gagal hapus: " + err.message),
   });
 
+  // Stock reconciliation
+  const [reconcileResult, setReconcileResult] = useState<{ totalFixed: number; details: { businessId: number; businessName: string; productId: number; productName: string; oldStock: number; newStock: number }[] } | null>(null);
+  const reconcileStock = trpc.admin.reconcileStock.useMutation({
+    onSuccess: (result) => {
+      setReconcileResult(result);
+      if (result.totalFixed === 0) {
+        toast.success("Semua stok sudah konsisten! Tidak ada yang perlu diperbaiki.");
+      } else {
+        toast.success(`${result.totalFixed} produk berhasil di-reconcile`);
+      }
+    },
+    onError: (err) => toast.error("Gagal reconcile: " + err.message),
+  });
+
   if (user?.role !== "admin") {
     return (
       <div className="flex items-center justify-center py-20">
@@ -212,6 +226,7 @@ export default function SuperAdmin() {
           <TabsTrigger value="users"><Users className="h-4 w-4 mr-1.5" /> Pengguna</TabsTrigger>
           <TabsTrigger value="affiliates"><Megaphone className="h-4 w-4 mr-1.5" /> Affiliate</TabsTrigger>
           <TabsTrigger value="dummy"><Database className="h-4 w-4 mr-1.5" /> Dummy Data</TabsTrigger>
+          <TabsTrigger value="tools"><RefreshCw className="h-4 w-4 mr-1.5" /> Tools</TabsTrigger>
         </TabsList>
 
         {/* Pro Links Tab */}
@@ -654,6 +669,70 @@ export default function SuperAdmin() {
                   </div>
                 </div>
               </div>
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        <TabsContent value="tools" className="mt-4 space-y-4">
+          <Card>
+            <CardContent className="pt-6 space-y-4">
+              <div>
+                <h3 className="font-semibold text-lg flex items-center gap-2"><RefreshCw className="h-5 w-5" /> Reconcile Stok</h3>
+                <p className="text-sm text-muted-foreground mt-1">
+                  Hitung ulang semua products.stockCurrent dari total warehouse_stock. Gunakan ini untuk memperbaiki stok yang tidak sinkron (misalnya karena double-counting).
+                </p>
+              </div>
+              <div className="flex gap-2 flex-wrap">
+                <Button
+                  onClick={() => reconcileStock.mutate({})}
+                  disabled={reconcileStock.isPending}
+                >
+                  {reconcileStock.isPending ? (
+                    <><Loader2 className="h-4 w-4 mr-1 animate-spin" /> Reconciling semua bisnis...</>
+                  ) : (
+                    <><RefreshCw className="h-4 w-4 mr-1" /> Reconcile Semua Bisnis</>
+                  )}
+                </Button>
+              </div>
+              {reconcileResult && (
+                <div className="mt-4">
+                  {reconcileResult.totalFixed === 0 ? (
+                    <div className="p-3 rounded-md bg-green-500/10 border border-green-500/20 text-green-700 dark:text-green-400 text-sm">
+                      <CheckCircle className="h-4 w-4 inline mr-1.5" />
+                      Semua stok sudah konsisten. Tidak ada yang perlu diperbaiki.
+                    </div>
+                  ) : (
+                    <div className="space-y-2">
+                      <div className="p-3 rounded-md bg-yellow-500/10 border border-yellow-500/20 text-yellow-700 dark:text-yellow-400 text-sm">
+                        <AlertTriangle className="h-4 w-4 inline mr-1.5" />
+                        {reconcileResult.totalFixed} produk telah di-reconcile
+                      </div>
+                      <div className="max-h-64 overflow-y-auto border rounded-md">
+                        <table className="w-full text-sm">
+                          <thead className="sticky top-0 bg-muted">
+                            <tr>
+                              <th className="text-left p-2">Bisnis</th>
+                              <th className="text-left p-2">Produk</th>
+                              <th className="text-right p-2">Stok Lama</th>
+                              <th className="text-right p-2">Stok Baru</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {reconcileResult.details.map((d, i) => (
+                              <tr key={i} className="border-t">
+                                <td className="p-2">{d.businessName}</td>
+                                <td className="p-2">{d.productName}</td>
+                                <td className="p-2 text-right text-red-500">{d.oldStock}</td>
+                                <td className="p-2 text-right text-green-500">{d.newStock}</td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
             </CardContent>
           </Card>
         </TabsContent>
