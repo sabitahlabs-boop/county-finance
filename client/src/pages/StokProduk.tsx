@@ -14,6 +14,7 @@ import { generateSKU } from "../../../shared/productCategories";
 import { toast } from "sonner";
 import { COGSCalculator } from "@/components/COGSCalculator";
 import { getProxiedImageUrl } from "@/lib/utils";
+import { HelpTooltip, HelpToggleButton, useHelpToggle, HELP_CONTENT } from "@/components/HelpSystem";
 
 // ─── Image Upload Helper ───
 function ImageUploader({ currentUrl, onUpload }: { currentUrl?: string | null; onUpload: (url: string) => void }) {
@@ -208,6 +209,7 @@ Kopi Susu,SKU-003,Minuman,5000,12000,30,5,gelas`}
 
 // ─── Main Component ───
 export default function StokProduk() {
+  const { showHelp, toggleHelp } = useHelpToggle();
   const [addOpen, setAddOpen] = useState(false);
   const [editProduct, setEditProduct] = useState<any>(null);
   const [adjustProduct, setAdjustProduct] = useState<any>(null);
@@ -288,9 +290,17 @@ export default function StokProduk() {
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-bold tracking-tight">Stok Produk</h1>
+          <div className="flex items-center gap-2 mb-1">
+            <h1 className="text-2xl font-bold tracking-tight">Stok Produk</h1>
+            <HelpTooltip
+              title={HELP_CONTENT.stok_hpp.title}
+              content={HELP_CONTENT.stok_hpp.content}
+              show={showHelp}
+            />
+          </div>
           <p className="text-sm text-muted-foreground">Kelola produk dan pantau stok bisnis Anda</p>
         </div>
+        <HelpToggleButton showHelp={showHelp} onToggle={toggleHelp} />
         <div className="flex gap-2 flex-wrap">
           <Button variant="outline" size="sm" onClick={() => setBulkOpen(true)}>
             <Upload className="h-4 w-4 mr-1.5" /> Import CSV
@@ -387,7 +397,14 @@ export default function StokProduk() {
                     <Input type="number" value={addForm.stockCurrent} onChange={(e) => setAddForm({ ...addForm, stockCurrent: e.target.value })} />
                   </div>
                   <div className="space-y-1.5">
-                    <Label className="text-xs">Stok Minimum</Label>
+                    <div className="flex items-center gap-1">
+                      <Label className="text-xs">Stok Minimum</Label>
+                      <HelpTooltip
+                        title={HELP_CONTENT.stok_minimum.title}
+                        content={HELP_CONTENT.stok_minimum.content}
+                        show={showHelp}
+                      />
+                    </div>
                     <Input type="number" value={addForm.stockMinimum} onChange={(e) => setAddForm({ ...addForm, stockMinimum: e.target.value })} />
                   </div>
                   <div className="space-y-1.5">
@@ -527,11 +544,11 @@ export default function StokProduk() {
                   <div className="grid grid-cols-2 gap-2 text-sm">
                     <div>
                       <p className="text-xs text-muted-foreground">HPP</p>
-                      <p className="font-medium">{formatRupiah(p.hpp)}</p>
+                      <p className="font-medium truncate" title={formatRupiah(p.hpp)}>{formatRupiah(p.hpp)}</p>
                     </div>
                     <div>
                       <p className="text-xs text-muted-foreground">Harga Jual</p>
-                      <p className="font-medium text-emerald-600">{formatRupiah(p.sellingPrice)}</p>
+                      <p className="font-medium text-emerald-600 truncate" title={formatRupiah(p.sellingPrice)}>{formatRupiah(p.sellingPrice)}</p>
                     </div>
                     <div>
                       <p className="text-xs text-muted-foreground">Stok</p>

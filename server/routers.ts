@@ -3950,6 +3950,44 @@ Penting: Kembalikan HANYA JSON valid, tidak ada teks penjelasan.`,
       const { id, paidAmount, bankAccountId, ...updateData } = input;
       await updatePurchaseOrder(id, updateData);
 
+      // ─── STOCK INTEGRATION: PO received → increase inventory ───
+      // When goods are received, add qty to warehouse stock + product stockCurrent + stockLog
+      if (newReceipt === "received" && prevReceipt !== "received") {
+        try {
+          const poItems = await getPurchaseOrderItems(id);
+          const defaultWarehouse = await ensureDefaultWarehouse(businessId);
+          const journalDate = new Date().toISOString().substring(0, 10);
+
+          for (const item of poItems) {
+            if (!item.productId || item.qty <= 0) continue;
+
+            const product = await getProductById(item.productId);
+            if (!product) continue;
+
+            // Update warehouse stock
+            const ws = await getOrCreateWarehouseStock(defaultWarehouse.id, item.productId);
+            const newQty = ws.quantity + item.qty;
+            await updateWarehouseStockQty(defaultWarehouse.id, item.productId, newQty);
+            await recalcProductStockFromWarehouses(item.productId);
+
+            // Create stock log
+            await createStockLog({
+              businessId,
+              productId: item.productId,
+              date: journalDate,
+              movementType: "in",
+              qty: item.qty,
+              direction: 1,
+              stockBefore: ws.quantity,
+              stockAfter: newQty,
+              notes: `Pembelian PO ${po.poNumber} — ${item.productName}`,
+            });
+          }
+        } catch (stockErr) {
+          console.error("[STOCK] PO received stock update failed:", stockErr);
+        }
+      }
+
       // ─── GL JOURNAL INTEGRATION (best-effort, non-blocking) ───
       // Accounting rules (SAK EMKM):
       // 1. PO created (unpaid, not received) → No journal (off-balance sheet)

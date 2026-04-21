@@ -569,8 +569,8 @@ export default function POS() {
                     <span className="text-sm font-bold w-6 text-center">{item.qty}</span>
                     <Button variant="outline" size="icon" className="h-7 w-7 rounded-full" onClick={() => updateQty(item.productId, 1)}><Plus className="h-3 w-3" /></Button>
                   </div>
-                  <div className="text-right min-w-[70px]">
-                    <p className="text-xs font-bold">{formatRupiah(item.price * item.qty)}</p>
+                  <div className="text-right min-w-[80px]">
+                    <p className="text-xs font-bold truncate" title={formatRupiah(item.price * item.qty)}>{formatRupiah(item.price * item.qty)}</p>
                   </div>
                   <Button variant="ghost" size="icon" className="h-7 w-7 text-destructive hover:text-destructive shrink-0" onClick={() => removeFromCart(item.productId)}>
                     <X className="h-3.5 w-3.5" />

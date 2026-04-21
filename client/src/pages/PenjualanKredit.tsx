@@ -400,13 +400,13 @@ export default function PenjualanKredit() {
                       <div className="flex-grow min-w-0">
                         <p className="font-medium truncate">{credit.clientName}</p>
                       </div>
-                      <div className="flex-shrink-0 w-24 text-right">
+                      <div className="flex-shrink-0 w-28 text-right truncate" title={formatRupiah(credit.totalAmount)}>
                         {formatRupiah(credit.totalAmount)}
                       </div>
-                      <div className="flex-shrink-0 w-20 text-right text-green-600 dark:text-green-400">
+                      <div className="flex-shrink-0 w-28 text-right text-green-600 dark:text-green-400 truncate" title={formatRupiah(credit.paidAmount)}>
                         {formatRupiah(credit.paidAmount)}
                       </div>
-                      <div className="flex-shrink-0 w-20 text-right text-orange-600 dark:text-orange-400">
+                      <div className="flex-shrink-0 w-28 text-right text-orange-600 dark:text-orange-400 truncate" title={formatRupiah(credit.remainingAmount)}>
                         {formatRupiah(credit.remainingAmount)}
                       </div>
                       <div className="flex-shrink-0">
@@ -418,7 +418,7 @@ export default function PenjualanKredit() {
                           {getStatusLabel(credit.status)}
                         </span>
                       </div>
-                      <div className="flex-shrink-0 w-24 text-right text-xs text-muted-foreground">
+                      <div className="flex-shrink-0 w-28 text-right text-xs text-muted-foreground truncate">
                         {credit.dueDate ? new Date(credit.dueDate).toLocaleDateString("id-ID") : "-"}
                       </div>
                     </div>

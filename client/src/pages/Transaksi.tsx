@@ -16,6 +16,7 @@ import { toast } from "sonner";
 import { useLocation, useSearch } from "wouter";
 import { motion, AnimatePresence } from "framer-motion";
 import { ScanToStockDialog } from "@/components/ScanToStockDialog";
+import { HelpTooltip, HelpToggleButton, useHelpToggle, HELP_CONTENT } from "@/components/HelpSystem";
 
 // Hook to get user's bank accounts for payment method dropdown
 function useBankAccountOptions() {
@@ -509,6 +510,7 @@ function ScanReceiptDialog({ open, onClose, onResult }: {
 
 export default function Transaksi() {
   const now = useMemo(() => new Date(), []);
+  const { showHelp, toggleHelp } = useHelpToggle();
   const [month, setMonth] = useState(now.getMonth() + 1);
   const [year, setYear] = useState(now.getFullYear());
   const [typeFilter, setTypeFilter] = useState<string>("all");
@@ -715,9 +717,17 @@ export default function Transaksi() {
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-bold tracking-tight">Transaksi</h1>
+          <div className="flex items-center gap-2 mb-1">
+            <h1 className="text-2xl font-bold tracking-tight">Transaksi</h1>
+            <HelpTooltip
+              title={HELP_CONTENT.transaksi_pemasukan.title}
+              content={HELP_CONTENT.transaksi_pemasukan.content}
+              show={showHelp}
+            />
+          </div>
           <p className="text-sm text-muted-foreground">Catat pemasukan dan pengeluaran bisnis Anda</p>
         </div>
+        <HelpToggleButton showHelp={showHelp} onToggle={toggleHelp} />
         <div className="flex items-center gap-2">
           <Button variant="outline" onClick={() => setScanOpen(true)} className="gap-2">
             <Camera className="h-4 w-4" /> Scan Struk
@@ -1143,6 +1153,11 @@ export default function Transaksi() {
             <DialogTitle className="flex items-center gap-2 text-destructive">
               <Ban className="h-5 w-5" />
               Void Transaksi
+              <HelpTooltip
+                title={HELP_CONTENT.transaksi_void.title}
+                content={HELP_CONTENT.transaksi_void.content}
+                show={showHelp}
+              />
             </DialogTitle>
           </DialogHeader>
           {voidDialog && (

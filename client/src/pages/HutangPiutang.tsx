@@ -18,6 +18,7 @@ import {
 import { formatRupiah, PAYMENT_METHODS } from "../../../shared/finance";
 import { motion, AnimatePresence } from "framer-motion";
 import { toast } from "sonner";
+import { HelpTooltip, HelpToggleButton, useHelpToggle, HELP_CONTENT } from "@/components/HelpSystem";
 
 function StatusBadge({ status }: { status: string }) {
   if (status === "lunas") return <Badge className="bg-green-100 dark:bg-green-900 text-green-700 dark:text-green-300 dark:bg-green-900/30 dark:text-green-400"><CheckCircle2 className="h-3 w-3 mr-1" />Lunas</Badge>;
@@ -26,6 +27,7 @@ function StatusBadge({ status }: { status: string }) {
 }
 
 export default function HutangPiutang() {
+  const { showHelp, toggleHelp } = useHelpToggle();
   const [tab, setTab] = useState<"hutang" | "piutang">("piutang");
   const [showForm, setShowForm] = useState(false);
   const [showPayment, setShowPayment] = useState<number | null>(null);
@@ -111,12 +113,20 @@ export default function HutangPiutang() {
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-bold flex items-center gap-2">
-            <HandCoins className="h-6 w-6 text-[#1E4D9B]" />
-            Hutang & Piutang
-          </h1>
+          <div className="flex items-center gap-2 mb-1">
+            <h1 className="text-2xl font-bold flex items-center gap-2">
+              <HandCoins className="h-6 w-6 text-[#1E4D9B]" />
+              Hutang & Piutang
+            </h1>
+            <HelpTooltip
+              title={HELP_CONTENT.hutang_vs_piutang.title}
+              content={HELP_CONTENT.hutang_vs_piutang.content}
+              show={showHelp}
+            />
+          </div>
           <p className="text-sm text-muted-foreground mt-1">Kelola hutang dan piutang bisnis Anda</p>
         </div>
+        <HelpToggleButton showHelp={showHelp} onToggle={toggleHelp} />
         <Button onClick={() => { setForm(f => ({ ...f, type: tab })); resetForm(); setShowForm(true); }} className="bg-gradient-to-r from-[#1E4D9B] to-[#2563EB]">
           <Plus className="h-4 w-4 mr-2" /> Tambah {tab === "hutang" ? "Hutang" : "Piutang"}
         </Button>

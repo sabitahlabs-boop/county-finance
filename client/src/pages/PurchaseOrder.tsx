@@ -16,6 +16,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { formatRupiah } from '../../../shared/finance';
 import { trpc } from '@/lib/trpc';
 import { toast } from 'sonner';
+import { HelpTooltip, HelpToggleButton, useHelpToggle, HELP_CONTENT } from '@/components/HelpSystem';
 
 // ─── Helper: Rupiah formatting for inputs ───
 function formatThousands(n: number): string {
@@ -71,39 +72,7 @@ function RupiahInput({ value, onChange, placeholder, className }: {
 }
 
 // ─── Contextual Help Tooltip ───
-function HelpTooltip({ title, content, show }: { title: string; content: string; show: boolean }) {
-  const [visible, setVisible] = useState(false);
-  if (!show) return null;
-  return (
-    <div className="relative inline-flex ml-1.5">
-      <button
-        onClick={() => setVisible(!visible)}
-        className="text-slate-500 hover:text-emerald-400 transition-colors"
-        title={title}
-      >
-        <HelpCircle className="w-4 h-4" />
-      </button>
-      <AnimatePresence>
-        {visible && (
-          <motion.div
-            initial={{ opacity: 0, y: 4, scale: 0.95 }}
-            animate={{ opacity: 1, y: 0, scale: 1 }}
-            exit={{ opacity: 0, y: 4, scale: 0.95 }}
-            className="absolute left-6 top-0 z-50 w-72 p-3 rounded-lg bg-slate-800 border border-emerald-500/30 shadow-xl"
-          >
-            <div className="flex justify-between items-start mb-1.5">
-              <span className="text-sm font-semibold text-emerald-400">{title}</span>
-              <button onClick={() => setVisible(false)} className="text-slate-500 hover:text-white">
-                <X className="w-3 h-3" />
-              </button>
-            </div>
-            <p className="text-xs text-slate-300 leading-relaxed">{content}</p>
-          </motion.div>
-        )}
-      </AnimatePresence>
-    </div>
-  );
-}
+// HelpTooltip imported from shared component
 
 // ─── Product Autocomplete ───
 function ProductAutocomplete({ value, onChange, products }: {
@@ -640,16 +609,16 @@ const NewPODialog = ({ showHelp }: { showHelp: boolean }) => {
             <div className="space-y-3">
               {/* Header */}
               <div className="grid grid-cols-12 gap-2 px-1 text-xs font-medium text-slate-500">
-                <div className="col-span-5">Nama Produk</div>
+                <div className="col-span-4">Nama Produk</div>
                 <div className="col-span-2 text-center">Jumlah</div>
-                <div className="col-span-3 text-center">Harga Beli/Unit</div>
-                <div className="col-span-2 text-right">Subtotal</div>
+                <div className="col-span-3 text-center">Harga/Unit</div>
+                <div className="col-span-3 text-right">Subtotal</div>
               </div>
 
               {formData.items.map((item, idx) => (
                 <div key={idx} className="grid grid-cols-12 gap-2 items-center bg-slate-800/30 rounded-lg p-2 border border-slate-700/50">
                   {/* Product name with autocomplete */}
-                  <div className="col-span-5">
+                  <div className="col-span-4">
                     <ProductAutocomplete
                       value={item.productName}
                       onChange={(name) => handleProductSelect(idx, name)}
@@ -680,14 +649,14 @@ const NewPODialog = ({ showHelp }: { showHelp: boolean }) => {
                   </div>
 
                   {/* Subtotal + delete */}
-                  <div className="col-span-2 flex items-center justify-end gap-1">
-                    <span className="text-emerald-400 text-sm font-semibold whitespace-nowrap">
+                  <div className="col-span-3 flex items-center justify-end gap-1 min-w-0">
+                    <span className="text-emerald-400 text-sm font-semibold truncate" title={formatRupiah(item.qty * item.unitPrice)}>
                       {formatRupiah(item.qty * item.unitPrice)}
                     </span>
                     {formData.items.length > 1 && (
                       <button
                         onClick={() => handleRemoveItem(idx)}
-                        className="text-slate-500 hover:text-red-400 transition-colors p-1"
+                        className="text-slate-500 hover:text-red-400 transition-colors p-1 flex-shrink-0"
                       >
                         <Trash2 className="w-3.5 h-3.5" />
                       </button>
@@ -975,16 +944,7 @@ const SupplierTab = () => {
 };
 
 export default function PurchaseOrderPage() {
-  const [showHelp, setShowHelp] = useState(() => {
-    try { return localStorage.getItem("county_show_help") !== "false"; } catch { return true; }
-  });
-
-  const toggleHelp = () => {
-    const next = !showHelp;
-    setShowHelp(next);
-    try { localStorage.setItem("county_show_help", String(next)); } catch {}
-    toast.success(next ? "Mode bantuan diaktifkan" : "Mode bantuan dinonaktifkan");
-  };
+  const { showHelp, toggleHelp } = useHelpToggle();
 
   return (
     <div className="min-h-screen bg-slate-950 p-6">
@@ -1005,17 +965,7 @@ export default function PurchaseOrderPage() {
             </div>
             <p className="text-slate-400 mt-1">Kelola pesanan pembelian barang ke supplier</p>
           </div>
-          <button
-            onClick={toggleHelp}
-            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-all ${
-              showHelp
-                ? 'bg-emerald-600/20 text-emerald-400 border border-emerald-500/30'
-                : 'bg-slate-800 text-slate-500 border border-slate-700'
-            }`}
-          >
-            <HelpCircle className="w-3.5 h-3.5" />
-            {showHelp ? 'Bantuan ON' : 'Bantuan OFF'}
-          </button>
+          <HelpToggleButton showHelp={showHelp} onToggle={toggleHelp} />
         </div>
 
         {showHelp && (
