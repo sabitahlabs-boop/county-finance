@@ -202,7 +202,7 @@ function Router() {
       <Route path="/stok">{() => <AuthenticatedRoute component={StokProdukPage} />}</Route>
       <Route path="/laporan">{() => <AuthenticatedRoute component={LaporanPage} />}</Route>
       <Route path="/pajak">{() => <AuthenticatedRoute component={PajakPage} />}</Route>
-      <Route path="/pengaturan">{() => <ProtectedRoute component={PengaturanPage} allowedRoles={["admin", "owner"]} />}</Route>
+      <Route path="/pengaturan">{() => <AuthenticatedRoute component={PengaturanPage} />}</Route>
       <Route path="/admin">{() => <ProtectedRoute component={SuperAdminPage} allowedRoles={["admin"]} />}</Route>
       <Route path="/upgrade">{() => <AuthenticatedRoute component={UpgradePage} />}</Route>
       <Route path="/pos">{() => <AuthenticatedRoute component={POSPage} />}</Route>
@@ -211,13 +211,13 @@ function Router() {
       <Route path="/riwayat-stok">{() => <AuthenticatedRoute component={RiwayatStok} />}</Route>
       <Route path="/client">{() => <AuthenticatedRoute component={ClientManagement} />}</Route>
       <Route path="/hutang-piutang">{() => <AuthenticatedRoute component={HutangPiutang} />}</Route>
-      <Route path="/anggaran">{() => <ProtectedRoute component={Anggaran} allowedRoles={["admin", "owner"]} />}</Route>
+      <Route path="/anggaran">{() => <AuthenticatedRoute component={Anggaran} />}</Route>
       <Route path="/analitik">{() => <AuthenticatedRoute component={SalesAnalytics} />}</Route>
       <Route path="/gudang">{() => <ProPlusRoute component={GudangPage} />}</Route>
       <Route path="/purchase-order">{() => <AuthenticatedRoute component={PurchaseOrderPage} />}</Route>
       <Route path="/marketing">{() => <ProPlusRoute component={MarketingPage} />}</Route>
       <Route path="/staff">{() => <ProPlusRoute component={StaffManagementPage} />}</Route>
-      <Route path="/invoice-settings">{() => <ProtectedRoute component={InvoiceSettingsPage} allowedRoles={["admin", "owner"]} />}</Route>
+      <Route path="/invoice-settings">{() => <AuthenticatedRoute component={InvoiceSettingsPage} />}</Route>
       <Route path="/barcode">{() => <AuthenticatedRoute component={BarcodeManagerPage} />}</Route>
       <Route path="/select-warehouse" component={WarehouseSelectPage} />
       <Route path="/rekening-koran">{() => <AuthenticatedRoute component={RekeningKoranPage} />}</Route>
