@@ -258,7 +258,7 @@ export default function StokProduk() {
     onError: (err) => toast.error(err.message),
   });
 
-  const [addForm, setAddForm] = useState({ name: "", sku: "", category: "", subcategory: "", hpp: "", sellingPrice: "", stockCurrent: "0", stockMinimum: "0", unit: "pcs", priceType: "fixed" as "fixed" | "dynamic", discountPercent: "0", warehouseId: "" });
+  const [addForm, setAddForm] = useState({ name: "", sku: "", category: "", subcategory: "", hpp: "", sellingPrice: "", stockCurrent: "0", stockMinimum: "0", unit: "pcs", productType: "barang" as "barang" | "jasa", priceType: "fixed" as "fixed" | "dynamic", discountPercent: "0", warehouseId: "" });
   const { data: warehouseList = [] } = trpc.warehouse.list.useQuery();
   const [adjustForm, setAdjustForm] = useState({ qty: "", type: "in" as "in" | "out" | "adjustment", notes: "" });
 
@@ -308,7 +308,7 @@ export default function StokProduk() {
           <Button variant="outline" size="sm" onClick={handleExportCSV}>
             <Download className="h-4 w-4 mr-1.5" /> Export CSV
           </Button>
-          <Dialog open={addOpen} onOpenChange={(open) => { setAddOpen(open); if (open) { setAddForm({ name: "", sku: "", category: "", subcategory: "", hpp: "", sellingPrice: "", stockCurrent: "0", stockMinimum: "0", unit: "pcs", priceType: "fixed", discountPercent: "0", warehouseId: "" }); setImageUrl(""); } }}>
+          <Dialog open={addOpen} onOpenChange={(open) => { setAddOpen(open); if (open) { setAddForm({ name: "", sku: "", category: "", subcategory: "", hpp: "", sellingPrice: "", stockCurrent: "0", stockMinimum: "0", unit: "pcs", productType: "barang", priceType: "fixed", discountPercent: "0", warehouseId: "" }); setImageUrl(""); } }}>
             <DialogTrigger asChild>
               <Button size="sm"><Plus className="h-4 w-4 mr-1.5" /> Tambah Produk</Button>
             </DialogTrigger>
@@ -317,7 +317,21 @@ export default function StokProduk() {
               <div className="space-y-3 pt-2">
                 <ImageUploader currentUrl={null} onUpload={(url) => setImageUrl(url)} />
                 <div className="space-y-1.5">
-                  <Label className="text-xs">Nama Produk *</Label>
+                  <Label className="text-xs">Tipe *</Label>
+                  <div className="flex gap-2">
+                    <Button type="button" size="sm" variant={addForm.productType === "barang" ? "default" : "outline"} className="flex-1" onClick={() => setAddForm({ ...addForm, productType: "barang" })}>
+                      Barang
+                    </Button>
+                    <Button type="button" size="sm" variant={addForm.productType === "jasa" ? "default" : "outline"} className="flex-1" onClick={() => setAddForm({ ...addForm, productType: "jasa", stockCurrent: "0", stockMinimum: "0" })}>
+                      Jasa
+                    </Button>
+                  </div>
+                  {addForm.productType === "jasa" && (
+                    <p className="text-[10px] text-blue-500">Jasa tidak memerlukan stok — stok tidak berkurang saat dijual via POS</p>
+                  )}
+                </div>
+                <div className="space-y-1.5">
+                  <Label className="text-xs">Nama {addForm.productType === "jasa" ? "Jasa" : "Produk"} *</Label>
                   <Input
                     value={addForm.name}
                     onChange={(e) => {
@@ -325,7 +339,7 @@ export default function StokProduk() {
                       const autoSku = name.length >= 2 && !addForm.sku ? generateSKU(name) : addForm.sku;
                       setAddForm({ ...addForm, name, sku: autoSku });
                     }}
-                    placeholder="Nama produk"
+                    placeholder={addForm.productType === "jasa" ? "Nama jasa (contoh: Servis AC)" : "Nama produk"}
                   />
                 </div>
                 <div className="space-y-1.5">
@@ -391,7 +405,7 @@ export default function StokProduk() {
                     Harga akan diinput manual saat transaksi di POS/Kasir.
                   </div>
                 )}
-                <div className="grid grid-cols-3 gap-3">
+                {addForm.productType === "barang" && (<div className="grid grid-cols-3 gap-3">
                   <div className="space-y-1.5">
                     <Label className="text-xs">Stok Awal</Label>
                     <Input type="number" value={addForm.stockCurrent} onChange={(e) => setAddForm({ ...addForm, stockCurrent: e.target.value })} />
@@ -416,7 +430,7 @@ export default function StokProduk() {
                       </SelectContent>
                     </Select>
                   </div>
-                </div>
+                </div>)}
                 {/* Warehouse selector */}
                 {warehouseList.length > 0 && (
                   <div className="space-y-1.5">
@@ -441,8 +455,10 @@ export default function StokProduk() {
                   createProd.mutate({
                     name: addForm.name, sku: addForm.sku || undefined, category: categoryStr,
                     hpp: parseInt(addForm.hpp) || 0, sellingPrice: parseInt(addForm.sellingPrice) || 0,
-                    stockCurrent: parseInt(addForm.stockCurrent) || 0, stockMinimum: parseInt(addForm.stockMinimum) || 0,
+                    stockCurrent: addForm.productType === "jasa" ? 0 : (parseInt(addForm.stockCurrent) || 0),
+                    stockMinimum: addForm.productType === "jasa" ? 0 : (parseInt(addForm.stockMinimum) || 0),
                     unit: addForm.unit, imageUrl: imageUrl || undefined,
+                    productType: addForm.productType,
                     priceType: addForm.priceType,
                     discountPercent: parseFloat(addForm.discountPercent) || 0,
                     warehouseId: addForm.warehouseId ? parseInt(addForm.warehouseId) : undefined,
@@ -728,12 +744,25 @@ function EditProductForm({ product, onSave, isPending }: { product: any; onSave:
     stockMinimum: String(product.stockMinimum), unit: product.unit,
     priceType: (product.priceType || "fixed") as "fixed" | "dynamic",
     discountPercent: String(parseFloat(product.discountPercent || "0")),
+    productType: (product.productType || "barang") as "barang" | "jasa",
   });
   const [editImageUrl, setEditImageUrl] = useState<string>(product.imageUrl || "");
 
   return (
     <div className="space-y-3 pt-2">
       <ImageUploader currentUrl={product.imageUrl} onUpload={(url) => setEditImageUrl(url)} />
+      <div className="space-y-1.5">
+        <Label className="text-xs">Tipe Produk</Label>
+        <div className="flex gap-2">
+          <Button type="button" variant={form.productType === "barang" ? "default" : "outline"} size="sm" className="flex-1"
+            onClick={() => setForm({ ...form, productType: "barang" })}>Barang</Button>
+          <Button type="button" variant={form.productType === "jasa" ? "default" : "outline"} size="sm" className="flex-1"
+            onClick={() => setForm({ ...form, productType: "jasa", stockMinimum: "0" })}>Jasa</Button>
+        </div>
+        {form.productType === "jasa" && (
+          <p className="text-[11px] text-blue-600 dark:text-blue-400">Produk jasa tidak memiliki stok fisik — stok tidak akan dikurangi saat dijual via POS.</p>
+        )}
+      </div>
       <div className="space-y-1.5">
         <Label className="text-xs">Nama Produk</Label>
         <Input value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} />
@@ -802,10 +831,12 @@ function EditProductForm({ product, onSave, isPending }: { product: any; onSave:
         </div>
       )}
       <div className="grid grid-cols-2 gap-3">
-        <div className="space-y-1.5">
-          <Label className="text-xs">Stok Minimum</Label>
-          <Input type="number" value={form.stockMinimum} onChange={(e) => setForm({ ...form, stockMinimum: e.target.value })} />
-        </div>
+        {form.productType === "barang" && (
+          <div className="space-y-1.5">
+            <Label className="text-xs">Stok Minimum</Label>
+            <Input type="number" value={form.stockMinimum} onChange={(e) => setForm({ ...form, stockMinimum: e.target.value })} />
+          </div>
+        )}
         <div className="space-y-1.5">
           <Label className="text-xs">Satuan</Label>
           <Select value={form.unit} onValueChange={(v) => setForm({ ...form, unit: v })}>
@@ -823,10 +854,11 @@ function EditProductForm({ product, onSave, isPending }: { product: any; onSave:
         onSave({
           name: form.name, sku: form.sku || undefined, category: categoryStr,
           hpp: parseInt(form.hpp) || 0, sellingPrice: parseInt(form.sellingPrice) || 0,
-          stockMinimum: parseInt(form.stockMinimum) || 0, unit: form.unit,
+          stockMinimum: form.productType === "jasa" ? 0 : (parseInt(form.stockMinimum) || 0), unit: form.unit,
           imageUrl: editImageUrl || undefined,
           priceType: form.priceType,
           discountPercent: parseFloat(form.discountPercent) || 0,
+          productType: form.productType,
         });
       }}>
         {isPending ? "Menyimpan..." : "Simpan Perubahan"}

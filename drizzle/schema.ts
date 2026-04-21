@@ -109,6 +109,7 @@ export const products = mysqlTable("products", {
   imei: varchar("imei", { length: 50 }),
   motorCode: varchar("motorCode", { length: 50 }),
   productCode: varchar("productCode", { length: 50 }),
+  productType: mysqlEnum("productType", ["barang", "jasa"]).notNull().default("barang"),
   priceType: mysqlEnum("priceType", ["fixed", "dynamic"]).notNull().default("fixed"),
   discountPercent: decimal("discountPercent", { precision: 5, scale: 2 }).notNull().default("0"), // 0-100
   reorderPoint: int("reorderPoint"), // when to reorder

@@ -690,6 +690,9 @@ async function runAutoMigration(db: ReturnType<typeof drizzle>) {
   // ─── Add version column for optimistic locking ───
   await safeExec("ALTER TABLE `products` ADD COLUMN `version` int NOT NULL DEFAULT 1");
 
+  // ─── Add productType column (barang/jasa) — jasa = no stock deduction on POS ───
+  await safeExec("ALTER TABLE `products` ADD COLUMN `productType` ENUM('barang','jasa') NOT NULL DEFAULT 'barang'");
+
   // ─── Add defaultCashAccountId to team_members for POS kas per kasir ───
   await safeExec("ALTER TABLE `team_members` ADD COLUMN `defaultCashAccountId` int DEFAULT NULL");
 
@@ -1214,6 +1217,7 @@ export async function safeInsertProduct(input: {
   imei?: string | null;
   motorCode?: string | null;
   productCode?: string | null;
+  productType?: "barang" | "jasa";
   priceType?: "fixed" | "dynamic";
   discountPercent?: number | string;
   reorderPoint?: number | null;
@@ -1237,6 +1241,7 @@ export async function safeInsertProduct(input: {
     imei: input.imei || null,
     motorCode: input.motorCode || null,
     productCode: input.productCode || null,
+    productType: input.productType === "jasa" ? "jasa" : "barang",
     priceType: input.priceType === "dynamic" ? "dynamic" : "fixed",
     discountPercent: String(Number(input.discountPercent) || 0),
     reorderPoint: input.reorderPoint != null ? Number(input.reorderPoint) : null,

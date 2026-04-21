@@ -512,6 +512,7 @@ export const appRouter = router({
       stockMinimum: z.number().min(0).default(5),
       unit: z.string().default("pcs"),
       imageUrl: z.string().optional(),
+      productType: z.enum(["barang", "jasa"]).default("barang"),
       priceType: z.enum(["fixed", "dynamic"]).default("fixed"),
       discountPercent: z.number().min(0).max(100).default(0),
       warehouseId: z.number().optional(),
@@ -545,6 +546,7 @@ export const appRouter = router({
       stockMinimum: z.number().optional(),
       unit: z.string().optional(),
       imageUrl: z.string().optional(),
+      productType: z.enum(["barang", "jasa"]).optional(),
       priceType: z.enum(["fixed", "dynamic"]).optional(),
       discountPercent: z.number().min(0).max(100).optional(),
     })).mutation(async ({ ctx, input }) => {
@@ -3553,8 +3555,15 @@ Penting: Kembalikan HANYA JSON valid, tidak ada teks penjelasan.`,
         }
 
         // ─── CRITICAL BUG FIX 1: Stock operations INSIDE transaction ───
-        // Reduce stock for each cart item.
+        // Reduce stock for each cart item (skip for productType "jasa" — no stock deduction)
         for (const item of input.items) {
+          // Check if product is "jasa" type — skip stock deduction entirely
+          const productForStock = await getProductById(item.productId);
+          if (productForStock?.productType === "jasa") {
+            // Jasa products: no stock deduction, no FIFO, no warehouse changes
+            continue;
+          }
+
           // ─── Consume FIFO batches if available ───
           try {
             await consumeStockFIFO(item.productId, item.productQty, item.warehouseId, tx);
@@ -3583,9 +3592,8 @@ Penting: Kembalikan HANYA JSON valid, tidak ada teks penjelasan.`,
             });
           } else {
             // Fallback: directly reduce products.stockCurrent
-            const product = await getProductById(item.productId);
-            if (product) {
-              const newStock = (product.stockCurrent ?? 0) - item.productQty;
+            if (productForStock) {
+              const newStock = (productForStock.stockCurrent ?? 0) - item.productQty;
               await updateProduct(item.productId, { stockCurrent: newStock });
             }
           }
@@ -3837,7 +3845,13 @@ Penting: Kembalikan HANYA JSON valid, tidak ada teks penjelasan.`,
           ));
 
         // ─── CRITICAL BUG FIX 2: Stock restoration INSIDE transaction ───
+        // Skip stock restoration for productType "jasa" (no stock was deducted)
         for (const item of receiptItems) {
+          const refundProduct = await getProductById(item.productId);
+          if (refundProduct?.productType === "jasa") {
+            continue; // Jasa products: no stock to restore
+          }
+
           // Restore FIFO batches
           try {
             await restoreStockFIFO(item.productId, item.qty, warehouseId, tx);
@@ -3861,9 +3875,8 @@ Penting: Kembalikan HANYA JSON valid, tidak ada teks penjelasan.`,
               notes: `Refund POS ${receipt.receiptCode} — ${input.reason}`,
             });
           } else {
-            const product = await getProductById(item.productId);
-            if (product) {
-              const newStock = (product.stockCurrent ?? 0) + item.qty;
+            if (refundProduct) {
+              const newStock = (refundProduct.stockCurrent ?? 0) + item.qty;
               await updateProduct(item.productId, { stockCurrent: newStock });
             }
           }

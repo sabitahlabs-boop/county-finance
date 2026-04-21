@@ -5,6 +5,12 @@ export const PEMASUKAN_CATEGORIES = [
   "Pendapatan Lain-lain",
 ] as const;
 
+// Categories allowed for manual entry on Transaksi page
+// Sales categories (Penjualan Produk/Jasa) are blocked — all sales must go through POS
+export const MANUAL_PEMASUKAN_CATEGORIES = [
+  "Pendapatan Lain-lain",
+] as const;
+
 export const PENGELUARAN_CATEGORIES = [
   "Pembelian Stok",
   "Operasional",

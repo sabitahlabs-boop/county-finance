@@ -11,7 +11,7 @@ import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Plus, Trash2, Search, ArrowUpRight, ArrowDownRight, Camera, Loader2, CheckCircle2, X, ImageIcon, Receipt, Package, Printer, Pencil, ArrowLeftRight, Ban } from "lucide-react";
 import { InvoicePrintDialog } from "@/components/InvoicePrintDialog";
-import { formatRupiah, PEMASUKAN_CATEGORIES, PENGELUARAN_CATEGORIES, PAYMENT_METHODS } from "../../../shared/finance";
+import { formatRupiah, PEMASUKAN_CATEGORIES, MANUAL_PEMASUKAN_CATEGORIES, PENGELUARAN_CATEGORIES, PAYMENT_METHODS } from "../../../shared/finance";
 import { toast } from "sonner";
 import { useLocation, useSearch } from "wouter";
 import { motion, AnimatePresence } from "framer-motion";
@@ -593,8 +593,8 @@ export default function Transaksi() {
   // Form state
   const [form, setForm] = useState({
     date: now.toISOString().substring(0, 10),
-    type: "pemasukan" as "pemasukan" | "pengeluaran",
-    category: "Penjualan Produk",
+    type: "pengeluaran" as "pemasukan" | "pengeluaran",
+    category: "Pembelian Stok",
     description: "",
     amount: "",
     paymentMethod: "Tunai",
@@ -608,7 +608,7 @@ export default function Transaksi() {
     const params = new URLSearchParams(searchParams);
     const action = params.get("action");
     if (action === "income") {
-      setForm(prev => ({ ...prev, type: "pemasukan", category: "Penjualan Produk" }));
+      setForm(prev => ({ ...prev, type: "pemasukan", category: "Pendapatan Lain-lain" }));
       setDialogOpen(true);
       setLocation("/transaksi", { replace: true });
     } else if (action === "expense") {
@@ -625,7 +625,7 @@ export default function Transaksi() {
     setForm((prev) => {
       const next = { ...prev, [key]: value };
       if (key === "type") {
-        next.category = value === "pemasukan" ? "Penjualan Produk" : "Pembelian Stok";
+        next.category = value === "pemasukan" ? "Pendapatan Lain-lain" : "Pembelian Stok";
         next.productId = "";
         next.productQty = "";
       }
@@ -654,8 +654,8 @@ export default function Transaksi() {
   const resetForm = () => {
     setForm({
       date: now.toISOString().substring(0, 10),
-      type: "pemasukan",
-      category: "Penjualan Produk",
+      type: "pengeluaran",
+      category: "Pembelian Stok",
       description: "",
       amount: "",
       paymentMethod: "Tunai",
@@ -691,7 +691,7 @@ export default function Transaksi() {
     }
   };
 
-  const categories = form.type === "pemasukan" ? PEMASUKAN_CATEGORIES : PENGELUARAN_CATEGORIES;
+  const categories = form.type === "pemasukan" ? MANUAL_PEMASUKAN_CATEGORIES : PENGELUARAN_CATEGORIES;
 
   const filteredTx = useMemo(() => {
     if (!txList) return [];
@@ -916,6 +916,12 @@ export default function Transaksi() {
               </TabsList>
             </Tabs>
 
+            {form.type === "pemasukan" && (
+              <div className="rounded-lg bg-blue-50 dark:bg-blue-950 border border-blue-200 dark:border-blue-800 p-3 text-xs text-blue-700 dark:text-blue-300">
+                Penjualan produk & jasa harus dicatat melalui <strong>POS/Kasir</strong>. Halaman ini hanya untuk pendapatan non-penjualan (mis. pendapatan bunga, cashback, dll).
+              </div>
+            )}
+
             <div className="grid grid-cols-2 gap-3">
               <div className="space-y-1.5">
                 <Label className="text-xs font-medium">Tanggal</Label>
@@ -1084,7 +1090,7 @@ export default function Transaksi() {
               </div>
               <div>
                 <Label>Tipe</Label>
-                <Select value={editForm.type} onValueChange={(v) => setEditForm(p => ({ ...p, type: v as "pemasukan" | "pengeluaran", category: v === "pemasukan" ? PEMASUKAN_CATEGORIES[0] : PENGELUARAN_CATEGORIES[0] }))}>
+                <Select value={editForm.type} onValueChange={(v) => setEditForm(p => ({ ...p, type: v as "pemasukan" | "pengeluaran", category: v === "pemasukan" ? MANUAL_PEMASUKAN_CATEGORIES[0] : PENGELUARAN_CATEGORIES[0] }))}>
                   <SelectTrigger><SelectValue /></SelectTrigger>
                   <SelectContent>
                     <SelectItem value="pemasukan">Pemasukan</SelectItem>
@@ -1098,7 +1104,7 @@ export default function Transaksi() {
               <Select value={editForm.category} onValueChange={(v) => setEditForm(p => ({ ...p, category: v }))}>
                 <SelectTrigger><SelectValue /></SelectTrigger>
                 <SelectContent>
-                  {(editForm.type === "pemasukan" ? PEMASUKAN_CATEGORIES : PENGELUARAN_CATEGORIES).map(c => (
+                  {(editForm.type === "pemasukan" ? MANUAL_PEMASUKAN_CATEGORIES : PENGELUARAN_CATEGORIES).map(c => (
                     <SelectItem key={c} value={c}>{c}</SelectItem>
                   ))}
                 </SelectContent>
