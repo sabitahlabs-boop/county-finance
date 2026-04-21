@@ -28,6 +28,7 @@ import HutangPiutang from "./pages/HutangPiutang";
 import Anggaran from "./pages/Anggaran";
 import SalesAnalytics from "./pages/SalesAnalytics";
 import Panduan from "./pages/Panduan";
+import PanduanAkuntansi from "./pages/PanduanAkuntansi";
 import LaporanPenjualan from "./pages/LaporanPenjualan";
 import GudangPage from "./pages/Gudang";
 import AcceptInvite from "./pages/AcceptInvite";
@@ -211,6 +212,7 @@ function Router() {
       <Route path="/landing" component={LandingPage} />
       <Route path="/accept-invite" component={AcceptInvite} />
       <Route path="/panduan" component={Panduan} />
+      <Route path="/panduan-akuntansi" component={PanduanAkuntansi} />
       <Route path="/pro/:token" component={ProActivation} />
       <Route path="/404" component={NotFound} />
       <Route component={NotFound} />

@@ -189,6 +189,7 @@ const UMKM_SIDEBAR: SidebarItem[] = [
   { icon: FileCheck, label: "Invoice", path: "/invoice-settings" },
   { icon: Settings, label: "Pengaturan", path: "/pengaturan" },
   { icon: HelpCircle, label: "Panduan", path: "/panduan" },
+  { icon: BookOpen, label: "Panduan Akuntansi", path: "/panduan-akuntansi" },
 ];
 
 const SIDEBAR_WIDTH_KEY = "sidebar-width";
@@ -819,14 +820,33 @@ function DashboardLayoutContent({
                 {activeMenuItem?.label ?? "Menu"}
               </span>
             </div>
-            <NotificationCenter />
+            <div className="flex items-center gap-2">
+              <a
+                href="/panduan-akuntansi"
+                className="h-8 w-8 rounded-md flex items-center justify-center hover:bg-accent transition-colors"
+                title="Panduan Akuntansi"
+              >
+                <BookOpen className="h-4 w-4 text-muted-foreground" />
+              </a>
+              <NotificationCenter />
+            </div>
           </div>
         ) : (
           <div className="flex h-12 items-center justify-between px-6 border-b border-border/50">
             <div className="text-sm font-medium text-muted-foreground">
               {activeMenuItem?.label && activeMenuItem.path !== "/" ? activeMenuItem.label : ""}
             </div>
-            <NotificationCenter />
+            <div className="flex items-center gap-3">
+              <a
+                href="/panduan-akuntansi"
+                className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors px-2.5 py-1.5 rounded-md hover:bg-accent"
+                title="Panduan Akuntansi"
+              >
+                <BookOpen className="h-3.5 w-3.5" />
+                <span>Panduan Akuntansi</span>
+              </a>
+              <NotificationCenter />
+            </div>
           </div>
         )}
 

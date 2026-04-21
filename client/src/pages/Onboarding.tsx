@@ -384,6 +384,25 @@ export default function Onboarding({ onComplete }: { onComplete: () => void }) {
                         Anda bisa mengubah mode dan pengaturan kapan saja di menu <strong>Pengaturan</strong>.
                       </p>
                     </div>
+
+                    {/* Panduan Akuntansi CTA */}
+                    {appMode === "umkm" && (
+                      <a
+                        href="/panduan-akuntansi"
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="flex items-center gap-3 rounded-xl border-2 border-emerald-200 dark:border-emerald-800 bg-emerald-50/50 dark:bg-emerald-900/10 p-4 hover:border-emerald-400 transition-all group"
+                      >
+                        <div className="h-10 w-10 rounded-lg bg-emerald-100 dark:bg-emerald-900/30 flex items-center justify-center flex-shrink-0 group-hover:scale-105 transition-transform">
+                          <BookOpen className="h-5 w-5 text-emerald-600 dark:text-emerald-400" />
+                        </div>
+                        <div className="flex-1">
+                          <p className="font-semibold text-sm text-emerald-800 dark:text-emerald-300">📚 Baca Panduan Akuntansi</p>
+                          <p className="text-xs text-emerald-600/80 dark:text-emerald-400/70 mt-0.5">12 studi kasus tata cara pengisian County yang benar — ditulis untuk pebisnis</p>
+                        </div>
+                        <ArrowRight className="h-4 w-4 text-emerald-400 group-hover:translate-x-1 transition-transform" />
+                      </a>
+                    )}
                   </div>
                 )}
               </CardContent>
