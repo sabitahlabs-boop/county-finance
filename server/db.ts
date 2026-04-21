@@ -1589,24 +1589,31 @@ export async function generateLabaRugi(businessId: number, month: number, year: 
   // FIXED: All revenue now comes ONLY from transactions table (no orphaned POS receipts)
   // POS checkouts automatically create journal entries with type="pemasukan" and category="Penjualan Produk"
 
-  // Pendapatan: all from transactions
-  const penjualan = summary.byCategory["Penjualan Produk"] || 0;
+  // Pendapatan: all from transactions (includes POS + manual sales)
+  const penjualanPOS = summary.byCategory["Penjualan POS"] || 0;
+  const penjualanProduk = summary.byCategory["Penjualan Produk"] || 0;
+  const penjualan = penjualanPOS + penjualanProduk;
   const jasa = summary.byCategory["Penjualan Jasa"] || 0;
   const pendapatanLain = summary.byCategory["Pendapatan Lain-lain"] || 0;
   const totalPendapatan = penjualan + jasa + pendapatanLain;
 
-  // HPP: ONLY from transactions table
-  // "Pembelian Stok" + "HPP Produksi" are recorded as pengeluaran entries with these categories
+  // HPP: from transactions table ("Pembelian Stok" + "HPP Produksi")
+  // PLUS HPP dari POS sales (hppSnapshot × qty dari pos_receipt_items)
   const pembelianStok = summary.byCategory["Pembelian Stok"] || 0;
   const hppProduksi = summary.byCategory["HPP Produksi"] || 0;
-  const hpp = pembelianStok + hppProduksi;
+
+  // Calculate POS HPP from receipt items (POS checkout doesn't create pengeluaran transactions for HPP)
+  const posHpp = await getPosHppForPeriod(businessId, month, year);
+
+  const hpp = pembelianStok + hppProduksi + posHpp;
 
   const operasional = summary.byCategory["Operasional"] || 0;
   const gaji = summary.byCategory["Gaji"] || 0;
   const utilitas = summary.byCategory["Utilitas"] || 0;
   const sewa = summary.byCategory["Sewa"] || 0;
   const transportasi = summary.byCategory["Transportasi"] || 0;
-  const pengeluaranLain = summary.byCategory["Pengeluaran Lain-lain"] || 0;
+  const refundPOS = summary.byCategory["Refund POS"] || 0;
+  const pengeluaranLain = (summary.byCategory["Pengeluaran Lain-lain"] || 0) + refundPOS;
   const totalPengeluaran = hpp + operasional + gaji + utilitas + sewa + transportasi + pengeluaranLain;
   const labaKotor = totalPendapatan - hpp;
   const labaBersih = totalPendapatan - totalPengeluaran;
@@ -1981,17 +1988,39 @@ export async function getDashboardKPIs(businessId: number): Promise<DashboardKPI
   // Include POS revenue (standalone, not in transactions)
   const posNow = await getPosRevenueForPeriod(businessId, month, year);
   const posPrev = await getPosRevenueForPeriod(businessId, lastMonth, lastYear);
+  // Include POS HPP (cost of goods sold from receipt items)
+  const posHppNow = await getPosHppForPeriod(businessId, month, year);
+  const posHppPrev = await getPosHppForPeriod(businessId, lastMonth, lastYear);
   const taxes = await calcTaxForMonth(businessId, month, year);
   const estimasiPajak = taxes.reduce((sum, t) => sum + t.amount, 0);
   const lowStock = await getLowStockProducts(businessId);
+
+  // ─── Calculate operational revenue/expenses only (exclude balance-sheet items) ───
+  // Revenue categories: Penjualan POS, Penjualan Produk, Penjualan Jasa, Pendapatan Lain-lain
+  // Non-revenue pemasukan to EXCLUDE: Pelunasan Kredit, Penerimaan Piutang (these are balance-sheet movements)
+  const REVENUE_CATEGORIES = ["Penjualan POS", "Penjualan Produk", "Penjualan Jasa", "Pendapatan Lain-lain"];
+  const calcRevenue = (summary: typeof current) =>
+    REVENUE_CATEGORIES.reduce((sum, cat) => sum + (summary.byCategory[cat] || 0), 0);
+
+  // Expense categories: operating expenses only
+  // Non-expense pengeluaran to EXCLUDE: Pembayaran Hutang, Penggunaan Deposit, Refund Deposit (balance-sheet)
+  const EXPENSE_CATEGORIES = ["Pembelian Stok", "HPP Produksi", "Operasional", "Gaji", "Utilitas", "Sewa", "Transportasi", "Pengeluaran Lain-lain", "Refund POS"];
+  const calcExpenses = (summary: typeof current) =>
+    EXPENSE_CATEGORIES.reduce((sum, cat) => sum + (summary.byCategory[cat] || 0), 0);
+
+  const revenueNow = calcRevenue(current) + posNow.revenue;
+  const revenuePrev = calcRevenue(prev) + posPrev.revenue;
+  const expenseNow = calcExpenses(current) + posNow.refunds + posHppNow;
+  const expensePrev = calcExpenses(prev) + posPrev.refunds + posHppPrev;
+
   return {
-    omzetBulanIni: current.totalPemasukan + posNow.revenue,
-    totalPengeluaran: current.totalPengeluaran + posNow.refunds,
-    labaBersih: (current.totalPemasukan + posNow.revenue) - (current.totalPengeluaran + posNow.refunds),
+    omzetBulanIni: revenueNow,
+    totalPengeluaran: expenseNow,
+    labaBersih: revenueNow - expenseNow,
     estimasiPajak,
-    omzetLastMonth: prev.totalPemasukan + posPrev.revenue,
-    pengeluaranLastMonth: prev.totalPengeluaran + posPrev.refunds,
-    labaLastMonth: (prev.totalPemasukan + posPrev.revenue) - (prev.totalPengeluaran + posPrev.refunds),
+    omzetLastMonth: revenuePrev,
+    pengeluaranLastMonth: expensePrev,
+    labaLastMonth: revenuePrev - expensePrev,
     txCountThisMonth: current.txCount,
     lowStockCount: lowStock.length,
   };
@@ -3693,6 +3722,27 @@ export async function getPosReceiptItemsByReceipt(receiptId: number): Promise<Po
 }
 
 // Get POS revenue + HPP for financial reports (replaces transaction-based calculation)
+// Calculate total HPP from ALL non-refunded POS receipts (including linked ones)
+// Used by Dashboard KPIs to show accurate expenses including cost of goods sold
+export async function getPosHppForPeriod(businessId: number, month: number, year: number): Promise<number> {
+  const db = await getDb();
+  if (!db) return 0;
+  const periodStr = `${year}-${String(month).padStart(2, "0")}`;
+  const nonRefundedReceipts = await db.select({ id: posReceipts.id }).from(posReceipts).where(
+    and(eq(posReceipts.businessId, businessId), eq(posReceipts.isRefunded, false), sql`${posReceipts.date} LIKE ${periodStr + "%"}`)
+  );
+  if (nonRefundedReceipts.length === 0) return 0;
+  const receiptIds = nonRefundedReceipts.map(r => r.id);
+  const items = await db.select().from(posReceiptItems).where(
+    sql`${posReceiptItems.receiptId} IN (${sql.join(receiptIds.map(id => sql`${id}`), sql`, `)})`
+  );
+  let hpp = 0;
+  for (const item of items) {
+    hpp += (item.hppSnapshot ?? 0) * item.qty;
+  }
+  return hpp;
+}
+
 export async function getPosRevenueForPeriod(businessId: number, month: number, year: number) {
   const db = await getDb();
   if (!db) return { revenue: 0, hpp: 0, refunds: 0 };
@@ -6357,12 +6407,17 @@ export async function refundDeposit(businessId: number, clientId: number, amount
   if (!db) throw new Error("Database not available");
 
   const deposit = await getOrCreateDeposit(businessId, clientId);
+  if ((deposit.balance || 0) < amount) throw new Error("Insufficient deposit balance for refund");
 
   await db.transaction(async (tx) => {
-    // Atomic SQL increment to avoid race conditions
+    // Re-read inside tx for consistency
+    const [current] = await tx.select().from(customerDeposits).where(eq(customerDeposits.id, deposit.id));
+    if ((current.balance || 0) < amount) throw new Error("Insufficient deposit balance for refund");
+
+    // Atomic SQL DECREMENT — refund returns money to customer, reducing their deposit balance
     await tx
       .update(customerDeposits)
-      .set({ balance: sql`${customerDeposits.balance} + ${amount}` })
+      .set({ balance: sql`${customerDeposits.balance} - ${amount}` })
       .where(eq(customerDeposits.id, deposit.id));
 
     await tx.insert(depositTransactions).values({
@@ -6602,7 +6657,10 @@ const CATEGORY_TO_ACCOUNT: Record<string, string> = {
   // Revenue categories
   "Penjualan POS": "4101",
   "Penjualan": "4101",
+  "Penjualan Produk": "4101",
+  "Penjualan Jasa": "4102",
   "Pendapatan Jasa": "4102",
+  "Pendapatan Lain-lain": "4301",
   // Expense categories
   "Gaji Karyawan": "6101",
   "Gaji": "6101",
@@ -6617,6 +6675,8 @@ const CATEGORY_TO_ACCOUNT: Record<string, string> = {
   "ATK": "6204",
   "Marketing": "6205",
   "Iklan": "6205",
+  "Operasional": "6207",
+  "Pengeluaran Lain-lain": "6207",
   "Administrasi": "6206",
   "Tagihan Bulanan": "6401",
   // Inventory
@@ -7566,6 +7626,8 @@ export async function getNeracaGL(
   totalEquity: number;
   netProfit: number; // laba berjalan (included in equity)
   balanceCheck: boolean; // assets == liabilities + equity + netProfit
+  balanceDifference: number; // selisih (0 = balanced)
+  balanceWarning: string | null; // warning message jika tidak balance
 }> {
   // Get cumulative balances up to endDate
   const tb = await getTrialBalanceGL(businessId, undefined, endDate);
@@ -7606,7 +7668,12 @@ export async function getNeracaGL(
   }
 
   const netProfit = totalRevenue - totalCOGS - totalExpenses;
-  const balanceCheck = totalAssets === (totalLiabilities + totalEquity + netProfit);
+  const rightSide = totalLiabilities + totalEquity + netProfit;
+  const balanceDifference = Math.round((totalAssets - rightSide) * 100) / 100; // round to 2 decimal
+  const balanceCheck = balanceDifference === 0;
+  const balanceWarning = balanceCheck
+    ? null
+    : `⚠️ Neraca tidak balance: Aset (${totalAssets.toLocaleString("id-ID")}) ≠ Liabilitas + Ekuitas + Laba Berjalan (${rightSide.toLocaleString("id-ID")}). Selisih: Rp ${Math.abs(balanceDifference).toLocaleString("id-ID")}`;
 
   const mapRow = (a: typeof tb.accounts[0]) => ({
     code: a.code,
@@ -7625,6 +7692,8 @@ export async function getNeracaGL(
     totalEquity,
     netProfit,
     balanceCheck,
+    balanceDifference,
+    balanceWarning,
   };
 }
 

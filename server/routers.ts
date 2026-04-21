@@ -827,7 +827,7 @@ export const appRouter = router({
           lines,
         });
       } catch (glError) {
-        console.error("GL journal entry error (manual tx):", glError);
+        console.error(`[GL] Manual Tx journal failed — bizId=${biz.id} txId=${id} type=${input.type} amount=${input.amount} category=${input.category}:`, glError);
       }
 
       return { id, txCode };
@@ -973,7 +973,7 @@ export const appRouter = router({
           lines: journalLines,
         });
       } catch (glErr) {
-        console.error("[GL] Void journal failed (non-blocking):", glErr);
+        console.error(`[GL] Void journal failed — txId=${input.id}:`, glErr);
       }
 
       // 5. Audit log
@@ -1628,7 +1628,7 @@ export const appRouter = router({
           ],
         });
       } catch (glErr) {
-        console.error("[GL] Deposit TopUp journal failed (non-blocking):", glErr);
+        console.error(`[GL] Deposit TopUp journal failed — bizId=${biz.id} clientId=${input.clientId} amount=${input.amount}:`, glErr);
       }
 
       return { success: true };
@@ -1657,7 +1657,7 @@ export const appRouter = router({
           ],
         });
       } catch (glErr) {
-        console.error("[GL] Deposit Use journal failed (non-blocking):", glErr);
+        console.error(`[GL] Deposit Use journal failed — bizId=${biz.id} clientId=${input.clientId} amount=${input.amount}:`, glErr);
       }
 
       return { success: true };
@@ -1686,7 +1686,7 @@ export const appRouter = router({
           ],
         });
       } catch (glErr) {
-        console.error("[GL] Deposit Refund journal failed (non-blocking):", glErr);
+        console.error(`[GL] Deposit Refund journal failed — bizId=${biz.id} clientId=${input.clientId} amount=${input.amount}:`, glErr);
       }
 
       return { success: true };
@@ -1796,7 +1796,7 @@ export const appRouter = router({
           lines: journalLines,
         });
       } catch (glErr) {
-        console.error("[GL] Credit Sale journal failed (non-blocking):", glErr);
+        console.error(`[GL] Credit Sale journal failed — bizId=${biz.id} clientId=${input.clientId} amount=${input.totalAmount}:`, glErr);
       }
 
       return { success: true, id };
@@ -1895,7 +1895,7 @@ export const appRouter = router({
           ],
         });
       } catch (glErr) {
-        console.error("[GL] Credit Payment journal failed (non-blocking):", glErr);
+        console.error(`[GL] Credit Payment journal failed — bizId=${bizId} saleId=${input.creditSaleId} amount=${input.amount}:`, glErr);
       }
 
       // ─── AUDIT LOG: Log successful credit payment ───
@@ -2555,7 +2555,7 @@ Penting: Kembalikan HANYA JSON valid, tidak ada teks penjelasan.`,
           lines: journalLines,
         });
       } catch (glErr) {
-        console.error("[GL] Debt Create journal failed (non-blocking):", glErr);
+        console.error(`[GL] Debt Create journal failed — bizId=${biz.id} type=${input.type} amount=${input.totalAmount} counterparty=${input.counterpartyName}:`, glErr);
       }
 
       return { id };
@@ -2724,7 +2724,7 @@ Penting: Kembalikan HANYA JSON valid, tidak ada teks penjelasan.`,
           lines: journalLines,
         });
       } catch (glErr) {
-        console.error("[GL] Debt Payment journal failed (non-blocking):", glErr);
+        console.error(`[GL] Debt Payment journal failed — bizId=${biz.id} debtId=${input.debtId} amount=${input.amount}:`, glErr);
       }
 
       // ─── AUDIT LOG: Log successful debt payment ───
@@ -3685,7 +3685,7 @@ Penting: Kembalikan HANYA JSON valid, tidak ada teks penjelasan.`,
         });
       } catch (glError) {
         // GL journaling is best-effort — don't fail the POS checkout
-        console.error("GL journal entry error (POS checkout):", glError);
+        console.error(`[GL] POS Checkout journal failed — grandTotal=${input.grandTotal} items=${input.items.length}:`, glError);
       }
 
       // ─── BEST-EFFORT: Commission, loyalty (outside tx — non-critical) ───
@@ -3941,7 +3941,7 @@ Penting: Kembalikan HANYA JSON valid, tidak ada teks penjelasan.`,
           lines: journalLines,
         });
       } catch (glErr) {
-        console.error("[GL] POS Refund journal failed (non-blocking):", glErr);
+        console.error(`[GL] POS Refund journal failed — receiptId=${input.receiptId} reason=${input.reason}:`, glErr);
       }
 
       // ─── AUDIT LOG: Log successful POS refund ───

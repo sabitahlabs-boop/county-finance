@@ -34,13 +34,17 @@ export const PRODUCT_UNITS = [
 ] as const;
 
 export const PLAN_LIMITS = {
-  free: { maxTransactions: 10, maxProducts: 5, canExport: false, aiScanStruk: true, aiInsights: true },
-  pro: { maxTransactions: Infinity, maxProducts: Infinity, canExport: true, aiScanStruk: true, aiInsights: true },
+  free: { maxTransactions: 10, maxProducts: 5, canExport: false, aiScanStruk: true, aiInsights: true, canStaff: false, canMarketing: false, canMultiGudang: false },
+  pro: { maxTransactions: Infinity, maxProducts: Infinity, canExport: true, aiScanStruk: true, aiInsights: true, canStaff: false, canMarketing: false, canMultiGudang: false },
+  pro_plus: { maxTransactions: Infinity, maxProducts: Infinity, canExport: true, aiScanStruk: true, aiInsights: true, canStaff: true, canMarketing: true, canMultiGudang: true },
 } as const;
 
 export const PRO_PRICE = 299000; // Rp 299.000 one-time payment (lifetime)
 
-export type PlanType = "free" | "pro";
+export type PlanType = "free" | "pro" | "pro_plus";
+
+// Paths that require Pro+ plan — used by sidebar to hide items
+export const PRO_PLUS_PATHS = ["/staff", "/marketing", "/gudang"];
 
 // ─── Tax Calculation Results ───
 export interface TaxCalcResult {
