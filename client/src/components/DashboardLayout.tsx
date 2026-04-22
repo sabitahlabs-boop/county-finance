@@ -105,10 +105,20 @@ type CollapsibleMenuGroup = {
   children: MenuItem[];
 };
 
+type SectionMarker = {
+  type: "section";
+  label: string;
+};
+
 type SidebarItem = MenuItem | CollapsibleMenuGroup;
+type SidebarEntry = SidebarItem | SectionMarker;
 
 function isGroup(item: SidebarItem): item is CollapsibleMenuGroup {
   return "children" in item;
+}
+
+function isSectionMarker(entry: SidebarEntry): entry is SectionMarker {
+  return "type" in entry && (entry as any).type === "section";
 }
 
 const PERSONAL_MENU: MenuItem[] = [
@@ -122,17 +132,15 @@ const PERSONAL_MENU: MenuItem[] = [
   { icon: Settings, label: "Pengaturan", path: "/pengaturan" },
 ];
 
-// UMKM menu — collapsible groups
-const UMKM_SIDEBAR: SidebarItem[] = [
+// UMKM menu — section-based with labels (Claude Design style)
+const UMKM_SIDEBAR: SidebarEntry[] = [
+  // ── MAIN ──
+  { type: "section", label: "Main" },
   { icon: LayoutDashboard, label: "Dashboard", path: "/" },
-  {
-    icon: ArrowLeftRight,
-    label: "Transaksi & Penjualan",
-    children: [
-      { icon: ArrowLeftRight, label: "Semua Transaksi", path: "/transaksi" },
-      { icon: Truck, label: "Purchase Order", path: "/purchase-order" },
-    ],
-  },
+  // POS + Laporan Penjualan injected here if posEnabled
+
+  // ── OPERASI ──
+  { type: "section", label: "Operasi" },
   {
     icon: Package,
     label: "Produk & Inventori",
@@ -147,18 +155,11 @@ const UMKM_SIDEBAR: SidebarItem[] = [
       { icon: AlertCircle, label: "Peringatan Stok", path: "/peringatan-stok" },
     ],
   },
-  {
-    icon: HandCoins,
-    label: "Keuangan",
-    children: [
-      { icon: HandCoins, label: "Hutang & Piutang", path: "/hutang-piutang" },
-      { icon: PiggyBank, label: "Tagihan & Anggaran", path: "/anggaran" },
-      { icon: BarChart3, label: "Analitik", path: "/analitik" },
-      { icon: Calculator, label: "Pajak", path: "/pajak" },
-      { icon: Wallet, label: "Manajemen Rekening", path: "/manajemen-rekening" },
-      { icon: BookOpen, label: "Jurnal Penyesuaian", path: "/jurnal-adjustment" },
-    ],
-  },
+  { icon: Truck, label: "Purchase Order", path: "/purchase-order" },
+  { icon: ArrowLeftRight, label: "Transaksi", path: "/transaksi" },
+
+  // ── KEUANGAN ──
+  { type: "section", label: "Keuangan" },
   {
     icon: FileText,
     label: "Laporan",
@@ -183,6 +184,21 @@ const UMKM_SIDEBAR: SidebarItem[] = [
     ],
   },
   { icon: Users, label: "Pelanggan", path: "/client" },
+  {
+    icon: HandCoins,
+    label: "Keuangan",
+    children: [
+      { icon: HandCoins, label: "Hutang & Piutang", path: "/hutang-piutang" },
+      { icon: PiggyBank, label: "Tagihan & Anggaran", path: "/anggaran" },
+      { icon: BarChart3, label: "Analitik", path: "/analitik" },
+      { icon: Calculator, label: "Pajak", path: "/pajak" },
+      { icon: Wallet, label: "Manajemen Rekening", path: "/manajemen-rekening" },
+      { icon: BookOpen, label: "Jurnal Penyesuaian", path: "/jurnal-adjustment" },
+    ],
+  },
+
+  // ── LAINNYA (less frequent) ──
+  { type: "section", label: "Lainnya" },
   { icon: Star, label: "Program Loyalitas", path: "/loyalty" },
   { icon: Megaphone, label: "Marketing", path: "/marketing" },
   { icon: UsersRound, label: "Pegawai", path: "/staff" },
@@ -326,8 +342,8 @@ function DashboardLayoutContent({
   const isTeamMember = !isOwnBusiness;
   const memberPermissions = isTeamMember ? activePermissions : null;
 
-  // Build sidebar items
-  const { sidebarItems, flatItems } = useMemo(() => {
+  // Build sidebar items (supports SectionMarker entries for UMKM mode)
+  const { sidebarEntries, flatItems } = useMemo(() => {
     if (appMode === "personal") {
       let items = [...PERSONAL_MENU];
       if (!debtEnabled) items = items.filter((i) => i.path !== "/hutang-piutang");
@@ -338,80 +354,91 @@ function DashboardLayoutContent({
           return !p || memberPermissions[p] === true;
         });
       }
-      return { sidebarItems: items as SidebarItem[], flatItems: items };
+      return { sidebarEntries: items as SidebarEntry[], flatItems: items };
     }
 
-    let items: SidebarItem[] = UMKM_SIDEBAR.map((item) => {
+    let entries: SidebarEntry[] = UMKM_SIDEBAR.map((entry) => {
+      if (isSectionMarker(entry)) return { ...entry };
+      const item = entry as SidebarItem;
       if (isGroup(item)) return { ...item, children: [...item.children] };
       return { ...item };
     });
 
     if (posEnabled) {
-      const dashIdx = items.findIndex((item) => !isGroup(item) && item.path === "/");
-      const posItem: SidebarItem = { icon: ShoppingBag, label: "Kasir (POS)", path: "/pos" };
-      const salesReportItem: SidebarItem = { icon: Receipt, label: "Laporan Penjualan", path: "/laporan-penjualan" };
-      items.splice(dashIdx + 1, 0, posItem, salesReportItem);
+      const dashIdx = entries.findIndex((e) => !isSectionMarker(e) && !isGroup(e as SidebarItem) && (e as MenuItem).path === "/");
+      const posItem: SidebarEntry = { icon: ShoppingBag, label: "Kasir (POS)", path: "/pos" };
+      const salesReportItem: SidebarEntry = { icon: Receipt, label: "Laporan Penjualan", path: "/laporan-penjualan" };
+      entries.splice(dashIdx + 1, 0, posItem, salesReportItem);
     }
 
     if (!debtEnabled) {
-      items = items.map((item) => {
+      entries = entries.map((entry) => {
+        if (isSectionMarker(entry)) return entry;
+        const item = entry as SidebarItem;
         if (isGroup(item)) return { ...item, children: item.children.filter((c) => c.path !== "/hutang-piutang") };
-        return item;
+        return entry;
       });
     }
 
     if (isAdmin) {
-      const settingsIdx = items.findIndex((i) => !isGroup(i) && (i as MenuItem).path === "/pengaturan");
-      if (settingsIdx >= 0) items.splice(settingsIdx, 0, { icon: Shield, label: "Super Admin", path: "/admin" });
-      else items.push({ icon: Shield, label: "Super Admin", path: "/admin" });
+      const settingsIdx = entries.findIndex((e) => !isSectionMarker(e) && !isGroup(e as SidebarItem) && (e as MenuItem).path === "/pengaturan");
+      if (settingsIdx >= 0) entries.splice(settingsIdx, 0, { icon: Shield, label: "Super Admin", path: "/admin" });
+      else entries.push({ icon: Shield, label: "Super Admin", path: "/admin" });
     }
 
     if (isTeamMember && memberPermissions) {
-      items = items.map((item) => {
+      entries = entries.map((entry) => {
+        if (isSectionMarker(entry)) return entry;
+        const item = entry as SidebarItem;
         if (isGroup(item)) {
           return { ...item, children: item.children.filter((c) => { const p = PATH_PERMISSION_MAP[c.path]; return !p || memberPermissions[p] === true; }) };
         }
         const mi = item as MenuItem;
         const p = PATH_PERMISSION_MAP[mi.path];
         if (p && memberPermissions[p] !== true) return null;
-        return item;
-      }).filter(Boolean) as SidebarItem[];
-      items = items.filter((item) => !isGroup(item) || item.children.length > 0);
+        return entry;
+      }).filter(Boolean) as SidebarEntry[];
+      entries = entries.filter((e) => isSectionMarker(e) || !isGroup(e as SidebarItem) || (e as CollapsibleMenuGroup).children.length > 0);
     }
 
-    // Plan-based feature gating: hide Pro+ only items for non-Pro+ users
+    // Plan-based feature gating
     const plan = business?.plan ?? "free";
     if (plan !== "pro_plus") {
-      items = items.map((item) => {
+      entries = entries.map((entry) => {
+        if (isSectionMarker(entry)) return entry;
+        const item = entry as SidebarItem;
         if (isGroup(item)) {
           return { ...item, children: item.children.filter((c) => !PRO_PLUS_PATHS.includes(c.path)) };
         }
         const mi = item as MenuItem;
         if (PRO_PLUS_PATHS.includes(mi.path)) return null;
-        return item;
-      }).filter(Boolean) as SidebarItem[];
-      items = items.filter((item) => !isGroup(item) || item.children.length > 0);
+        return entry;
+      }).filter(Boolean) as SidebarEntry[];
+      entries = entries.filter((e) => isSectionMarker(e) || !isGroup(e as SidebarItem) || (e as CollapsibleMenuGroup).children.length > 0);
     }
 
+    // Remove section markers that have no items after them (or are followed by another section marker)
+    entries = entries.filter((entry, i, arr) => {
+      if (!isSectionMarker(entry)) return true;
+      const next = arr[i + 1];
+      return next && !isSectionMarker(next);
+    });
+
     const flat: MenuItem[] = [];
-    items.forEach((item) => {
+    entries.forEach((entry) => {
+      if (isSectionMarker(entry)) return;
+      const item = entry as SidebarItem;
       if (isGroup(item)) flat.push(...item.children);
       else flat.push(item as MenuItem);
     });
 
-    return { sidebarItems: items, flatItems: flat };
+    return { sidebarEntries: entries, flatItems: flat };
   }, [appMode, posEnabled, debtEnabled, isAdmin, isTeamMember, memberPermissions, business?.plan]);
 
   const locationPath = location.split("?")[0];
   const activeMenuItem = flatItems.find((item) => item.path.split("?")[0] === locationPath);
 
-  // Tax estimate for sidebar (only UMKM)
-  const now = new Date();
-  const { data: taxCalc } = trpc.tax.calculate.useQuery(
-    { month: now.getMonth() + 1, year: now.getFullYear() },
-    { retry: false, refetchOnWindowFocus: false, enabled: appMode === "umkm" }
-  );
-  const totalTax = taxCalc?.reduce((s: number, t: any) => s + t.amount, 0) ?? 0;
+  // Tax info now shown in Dashboard KPI cards instead of sidebar
 
   const isPersonal = appMode === "personal";
 
@@ -444,9 +471,9 @@ function DashboardLayoutContent({
   // Track which collapsible groups are open
   const [openGroups, setOpenGroups] = useState<Record<string, boolean>>(() => {
     const initial: Record<string, boolean> = {};
-    UMKM_SIDEBAR.forEach((item) => {
-      if (isGroup(item) && item.children.some((c) => c.path === location)) {
-        initial[item.label] = true;
+    UMKM_SIDEBAR.forEach((entry) => {
+      if (!isSectionMarker(entry) && isGroup(entry as SidebarItem) && (entry as CollapsibleMenuGroup).children.some((c) => c.path === location)) {
+        initial[(entry as CollapsibleMenuGroup).label] = true;
       }
     });
     return initial;
@@ -454,6 +481,18 @@ function DashboardLayoutContent({
 
   const toggleGroup = (label: string) => {
     setOpenGroups((prev) => ({ ...prev, [label]: !prev[label] }));
+  };
+
+  // ─── Render section label ───
+  const renderSectionLabel = (marker: SectionMarker) => {
+    if (isCollapsed) return null;
+    return (
+      <div key={`section-${marker.label}`} className="px-3 pt-4 pb-1 first:pt-1">
+        <span className="text-[10.5px] font-semibold text-muted-foreground/70 uppercase tracking-widest">
+          {marker.label}
+        </span>
+      </div>
+    );
   };
 
   // ─── Render a single flat menu item ───
@@ -469,12 +508,15 @@ function DashboardLayoutContent({
           isActive={isActive}
           onClick={() => setLocation(item.path)}
           tooltip={item.label}
-          className={`h-8 transition-all rounded-md text-[13px] font-medium ${
+          className={`h-8 transition-all rounded-md text-[13px] font-medium relative ${
             isActive
               ? "bg-accent text-foreground font-semibold"
               : "text-muted-foreground hover:text-foreground hover:bg-accent/50"
           }`}
         >
+          {isActive && (
+            <span className="absolute left-0 top-1.5 bottom-1.5 w-[3px] rounded-r-sm bg-primary" />
+          )}
           <item.icon className={`h-4 w-4 shrink-0 ${isActive ? "text-primary opacity-100" : "opacity-60"}`} />
           <span>{item.label}</span>
         </SidebarMenuButton>
@@ -547,219 +589,160 @@ function DashboardLayoutContent({
           className="border-r border-border"
           disableTransition={isResizing}
         >
-          {/* ─── Header: Logo + Brand ─── */}
-          <SidebarHeader className="h-14 justify-center border-b border-border/50">
+          {/* ─── Header: Logo + Brand (Claude Design style) ─── */}
+          <SidebarHeader className="h-14 justify-center border-b border-border/30">
             <div className="flex items-center gap-2.5 px-2 transition-all w-full">
-              <button
-                onClick={toggleSidebar}
-                className="h-7 w-7 flex items-center justify-center hover:bg-accent rounded-md transition-colors focus:outline-none shrink-0"
-                aria-label="Toggle navigation"
-              >
-                <PanelLeft className="h-4 w-4 text-muted-foreground" />
-              </button>
-              {!isCollapsed && (
-                <div className="flex items-center gap-2 min-w-0">
-                  {businessLogoUrl ? (
-                    <img
-                      src={businessLogoUrl}
-                      alt={business?.businessName || "Logo"}
-                      className="h-6 w-6 object-contain shrink-0 rounded"
-                    />
-                  ) : (
-                    <div className="h-6 w-6 rounded-md bg-primary flex items-center justify-center shrink-0">
-                      <span className="text-[11px] font-bold text-primary-foreground">C</span>
+              {isCollapsed ? (
+                <button
+                  onClick={toggleSidebar}
+                  className="h-7 w-7 flex items-center justify-center rounded-lg bg-gradient-to-br from-[#0F1E3D] to-[#1a3466] shrink-0 mx-auto"
+                  aria-label="Toggle navigation"
+                >
+                  <span className="text-[11px] font-bold text-white">C</span>
+                </button>
+              ) : (
+                <>
+                  <div className="h-7 w-7 rounded-lg bg-gradient-to-br from-[#0F1E3D] to-[#1a3466] flex items-center justify-center shrink-0">
+                    <span className="text-[11px] font-bold text-white tracking-tight">C</span>
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <div className="flex items-center gap-2">
+                      <span className="font-semibold text-sm tracking-tight text-foreground">County</span>
+                      {isTeamMember && activeRole && (
+                        <span className="text-[9px] font-semibold px-1.5 py-0.5 rounded bg-amber-50 dark:bg-amber-950/40 text-amber-600 dark:text-amber-400">
+                          {activeRole.charAt(0).toUpperCase() + activeRole.slice(1)}
+                        </span>
+                      )}
                     </div>
-                  )}
-                  <span className="font-semibold text-sm tracking-tight truncate text-foreground">
-                    {business?.businessName || "County"}
-                  </span>
-                  <span className={`text-[10px] font-semibold px-1.5 py-0.5 rounded shrink-0 ${
-                    isPersonal
-                      ? "bg-purple-50 dark:bg-purple-950 text-purple-600 dark:text-purple-400 dark:bg-purple-950 dark:text-purple-400"
-                      : "bg-blue-50 dark:bg-blue-950 text-blue-600 dark:text-blue-400 dark:bg-blue-950 dark:text-blue-400"
-                  }`}>
-                    {isPersonal ? "Pribadi" : "UMKM"}
-                  </span>
-                  {isTeamMember && activeRole && (
-                    <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded shrink-0 bg-amber-50 dark:bg-amber-950 text-amber-600 dark:text-amber-400 dark:bg-amber-950 dark:text-amber-400">
-                      {activeRole.charAt(0).toUpperCase() + activeRole.slice(1)}
-                    </span>
-                  )}
-                </div>
+                    <p className="text-[11px] text-muted-foreground truncate mt-0.5">
+                      {business?.businessName || "Business"} · {isPersonal ? "Pribadi" : "UMKM"}
+                    </p>
+                  </div>
+                  <button
+                    onClick={toggleSidebar}
+                    className="h-6 w-6 flex items-center justify-center hover:bg-accent rounded-md transition-colors focus:outline-none shrink-0 opacity-0 group-hover/sidebar:opacity-100"
+                    aria-label="Toggle navigation"
+                  >
+                    <PanelLeft className="h-3.5 w-3.5 text-muted-foreground" />
+                  </button>
+                </>
               )}
             </div>
           </SidebarHeader>
 
-          {/* ─── Business Switcher ─── */}
-          {businesses.length > 0 && (
+          {/* ─── Business Switcher (compact, only shown for multi-business) ─── */}
+          {hasMultipleBusinesses && (
             <div className={isCollapsed ? "px-1 py-2 flex justify-center" : "px-3 py-2"}>
-              {hasMultipleBusinesses ? (
-                <DropdownMenu>
-                  <DropdownMenuTrigger asChild>
-                    {isCollapsed ? (
-                      <button
-                        className="h-8 w-8 flex items-center justify-center rounded-md border border-border bg-secondary/50 hover:bg-accent transition-all focus:outline-none relative"
-                        title="Switch Bisnis"
-                      >
-                        <Building2 className="h-4 w-4 text-muted-foreground" />
-                        <span className="absolute -top-1 -right-1 h-3.5 w-3.5 rounded-full bg-primary text-[8px] text-primary-foreground font-bold flex items-center justify-center">
-                          {businesses.length}
-                        </span>
-                      </button>
-                    ) : (
-                      <button className="flex items-center gap-2.5 w-full rounded-lg border border-border bg-secondary/30 hover:bg-accent/50 px-3 py-2 text-left transition-all focus:outline-none">
-                        <div className="h-7 w-7 rounded-md bg-primary flex items-center justify-center shrink-0">
-                          <Building2 className="h-3.5 w-3.5 text-primary-foreground" />
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  {isCollapsed ? (
+                    <button
+                      className="h-8 w-8 flex items-center justify-center rounded-md border border-border bg-secondary/50 hover:bg-accent transition-all focus:outline-none relative"
+                      title="Switch Bisnis"
+                    >
+                      <Building2 className="h-4 w-4 text-muted-foreground" />
+                    </button>
+                  ) : (
+                    <button className="flex items-center gap-2 w-full rounded-md hover:bg-accent/50 px-2 py-1.5 text-left transition-all focus:outline-none text-[12px] text-muted-foreground">
+                      <Building2 className="h-3.5 w-3.5 shrink-0" />
+                      <span className="flex-1 truncate">{businesses.find((b) => b.id === activeBusinessId)?.name ?? "Pilih Bisnis"}</span>
+                      <ChevronDown className="h-3 w-3 shrink-0 opacity-50" />
+                    </button>
+                  )}
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="start" className="w-64 p-1.5">
+                  <div className="px-2 py-1.5 mb-1">
+                    <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider">Switch Bisnis</p>
+                  </div>
+                  {businesses.map((b) => (
+                    <DropdownMenuItem
+                      key={b.id}
+                      onClick={() => { if (b.id !== activeBusinessId) switchBusiness(b.id); }}
+                      className={`cursor-pointer rounded-md px-2 py-2 mb-0.5 ${b.id === activeBusinessId ? "bg-accent" : ""}`}
+                    >
+                      <div className="flex items-center gap-2.5 w-full">
+                        <div className={`h-7 w-7 rounded-md flex items-center justify-center shrink-0 ${b.isOwn ? "bg-primary text-primary-foreground" : "bg-amber-500 text-white"}`}>
+                          <Building2 className="h-3.5 w-3.5" />
                         </div>
                         <div className="flex-1 min-w-0">
-                          <p className="text-[10px] font-semibold text-muted-foreground leading-none uppercase tracking-wider">
-                            Bisnis Aktif
-                          </p>
-                          <p className="text-sm font-semibold text-foreground truncate mt-0.5">
-                            {businesses.find((b) => b.id === activeBusinessId)?.name ?? "Pilih Bisnis"}
+                          <p className="text-sm font-medium truncate">{b.name}</p>
+                          <p className="text-[10px] text-muted-foreground">
+                            {b.isOwn ? "Owner" : b.role?.charAt(0).toUpperCase() + (b.role?.slice(1) ?? "")}
                           </p>
                         </div>
-                        <ChevronDown className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
-                      </button>
-                    )}
-                  </DropdownMenuTrigger>
-                  <DropdownMenuContent align="start" className="w-72 p-1.5">
-                    <div className="px-2 py-1.5 mb-1">
-                      <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
-                        Switch Bisnis
-                      </p>
-                    </div>
-                    {businesses.map((b) => (
-                      <DropdownMenuItem
-                        key={b.id}
-                        onClick={() => { if (b.id !== activeBusinessId) switchBusiness(b.id); }}
-                        className={`cursor-pointer rounded-lg px-2 py-2.5 mb-0.5 ${b.id === activeBusinessId ? "bg-accent" : ""}`}
-                      >
-                        <div className="flex items-center gap-3 w-full">
-                          <div className={`h-8 w-8 rounded-md flex items-center justify-center shrink-0 ${b.isOwn ? "bg-primary text-primary-foreground" : "bg-amber-500 text-white"}`}>
-                            <Building2 className="h-4 w-4" />
-                          </div>
-                          <div className="flex-1 min-w-0">
-                            <p className="text-sm font-semibold truncate">{b.name}</p>
-                            <p className="text-xs text-muted-foreground flex items-center gap-1">
-                              {b.isOwn ? (<><Crown className="h-3 w-3" /> Bisnis Saya (Owner)</>) : (<><Briefcase className="h-3 w-3" /> Sebagai {b.role?.charAt(0).toUpperCase()}{b.role?.slice(1) ?? "Karyawan"}</>)}
-                            </p>
-                          </div>
-                          {b.id === activeBusinessId && (
-                            <div className="h-5 w-5 rounded-full bg-primary flex items-center justify-center shrink-0">
-                              <Check className="h-3 w-3 text-primary-foreground" />
-                            </div>
-                          )}
-                        </div>
-                      </DropdownMenuItem>
-                    ))}
-                  </DropdownMenuContent>
-                </DropdownMenu>
-              ) : (
-                !isCollapsed && (
-                  <div className="flex items-center gap-2.5 w-full rounded-lg border border-border/50 bg-secondary/30 px-3 py-2 transition-all">
-                    <div className="h-6 w-6 rounded-md bg-primary flex items-center justify-center shrink-0">
-                      <Building2 className="h-3 w-3 text-primary-foreground" />
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <p className="text-sm font-medium text-foreground truncate">
-                        {businesses[0]?.name ?? "Bisnis"}
-                      </p>
-                      <p className="text-[10px] text-muted-foreground flex items-center gap-1">
-                        {businesses[0]?.isOwn ? (<><Crown className="h-2.5 w-2.5" /> Owner</>) : (<><Briefcase className="h-2.5 w-2.5" /> {businesses[0]?.role?.charAt(0).toUpperCase()}{businesses[0]?.role?.slice(1) ?? "Karyawan"}</>)}
-                      </p>
-                    </div>
-                  </div>
-                )
-              )}
+                        {b.id === activeBusinessId && <Check className="h-3.5 w-3.5 text-primary shrink-0" />}
+                      </div>
+                    </DropdownMenuItem>
+                  ))}
+                </DropdownMenuContent>
+              </DropdownMenu>
             </div>
           )}
 
-          {/* ─── Mode Switcher ─── */}
-          {!isCollapsed && (
-            <div className="px-3 pb-2">
+          {/* ─── Mode Switcher (compact) ─── */}
+          <div className={isCollapsed ? "px-1 pb-1 flex justify-center" : "px-3 pb-1"}>
+            {isCollapsed ? (
               <button
                 onClick={handleModeSwitch}
                 disabled={setModeMut.isPending}
-                className={`flex items-center gap-2 w-full rounded-lg border px-3 py-1.5 text-left transition-all text-xs font-medium ${
-                  isPersonal
-                    ? "border-purple-200 dark:border-purple-800 bg-purple-50 dark:bg-purple-950/50 hover:bg-purple-50 dark:bg-purple-950 text-purple-600 dark:text-purple-400 dark:border-purple-800 dark:bg-purple-950/30 dark:text-purple-400"
-                    : "border-blue-200 dark:border-blue-800 bg-blue-50 dark:bg-blue-950/50 hover:bg-blue-50 dark:bg-blue-950 text-blue-600 dark:text-blue-400 dark:border-blue-800 dark:bg-blue-950/30 dark:text-blue-400"
-                } ${setModeMut.isPending ? "opacity-60 cursor-wait" : "cursor-pointer"}`}
-              >
-                <ArrowRightLeft className="h-3.5 w-3.5 shrink-0" />
-                <span className="flex-1">
-                  {setModeMut.isPending
-                    ? "Beralih..."
-                    : appMode === "umkm"
-                      ? "Beralih ke Jurnal Pribadi"
-                      : "Beralih ke Mode UMKM"}
-                </span>
-                {appMode === "umkm" ? <BookOpen className="h-3.5 w-3.5 shrink-0" /> : <Store className="h-3.5 w-3.5 shrink-0" />}
-              </button>
-            </div>
-          )}
-          {isCollapsed && (
-            <div className="px-1 pb-2 flex justify-center">
-              <button
-                onClick={handleModeSwitch}
-                disabled={setModeMut.isPending}
-                className={`h-8 w-8 flex items-center justify-center rounded-md border transition-all ${
-                  isPersonal
-                    ? "border-purple-200 dark:border-purple-800 bg-purple-50 dark:bg-purple-950/50 hover:bg-purple-50 dark:bg-purple-950 text-purple-600 dark:text-purple-400 dark:border-purple-800 dark:bg-purple-950/30 dark:text-purple-400"
-                    : "border-blue-200 dark:border-blue-800 bg-blue-50 dark:bg-blue-950/50 hover:bg-blue-50 dark:bg-blue-950 text-blue-600 dark:text-blue-400 dark:border-blue-800 dark:bg-blue-950/30 dark:text-blue-400"
-                } ${setModeMut.isPending ? "opacity-60 cursor-wait" : "cursor-pointer"}`}
+                className="h-7 w-7 flex items-center justify-center rounded-md hover:bg-accent transition-all text-muted-foreground"
                 title={appMode === "umkm" ? "Beralih ke Jurnal Pribadi" : "Beralih ke Mode UMKM"}
               >
                 <ArrowRightLeft className="h-3.5 w-3.5" />
               </button>
-            </div>
-          )}
+            ) : (
+              <button
+                onClick={handleModeSwitch}
+                disabled={setModeMut.isPending}
+                className={`flex items-center gap-2 w-full rounded-md px-2 py-1.5 text-left transition-all text-[11.5px] font-medium text-muted-foreground hover:bg-accent/50 ${
+                  setModeMut.isPending ? "opacity-60 cursor-wait" : "cursor-pointer"
+                }`}
+              >
+                <ArrowRightLeft className="h-3 w-3 shrink-0" />
+                <span className="flex-1">
+                  {setModeMut.isPending
+                    ? "Beralih..."
+                    : appMode === "umkm"
+                      ? "Jurnal Pribadi"
+                      : "Mode UMKM"}
+                </span>
+              </button>
+            )}
+          </div>
 
           {/* ─── Navigation ─── */}
           <SidebarContent className="gap-0">
             <SidebarMenu data-onboarding="sidebar-menu" className="px-2 py-1">
-              {sidebarItems.map((item) =>
-                isGroup(item) ? renderGroup(item) : renderMenuItem(item as MenuItem)
-              )}
+              {sidebarEntries.map((entry) => {
+                if (isSectionMarker(entry)) return renderSectionLabel(entry);
+                const item = entry as SidebarItem;
+                return isGroup(item) ? renderGroup(item) : renderMenuItem(item as MenuItem);
+              })}
             </SidebarMenu>
           </SidebarContent>
 
-          {/* ─── Tax Alert (UMKM only) ─── */}
-          {appMode === "umkm" && !isCollapsed && totalTax > 0 && (
-            <div className="px-3 pb-2">
-              <div className="rounded-lg bg-amber-50 dark:bg-amber-950 border border-amber-200 dark:border-amber-800/50 p-3 dark:bg-amber-950/20 dark:border-amber-800/30">
-                <div className="flex items-center gap-2 text-xs text-muted-foreground mb-1">
-                  <AlertTriangle className="h-3.5 w-3.5 text-amber-500" />
-                  <span>Estimasi Pajak Bulan Ini</span>
-                </div>
-                <p className="text-sm font-semibold text-foreground">
-                  {formatRupiah(totalTax)}
-                </p>
-              </div>
-            </div>
-          )}
+          {/* Tax info moved to Dashboard KPI cards */}
 
-          {/* ─── Footer: Theme + User ─── */}
-          <SidebarFooter className="p-3 border-t border-border/50">
+          {/* ─── Footer: Theme + User (Claude Design style) ─── */}
+          <SidebarFooter className="p-2 pt-1 border-t border-border/30">
             <ThemeToggleButton isCollapsed={isCollapsed} />
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
-                <button className="flex items-center gap-2.5 rounded-lg px-1 py-1 hover:bg-accent/50 transition-colors w-full text-left group-data-[collapsible=icon]:justify-center focus:outline-none">
-                  <Avatar className="h-8 w-8 border border-border shrink-0">
+                <button className="flex items-center gap-2.5 rounded-lg px-1.5 py-1.5 hover:bg-accent/50 transition-colors w-full text-left group-data-[collapsible=icon]:justify-center focus:outline-none">
+                  <Avatar className="h-7 w-7 shrink-0">
                     {businessLogoUrl ? (
                       <img src={businessLogoUrl} alt={business?.businessName || "Logo"} className="h-full w-full object-cover rounded-full" />
                     ) : (
-                      <AvatarFallback className="text-xs font-semibold bg-secondary text-foreground">
-                        {user?.name?.charAt(0).toUpperCase()}
+                      <AvatarFallback className="text-[10px] font-bold bg-gradient-to-br from-orange-400 to-pink-500 text-white">
+                        {(user?.name || "U").substring(0, 2).toUpperCase()}
                       </AvatarFallback>
                     )}
                   </Avatar>
                   <div className="flex-1 min-w-0 group-data-[collapsible=icon]:hidden">
-                    <p className="text-[13px] font-medium truncate leading-none text-foreground">
+                    <p className="text-[12px] font-semibold truncate leading-none text-foreground">
                       {user?.name || "-"}
                     </p>
-                    <p className="text-[11px] text-muted-foreground truncate mt-1">
+                    <p className="text-[11px] text-muted-foreground truncate mt-0.5 overflow-hidden text-ellipsis">
                       {user?.email || "-"}
                     </p>
                   </div>
