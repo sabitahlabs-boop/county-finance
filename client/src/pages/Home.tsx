@@ -93,8 +93,10 @@ export default function Home() {
   }
 
   // UMKM mode — check if progressive onboarding is needed
+  // Only show wizard for users who explicitly haven't completed onboarding yet
+  // Existing users (onboardingCompleted=true) skip wizard even if enabledFeatures is empty
   const enabledFeatures = (business.enabledFeatures ?? []) as string[];
-  const needsProgressiveSetup = enabledFeatures.length === 0;
+  const needsProgressiveSetup = enabledFeatures.length === 0 && !business.onboardingCompleted;
 
   if (needsProgressiveSetup) {
     return (
