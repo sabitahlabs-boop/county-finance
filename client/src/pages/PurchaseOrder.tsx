@@ -75,9 +75,10 @@ function RupiahInput({ value, onChange, placeholder, className }: {
 // HelpTooltip imported from shared component
 
 // ─── Product Autocomplete ───
-function ProductAutocomplete({ value, onChange, products }: {
+function ProductAutocomplete({ value, onChange, onBlur, products }: {
   value: string;
   onChange: (v: string) => void;
+  onBlur?: () => void;
   products: Array<{ id: number; name: string; hpp?: number | null }>;
 }) {
   const [focused, setFocused] = useState(false);
@@ -106,6 +107,7 @@ function ProductAutocomplete({ value, onChange, products }: {
         placeholder="Cari / ketik nama produk"
         value={search}
         onFocus={() => setFocused(true)}
+        onBlur={() => { setTimeout(() => onBlur?.(), 200); }}
         onChange={(e) => {
           setSearch(e.target.value);
           onChange(e.target.value);
@@ -138,10 +140,12 @@ function ProductAutocomplete({ value, onChange, products }: {
 }
 
 interface POItem {
+  productId?: number;
   productName: string;
   qty: number;
   unitPrice: number;
   totalPrice?: number;
+  verified?: boolean; // true = user confirmed this is a new product (not a duplicate)
 }
 
 interface SupplierFormData {
@@ -523,15 +527,86 @@ const NewPODialog = ({ showHelp }: { showHelp: boolean }) => {
     setFormData({ ...formData, items: newItems });
   };
 
+  // ─── Duplicate verification state ───
+  const [dupCheck, setDupCheck] = useState<{
+    index: number;
+    typedName: string;
+    matches: Array<{ id: number; name: string; hpp: number | null; stockCurrent?: number }>;
+  } | null>(null);
+
   const handleProductSelect = (index: number, name: string) => {
-    const prod = products?.find(p => p.name === name);
+    const exactMatch = products?.find(p => p.name === name);
     const newItems = [...formData.items];
-    newItems[index] = {
-      ...newItems[index],
-      productName: name,
-      unitPrice: prod?.hpp || newItems[index].unitPrice,
+
+    if (exactMatch) {
+      // User selected from dropdown — exact match, link productId directly
+      newItems[index] = {
+        ...newItems[index],
+        productId: exactMatch.id,
+        productName: name,
+        unitPrice: exactMatch.hpp || newItems[index].unitPrice,
+        verified: true,
+      };
+      setFormData({ ...formData, items: newItems });
+    } else {
+      // User typed free text — check for similar products
+      newItems[index] = {
+        ...newItems[index],
+        productId: undefined,
+        productName: name,
+        verified: false,
+      };
+      setFormData({ ...formData, items: newItems });
+    }
+  };
+
+  // Check for similar products when user finishes typing (on blur)
+  const handleProductBlur = (index: number) => {
+    const item = formData.items[index];
+    if (!item.productName || item.verified || item.productId) return;
+
+    const q = item.productName.trim().toLowerCase();
+    if (q.length < 2) return;
+
+    const similar = products?.filter(p =>
+      p.name.toLowerCase().includes(q) || q.includes(p.name.toLowerCase())
+    ) || [];
+
+    if (similar.length > 0) {
+      setDupCheck({
+        index,
+        typedName: item.productName,
+        matches: similar.map(p => ({ id: p.id, name: p.name, hpp: p.hpp ?? null, stockCurrent: (p as any).stockCurrent })),
+      });
+    } else {
+      // No similar products — mark as verified new product
+      const newItems = [...formData.items];
+      newItems[index] = { ...newItems[index], verified: true };
+      setFormData({ ...formData, items: newItems });
+    }
+  };
+
+  const handleDupUseExisting = (productId: number) => {
+    if (!dupCheck) return;
+    const prod = products?.find(p => p.id === productId);
+    const newItems = [...formData.items];
+    newItems[dupCheck.index] = {
+      ...newItems[dupCheck.index],
+      productId,
+      productName: prod?.name || dupCheck.typedName,
+      unitPrice: prod?.hpp || newItems[dupCheck.index].unitPrice,
+      verified: true,
     };
     setFormData({ ...formData, items: newItems });
+    setDupCheck(null);
+  };
+
+  const handleDupCreateNew = () => {
+    if (!dupCheck) return;
+    const newItems = [...formData.items];
+    newItems[dupCheck.index] = { ...newItems[dupCheck.index], productId: undefined, verified: true };
+    setFormData({ ...formData, items: newItems });
+    setDupCheck(null);
   };
 
   const calculateTotal = () => formData.items.reduce((sum, item) => sum + item.qty * item.unitPrice, 0);
@@ -545,11 +620,19 @@ const NewPODialog = ({ showHelp }: { showHelp: boolean }) => {
       toast.error("Semua item harus memiliki nama produk");
       return;
     }
+    // Check if any items haven't been verified yet
+    const unverified = formData.items.filter(i => i.productName && !i.verified && !i.productId);
+    if (unverified.length > 0) {
+      toast.error("Ada item yang belum diverifikasi. Klik di luar field nama produk untuk memverifikasi.");
+      return;
+    }
+
     await createPO.mutateAsync({
       supplierId: Number(formData.supplierId),
       date: formData.date,
       description: formData.description,
       items: formData.items.map(item => ({
+        productId: item.productId,
         productName: item.productName,
         qty: item.qty,
         unitPrice: item.unitPrice,
@@ -559,7 +642,7 @@ const NewPODialog = ({ showHelp }: { showHelp: boolean }) => {
     });
   };
 
-  return (
+  return (<>
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger asChild>
         <Button className="bg-emerald-600 hover:bg-emerald-700 text-white gap-2">
@@ -637,6 +720,7 @@ const NewPODialog = ({ showHelp }: { showHelp: boolean }) => {
                     <ProductAutocomplete
                       value={item.productName}
                       onChange={(name) => handleProductSelect(idx, name)}
+                      onBlur={() => handleProductBlur(idx)}
                       products={products?.map(p => ({ id: p.id, name: p.name, hpp: p.hpp })) || []}
                     />
                   </div>
@@ -714,6 +798,54 @@ const NewPODialog = ({ showHelp }: { showHelp: boolean }) => {
         </div>
       </DialogContent>
     </Dialog>
+
+    {/* ─── Duplicate Product Verification Dialog ─── */}
+    {dupCheck && (
+      <div className="fixed inset-0 z-[100] bg-black/60 backdrop-blur-sm flex items-center justify-center p-4" onClick={() => setDupCheck(null)}>
+        <div className="bg-slate-900 border border-slate-700 rounded-2xl shadow-2xl max-w-md w-full p-5" onClick={(e) => e.stopPropagation()}>
+          <div className="flex items-start gap-3 mb-4">
+            <div className="w-10 h-10 rounded-xl bg-amber-500/10 flex items-center justify-center shrink-0">
+              <Package className="w-5 h-5 text-amber-400" />
+            </div>
+            <div>
+              <h3 className="text-white font-semibold text-sm">Produk serupa ditemukan</h3>
+              <p className="text-slate-400 text-xs mt-0.5">
+                Kamu mengetik "<span className="text-white font-medium">{dupCheck.typedName}</span>".
+                Apakah ini produk yang sudah ada?
+              </p>
+            </div>
+          </div>
+
+          <div className="space-y-2 mb-4">
+            {dupCheck.matches.map((match) => (
+              <button
+                key={match.id}
+                onClick={() => handleDupUseExisting(match.id)}
+                className="w-full flex items-center justify-between p-3 rounded-xl border border-slate-700 hover:border-emerald-500/50 hover:bg-emerald-500/5 transition-all text-left"
+              >
+                <div>
+                  <div className="text-white text-sm font-medium">{match.name}</div>
+                  <div className="text-slate-500 text-xs mt-0.5">
+                    {match.hpp ? `HPP: ${formatRupiah(match.hpp)}` : "Belum ada HPP"}
+                  </div>
+                </div>
+                <div className="text-emerald-400 text-xs font-semibold px-2 py-1 rounded-full bg-emerald-500/10">
+                  Gunakan ini
+                </div>
+              </button>
+            ))}
+          </div>
+
+          <button
+            onClick={handleDupCreateNew}
+            className="w-full py-2.5 rounded-xl border border-dashed border-slate-600 text-slate-400 hover:text-white hover:border-slate-500 transition-colors text-sm font-medium"
+          >
+            + Tambahkan sebagai produk baru
+          </button>
+        </div>
+      </div>
+    )}
+  </>
   );
 };
 
