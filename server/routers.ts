@@ -5,7 +5,7 @@ import { publicProcedure, protectedProcedure, adminProcedure, router } from "./_
 import { z } from "zod";
 import { TRPCError } from "@trpc/server";
 import { eq, and, sql } from "drizzle-orm";
-import { transactions, posReceipts, posReceiptItems, discountCodes, debtPayments, debts, creditPayments, creditSales, purchaseOrderItems, journalEntries } from "../drizzle/schema";
+import { transactions, posReceipts, posReceiptItems, discountCodes, debtPayments, debts, creditPayments, creditSales, purchaseOrderItems, journalEntries, products } from "../drizzle/schema";
 import {
   getBusinessByOwnerId, getBusinessesByOwnerId, getBusinessByOwnerAndMode, getBusinessById, getBusinessBySlug, createBusiness, updateBusiness, getAllBusinesses,
   getActiveTaxRules, seedDefaultTaxRules, updateTaxRule,
@@ -4252,21 +4252,42 @@ Penting: Kembalikan HANYA JSON valid, tidak ada teks penjelasan.`,
 
             let productId = item.productId;
 
-            // If no productId — auto-create product from PO item data
+            // If no productId — check if product with same name exists first, then create if not
             if (!productId) {
-              productId = await safeInsertProduct({
-                businessId,
-                name: item.productName,
-                sku: "",
-                category: "Pembelian PO",
-                hpp: Number(item.unitPrice) || 0,
-                sellingPrice: 0,
-                stockCurrent: 0,
-                stockMinimum: 0,
-                unit: "pcs",
-              });
+              // Search for existing product with exact name match (case-insensitive)
+              const existingProducts = await searchProductsByName(businessId, item.productName);
+              const exactMatch = existingProducts.find(
+                (p) => p.name.trim().toLowerCase() === item.productName.trim().toLowerCase()
+              );
 
-              // Link PO item back to the newly created product
+              if (exactMatch) {
+                // Product already exists — use it instead of creating duplicate
+                productId = exactMatch.id;
+                // Update HPP if PO has newer price
+                if (Number(item.unitPrice) > 0) {
+                  const db = await getDb();
+                  if (db) {
+                    await db.update(products)
+                      .set({ hpp: Number(item.unitPrice) })
+                      .where(eq(products.id, exactMatch.id));
+                  }
+                }
+              } else {
+                // No existing product — create new one
+                productId = await safeInsertProduct({
+                  businessId,
+                  name: item.productName,
+                  sku: "",
+                  category: "Pembelian PO",
+                  hpp: Number(item.unitPrice) || 0,
+                  sellingPrice: 0,
+                  stockCurrent: 0,
+                  stockMinimum: 0,
+                  unit: "pcs",
+                });
+              }
+
+              // Link PO item back to the product (new or existing)
               const db = await getDb();
               if (db) {
                 await db.update(purchaseOrderItems)
