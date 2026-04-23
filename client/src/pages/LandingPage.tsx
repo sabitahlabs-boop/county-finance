@@ -34,7 +34,7 @@ const C = {
 const LOGO_URL = "/county-icon.png";
 const SALE_PRICE = 299000;
 const ORIGINAL_PRICE = 2000000;
-const WA_URL = "https://wa.me/6285693932042?text=Halo%2C%20saya%20tertarik%20dengan%20County";
+const WA_URL = "https://wa.me/6282118899903?text=Halo%2C%20saya%20tertarik%20dengan%20County.%20Bisa%20info%20lebih%20lanjut%3F";
 
 // Pexels images — Indonesian UMKM / orang Indonesia asli
 const HERO_IMG = "https://images.pexels.com/photos/18396509/pexels-photo-18396509.jpeg?auto=compress&cs=tinysrgb&w=800"; // Pasar tradisional Indonesia
