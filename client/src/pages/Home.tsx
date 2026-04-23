@@ -7,6 +7,7 @@ import Dashboard from "./Dashboard";
 import PersonalDashboard from "./PersonalDashboard";
 import PersonalSetupWizard from "./PersonalSetupWizard";
 import Onboarding from "./Onboarding";
+import BusinessProfileWizard from "@/components/BusinessProfileWizard";
 import LandingPage from "./LandingPage";
 import { DashboardLayoutSkeleton } from "@/components/DashboardLayoutSkeleton";
 
@@ -88,6 +89,22 @@ export default function Home() {
       <DashboardLayout>
         <PersonalDashboard />
       </DashboardLayout>
+    );
+  }
+
+  // UMKM mode — check if progressive onboarding is needed
+  const enabledFeatures = (business.enabledFeatures ?? []) as string[];
+  const needsProgressiveSetup = enabledFeatures.length === 0;
+
+  if (needsProgressiveSetup) {
+    return (
+      <BusinessProfileWizard
+        currentBusinessType={business.businessType}
+        onComplete={() => {
+          utils.business.mine.invalidate();
+          refetch();
+        }}
+      />
     );
   }
 

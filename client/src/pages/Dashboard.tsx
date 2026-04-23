@@ -9,7 +9,7 @@ import {
   Package, ArrowUpRight, ArrowDownRight, Camera, Plus, FileText, Sparkles,
   Brain, Lightbulb, RefreshCw, Loader2, AlertCircle, ShoppingBag,
   BookOpen, PiggyBank, CreditCard, Target, BarChart3, ShoppingCart,
-  Truck, Calendar, AlertTriangle, Clock, ChevronRight
+  Truck, Calendar, AlertTriangle, Clock, ChevronRight, Compass
 } from "lucide-react";
 import { formatRupiah, formatTanggalIndonesia, BULAN_INDONESIA } from "../../../shared/finance";
 import { useLocation } from "wouter";
@@ -684,6 +684,7 @@ function UMKMDashboard() {
   const { data: lowStock } = trpc.product.lowStock.useQuery(undefined, { retry: false });
 
   const posEnabled = business?.posEnabled ?? false;
+  const enabledFeatures = (business?.enabledFeatures ?? []) as string[];
 
   // Weekly chart data (last 7 days from yearlyOmzet or mock)
   const chartData = useMemo(() => {
@@ -789,6 +790,35 @@ function UMKMDashboard() {
           </div>
         </div>
       </motion.div>
+
+      {/* ── Progressive UX Reminder Banner ── */}
+      {business?.onboardingCompleted && enabledFeatures.length > 0 && enabledFeatures.length < 15 && (
+        <motion.div
+          initial={{ opacity: 0, y: -5 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.3 }}
+          className="flex items-center gap-3 p-3 rounded-xl bg-blue-50 dark:bg-blue-950/30 border border-blue-200 dark:border-blue-900"
+        >
+          <div className="w-8 h-8 rounded-lg bg-blue-100 dark:bg-blue-900 flex items-center justify-center shrink-0">
+            <Compass className="w-4 h-4 text-blue-600 dark:text-blue-400" />
+          </div>
+          <div className="flex-1 min-w-0">
+            <p className="text-xs text-blue-700 dark:text-blue-300">
+              <span className="font-semibold">Butuh fitur lain?</span>{" "}
+              Klik "Jelajahi Fitur" di sidebar kiri untuk aktifkan fitur tambahan atau ubah klasifikasi bisnismu kapan saja.
+            </p>
+          </div>
+          <button
+            onClick={() => {
+              // Store dismissal in localStorage
+              localStorage.setItem("county-progressive-banner-dismissed", "true");
+            }}
+            className="text-blue-400 hover:text-blue-600 text-xs shrink-0"
+          >
+            Tutup
+          </button>
+        </motion.div>
+      )}
 
       {/* ── KPI Cards (4-column fintech grid) ── */}
       <div data-onboarding="kpi-cards" className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">

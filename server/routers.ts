@@ -243,6 +243,8 @@ export const appRouter = router({
       signatureUrl: z.string().nullable().optional(),
       invoiceFooter: z.string().nullable().optional(),
       calculatorEnabled: z.boolean().optional(),
+      businessScale: z.string().optional(),
+      enabledFeatures: z.array(z.string()).optional(),
     })).mutation(async ({ ctx, input }) => {
       const biz = (await resolveBusinessForUser(ctx.user.id, ctx.requestedBusinessId, ctx.user.role))?.business;
       if (!biz) throw new TRPCError({ code: "NOT_FOUND", message: "Bisnis tidak ditemukan" });
@@ -307,6 +309,31 @@ export const appRouter = router({
       const biz = (await resolveBusinessForUser(ctx.user.id, ctx.requestedBusinessId, ctx.user.role))?.business;
       if (!biz) throw new TRPCError({ code: "NOT_FOUND" });
       await updateBusinessPersonalSetupDone(biz.id);
+      return { success: true };
+    }),
+
+    // ─── Progressive UX: Business Profile & Feature Preferences ───
+    saveBusinessProfile: protectedProcedure.input(z.object({
+      businessType: z.string(), // retail, fnb, jasa, online, produksi, lainnya
+      businessScale: z.string(), // pemula, toko_aktif, bisnis_scale
+      enabledFeatures: z.array(z.string()),
+    })).mutation(async ({ ctx, input }) => {
+      const biz = (await resolveBusinessForUser(ctx.user.id, ctx.requestedBusinessId, ctx.user.role))?.business;
+      if (!biz) throw new TRPCError({ code: "NOT_FOUND", message: "Bisnis tidak ditemukan" });
+      await updateBusiness(biz.id, {
+        businessType: input.businessType,
+        businessScale: input.businessScale,
+        enabledFeatures: input.enabledFeatures,
+        onboardingCompleted: true,
+      });
+      return { success: true };
+    }),
+    updateEnabledFeatures: protectedProcedure.input(z.object({
+      enabledFeatures: z.array(z.string()),
+    })).mutation(async ({ ctx, input }) => {
+      const biz = (await resolveBusinessForUser(ctx.user.id, ctx.requestedBusinessId, ctx.user.role))?.business;
+      if (!biz) throw new TRPCError({ code: "NOT_FOUND", message: "Bisnis tidak ditemukan" });
+      await updateBusiness(biz.id, { enabledFeatures: input.enabledFeatures });
       return { success: true };
     }),
 

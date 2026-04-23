@@ -63,6 +63,8 @@ export const businesses = mysqlTable("businesses", {
   onboardingCompleted: boolean("onboardingCompleted").notNull().default(false),
   debtEnabled: boolean("debtEnabled").notNull().default(true), // toggle hutang piutang on/off
   personalSetupDone: boolean("personalSetupDone").notNull().default(false), // personal mode first-time setup wizard completed
+  businessScale: varchar("businessScale", { length: 20 }).notNull().default("pemula"), // pemula / toko_aktif / bisnis_scale
+  enabledFeatures: json("enabledFeatures").$type<string[]>().notNull().default([]), // progressive sidebar: list of feature keys shown
   createdAt: timestamp("createdAt").defaultNow().notNull(),
   updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
 });

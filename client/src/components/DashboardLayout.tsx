@@ -90,6 +90,50 @@ import { PATH_PERMISSION_MAP } from "../../../shared/permissions";
 import NotificationCenter from "./NotificationCenter";
 import MiniCalculator from "./MiniCalculator";
 import { useBusinessContext } from "@/contexts/BusinessContext";
+import FeatureExplorer from "./FeatureExplorer";
+import { Compass } from "lucide-react";
+
+// ─── Progressive UX: Feature key → sidebar path mapping ───
+// Maps feature keys (from BusinessProfileWizard) to sidebar paths they control
+const FEATURE_PATH_MAP: Record<string, string[]> = {
+  // Layer 1 (always on) — no mapping needed, they always show
+  // Layer 2
+  pos: ["/pos", "/laporan-penjualan"],
+  shift: ["/laporan-shift"],
+  pelanggan: ["/client"],
+  hutang: ["/hutang-piutang"],
+  po: ["/purchase-order"],
+  invoice: ["/invoice-settings"],
+  pajak: ["/pajak"],
+  loyalty: ["/loyalty"],
+  barcode: ["/barcode"],
+  "peringatan-stok": ["/peringatan-stok"],
+  // Layer 3
+  "laporan-detail": ["/laporan-gl", "/rekening-koran", "/mutasi-persediaan", "/penjualan-produk",
+    "/ringkasan-pembayaran", "/top-produk", "/penjualan-pelanggan", "/penjualan-jam",
+    "/penjualan-tanggal", "/penjualan-kredit", "/ringkasan-diskon", "/void-refund",
+    "/transaksi-tunai", "/komisi"],
+  analitik: ["/analitik"],
+  fifo: ["/valuasi-fifo"],
+  jurnal: ["/jurnal-adjustment"],
+  rekening: ["/manajemen-rekening"],
+  "stok-advanced": ["/riwayat-stok", "/stok-kedaluwarsa", "/usia-stok"],
+};
+
+// Build reverse map: path → is this path controlled by a feature?
+function getProgressiveAllowedPaths(enabledFeatures: string[]): Set<string> | null {
+  if (!enabledFeatures || enabledFeatures.length === 0) return null; // no filtering
+  const allowed = new Set<string>();
+  // Always-allowed paths (Layer 1)
+  ["/", "/stok", "/laporan-index", "/laporan", "/transaksi", "/pengaturan",
+   "/panduan", "/panduan-akuntansi", "/anggaran"].forEach(p => allowed.add(p));
+  // Feature-enabled paths
+  for (const feat of enabledFeatures) {
+    const paths = FEATURE_PATH_MAP[feat];
+    if (paths) paths.forEach(p => allowed.add(p));
+  }
+  return allowed;
+}
 
 // ─── Menu definitions ───
 
@@ -293,6 +337,10 @@ function DashboardLayoutContent({
   const posEnabled = business?.posEnabled ?? false;
   const debtEnabled = business?.debtEnabled ?? true;
   const isAdmin = user?.role === "admin";
+  const enabledFeatures = (business?.enabledFeatures ?? []) as string[];
+  const businessScale = (business?.businessScale ?? "pemula") as string;
+  const [showFeatureExplorer, setShowFeatureExplorer] = useState(false);
+  const utils = trpc.useUtils();
 
   // Mode switcher mutation
   const setModeMut = trpc.business.setMode.useMutation({
@@ -417,6 +465,23 @@ function DashboardLayoutContent({
       entries = entries.filter((e) => isSectionMarker(e) || !isGroup(e as SidebarItem) || (e as CollapsibleMenuGroup).children.length > 0);
     }
 
+    // Progressive UX filtering: only show paths enabled by user's feature selection
+    const allowedPaths = getProgressiveAllowedPaths(enabledFeatures);
+    if (allowedPaths) {
+      entries = entries.map((entry) => {
+        if (isSectionMarker(entry)) return entry;
+        const item = entry as SidebarItem;
+        if (isGroup(item)) {
+          return { ...item, children: item.children.filter((c) => allowedPaths.has(c.path)) };
+        }
+        const mi = item as MenuItem;
+        if (!allowedPaths.has(mi.path)) return null;
+        return entry;
+      }).filter(Boolean) as SidebarEntry[];
+      // Remove empty groups
+      entries = entries.filter((e) => isSectionMarker(e) || !isGroup(e as SidebarItem) || (e as CollapsibleMenuGroup).children.length > 0);
+    }
+
     // Remove section markers that have no items after them (or are followed by another section marker)
     entries = entries.filter((entry, i, arr) => {
       if (!isSectionMarker(entry)) return true;
@@ -433,7 +498,7 @@ function DashboardLayoutContent({
     });
 
     return { sidebarEntries: entries, flatItems: flat };
-  }, [appMode, posEnabled, debtEnabled, isAdmin, isTeamMember, memberPermissions, business?.plan]);
+  }, [appMode, posEnabled, debtEnabled, isAdmin, isTeamMember, memberPermissions, business?.plan, enabledFeatures]);
 
   const locationPath = location.split("?")[0];
   const activeMenuItem = flatItems.find((item) => item.path.split("?")[0] === locationPath);
@@ -723,6 +788,19 @@ function DashboardLayoutContent({
 
           {/* Tax info moved to Dashboard KPI cards */}
 
+          {/* ─── Jelajahi Fitur button (Progressive UX) ─── */}
+          {appMode === "umkm" && !isCollapsed && (
+            <div className="px-3 pb-2">
+              <button
+                onClick={() => setShowFeatureExplorer(true)}
+                className="flex items-center gap-2 w-full px-2.5 py-2 rounded-lg text-xs font-medium text-primary hover:bg-primary/5 transition-colors border border-dashed border-primary/30 hover:border-primary/50"
+              >
+                <Compass className="w-3.5 h-3.5" />
+                <span>Jelajahi Fitur</span>
+              </button>
+            </div>
+          )}
+
           {/* ─── Footer: Theme + User (Claude Design style) ─── */}
           <SidebarFooter className="p-2 pt-1 border-t border-border/30">
             <ThemeToggleButton isCollapsed={isCollapsed} />
@@ -865,6 +943,19 @@ function DashboardLayoutContent({
         <main className="flex-1 p-4 md:p-6">{children}</main>
         {business?.calculatorEnabled !== false && <MiniCalculator />}
       </SidebarInset>
+
+      {/* Feature Explorer Modal */}
+      {showFeatureExplorer && (
+        <FeatureExplorer
+          currentFeatures={enabledFeatures}
+          businessScale={businessScale}
+          onClose={() => setShowFeatureExplorer(false)}
+          onSaved={() => {
+            setShowFeatureExplorer(false);
+            utils.business.mine.invalidate();
+          }}
+        />
+      )}
     </>
   );
 }
