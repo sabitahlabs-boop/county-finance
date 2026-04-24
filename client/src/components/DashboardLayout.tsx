@@ -126,7 +126,7 @@ function getProgressiveAllowedPaths(enabledFeatures: string[]): Set<string> | nu
   const allowed = new Set<string>();
   // Always-allowed paths (Layer 1)
   ["/", "/stok", "/laporan-index", "/laporan", "/transaksi", "/pengaturan",
-   "/panduan", "/panduan-akuntansi", "/anggaran"].forEach(p => allowed.add(p));
+   "/panduan", "/panduan-akuntansi", "/anggaran", "/admin"].forEach(p => allowed.add(p));
   // Feature-enabled paths
   for (const feat of enabledFeatures) {
     const paths = FEATURE_PATH_MAP[feat];
