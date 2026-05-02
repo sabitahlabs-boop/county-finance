@@ -2419,7 +2419,7 @@ Penting: Kembalikan HANYA JSON valid, tidak ada teks penjelasan.`,
           const newStock = await recalcProductStockFromWarehouses(p.id);
           if (oldStock !== newStock) {
             totalFixed++;
-            details.push({ businessId: biz.id, businessName: biz.name, productId: p.id, productName: p.name, oldStock, newStock });
+            details.push({ businessId: biz.id, businessName: biz.businessName, productId: p.id, productName: p.name, oldStock, newStock });
           }
         }
       }
@@ -4732,7 +4732,7 @@ Penting: Kembalikan HANYA JSON valid, tidak ada teks penjelasan.`,
       occupation: z.string().optional(),
       monthlyIncome: z.number().min(0).optional(),
       setupCompleted: z.boolean().optional(),
-      setupStep: z.number().min(0).max(9).optional(),
+      setupStep: z.number().min(0).max(99).optional(),
     })).mutation(async ({ ctx, input }) => {
       const resolved = await resolveBusinessForUser(ctx.user.id, ctx.requestedBusinessId, ctx.user.role);
       if (!resolved) throw new TRPCError({ code: "NOT_FOUND", message: "Personal finance profile not found. Please set up personal mode first." });

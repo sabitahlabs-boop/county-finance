@@ -4225,6 +4225,23 @@ export async function clearBusinessData(businessId: number): Promise<{ success: 
   // Keep warehouses but delete non-default ones
   await safeDel(() => db.delete(warehouses).where(and(eq(warehouses.businessId, businessId), eq(warehouses.isDefault, false))), "warehouses");
 
+  // Personal Finance tables (pf_*)
+  await safeDel(() => db.execute(sql.raw(`DELETE FROM pf_goals WHERE businessId = ${businessId}`)), "pf_goals");
+  await safeDel(() => db.execute(sql.raw(`DELETE FROM pf_heritage WHERE businessId = ${businessId}`)), "pf_heritage");
+  await safeDel(() => db.execute(sql.raw(`DELETE FROM pf_insurances WHERE businessId = ${businessId}`)), "pf_insurances");
+  await safeDel(() => db.execute(sql.raw(`DELETE FROM pf_liabilities WHERE businessId = ${businessId}`)), "pf_liabilities");
+  await safeDel(() => db.execute(sql.raw(`DELETE FROM pf_assets WHERE businessId = ${businessId}`)), "pf_assets");
+  await safeDel(() => db.execute(sql.raw(`DELETE FROM pf_expense_categories WHERE businessId = ${businessId}`)), "pf_expense_categories");
+  await safeDel(() => db.execute(sql.raw(`DELETE FROM pf_income_sources WHERE businessId = ${businessId}`)), "pf_income_sources");
+  await safeDel(() => db.execute(sql.raw(`DELETE FROM pf_profiles WHERE businessId = ${businessId}`)), "pf_profiles");
+
+  // Reset business flags so user goes back to setup wizard
+  await db.update(businesses).set({
+    personalSetupDone: false,
+    onboardingCompleted: false,
+    enabledFeatures: [],
+  }).where(eq(businesses.id, businessId));
+
   return { success: true };
 }
 
