@@ -4292,6 +4292,10 @@ Penting: Kembalikan HANYA JSON valid, tidak ada teks penjelasan.`,
           const defaultWarehouse = await ensureDefaultWarehouse(businessId);
           const journalDate = new Date().toISOString().substring(0, 10);
 
+          // Get supplier info for receiving detail
+          const supplier = po.supplierId ? await getSupplierById(po.supplierId) : null;
+          const receiverName = ctx.user.name || ctx.user.email || "System";
+
           for (const item of poItems) {
             if (item.qty <= 0) continue;
 
@@ -4362,6 +4366,33 @@ Penting: Kembalikan HANYA JSON valid, tidak ada teks penjelasan.`,
               stockAfter: newQty,
               notes: `Pembelian PO ${po.poNumber} — ${item.productName}`,
             });
+
+            // ── ERP Receiving Detail Log (full traceability) ──
+            try {
+              const db = await getDb();
+              if (db) {
+                const qtyReceived = item.qty;
+                const qtyOrdered = item.qty; // Currently PO = received fully
+                const receivingStatus = qtyReceived === qtyOrdered ? "match"
+                  : qtyReceived > qtyOrdered ? "over" : "short";
+                await db.execute(sql.raw(`INSERT INTO po_receiving_details
+                  (businessId, purchaseOrderId, poNumber, supplierId, supplierName,
+                   warehouseId, warehouseName, receivedBy, productId, productName,
+                   sku, qtyOrdered, qtyReceived, unitCost, totalCost, status, notes)
+                  VALUES (${businessId}, ${id}, '${po.poNumber}', ${po.supplierId || 'NULL'},
+                   '${(supplier?.name || "").replace(/'/g, "''")}',
+                   ${defaultWarehouse.id}, '${(defaultWarehouse.name || "Utama").replace(/'/g, "''")}',
+                   '${receiverName.replace(/'/g, "''")}',
+                   ${productId}, '${item.productName.replace(/'/g, "''")}',
+                   ${product.sku ? `'${product.sku.replace(/'/g, "''")}'` : 'NULL'},
+                   ${qtyOrdered}, ${qtyReceived},
+                   ${Number(item.unitPrice)}, ${Number(item.totalPrice)},
+                   '${receivingStatus}',
+                   '${(`PO ${po.poNumber} diterima`).replace(/'/g, "''")}')`));
+              }
+            } catch (recvErr) {
+              console.warn("[RECEIVING] Failed to log receiving detail:", recvErr);
+            }
           }
         } catch (stockErr) {
           console.error("[STOCK] PO received stock update failed:", stockErr);
@@ -4515,6 +4546,20 @@ Penting: Kembalikan HANYA JSON valid, tidak ada teks penjelasan.`,
       // ─── 4. Delete PO + items ───
       await deletePurchaseOrder(id);
       return { success: true };
+    }),
+    // ── Receiving Detail Log (ERP audit trail) ──
+    receivingDetails: protectedProcedure.input(z.object({
+      poId: z.number().optional(),
+    }).optional()).query(async ({ ctx, input }) => {
+      const resolved = await resolveBusinessForUser(ctx.user.id, ctx.requestedBusinessId, ctx.user.role);
+      if (!resolved) return [];
+      const db = await getDb();
+      if (!db) return [];
+      const poFilter = input?.poId ? `AND purchaseOrderId = ${input.poId}` : "";
+      const [rows] = await db.execute(sql.raw(
+        `SELECT * FROM po_receiving_details WHERE businessId = ${resolved.business.id} ${poFilter} ORDER BY receivedAt DESC LIMIT 500`
+      )) as any;
+      return rows || [];
     }),
   }),
 

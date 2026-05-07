@@ -919,7 +919,36 @@ async function runAutoMigration(db: ReturnType<typeof drizzle>) {
   // PF indexes
   await safeExec("CREATE INDEX IF NOT EXISTS `idx_pf_profiles_businessId` ON `pf_profiles` (`businessId`)");
 
-  console.log("[Migration] Auto-migration complete (including pf_ tables).");
+  // ── PO Receiving Detail Log (ERP audit trail) ──
+  await safeExec(`CREATE TABLE IF NOT EXISTS \`po_receiving_details\` (
+    \`id\` int NOT NULL AUTO_INCREMENT PRIMARY KEY,
+    \`businessId\` int NOT NULL,
+    \`purchaseOrderId\` int NOT NULL,
+    \`poNumber\` varchar(30) NOT NULL,
+    \`supplierId\` int DEFAULT NULL,
+    \`supplierName\` varchar(255) DEFAULT NULL,
+    \`warehouseId\` int DEFAULT NULL,
+    \`warehouseName\` varchar(255) DEFAULT NULL,
+    \`receivedBy\` varchar(255) DEFAULT NULL,
+    \`receivedAt\` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    \`productId\` int DEFAULT NULL,
+    \`productName\` varchar(255) NOT NULL,
+    \`sku\` varchar(100) DEFAULT NULL,
+    \`qtyOrdered\` int NOT NULL DEFAULT 0,
+    \`qtyReceived\` int NOT NULL DEFAULT 0,
+    \`unitCost\` bigint NOT NULL DEFAULT 0,
+    \`totalCost\` bigint NOT NULL DEFAULT 0,
+    \`batchNumber\` varchar(100) DEFAULT NULL,
+    \`notes\` text DEFAULT NULL,
+    \`status\` enum('match','over','short','damaged') NOT NULL DEFAULT 'match',
+    \`createdAt\` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    INDEX \`idx_po_recv_business\` (\`businessId\`),
+    INDEX \`idx_po_recv_po\` (\`purchaseOrderId\`),
+    INDEX \`idx_po_recv_product\` (\`productId\`),
+    INDEX \`idx_po_recv_date\` (\`receivedAt\`)
+  )`);
+
+  console.log("[Migration] Auto-migration complete (including pf_ tables + po_receiving_details).");
 }
 
 // ─── Audit Logging Helper ───
@@ -4224,6 +4253,9 @@ export async function clearBusinessData(businessId: number): Promise<{ success: 
 
   // Keep warehouses but delete non-default ones
   await safeDel(() => db.delete(warehouses).where(and(eq(warehouses.businessId, businessId), eq(warehouses.isDefault, false))), "warehouses");
+
+  // PO Receiving details
+  await safeDel(() => db.execute(sql.raw(`DELETE FROM po_receiving_details WHERE businessId = ${businessId}`)), "po_receiving_details");
 
   // Personal Finance tables (pf_*)
   await safeDel(() => db.execute(sql.raw(`DELETE FROM pf_goals WHERE businessId = ${businessId}`)), "pf_goals");
