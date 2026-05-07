@@ -3876,25 +3876,88 @@ export async function getDailySalesReport(businessId: number, date: string) {
   const netSales = totalSales - totalRefunds;
 
   // Product-level breakdown from pos_receipt_items (not transactions)
-  const receiptIds = receipts.filter(r => !r.isRefunded).map(r => r.id);
-  const byProduct: Record<number, { name: string; qty: number; revenue: number; hpp: number }> = {};
-  if (receiptIds.length > 0) {
-    const items = await db.select().from(posReceiptItems).where(
-      sql`${posReceiptItems.receiptId} IN (${sql.join(receiptIds.map(id => sql`${id}`), sql`, `)})`
-    );
+  const allReceiptIds = receipts.map(r => r.id);
+  const activeReceiptIds = receipts.filter(r => !r.isRefunded).map(r => r.id);
+  const byProduct: Record<number, { name: string; sku: string | null; category: string | null; qty: number; revenue: number; hpp: number }> = {};
+  // Also build a map of receiptId -> items for drill-down
+  const receiptItemsMap: Record<number, Array<{ productId: number; productName: string; sku: string | null; qty: number; unitPrice: number; totalPrice: number; hppSnapshot: number }>> = {};
+
+  if (allReceiptIds.length > 0) {
+    const items = await db.select({
+      id: posReceiptItems.id,
+      receiptId: posReceiptItems.receiptId,
+      productId: posReceiptItems.productId,
+      productName: posReceiptItems.productName,
+      qty: posReceiptItems.qty,
+      unitPrice: posReceiptItems.unitPrice,
+      totalPrice: posReceiptItems.totalPrice,
+      hppSnapshot: posReceiptItems.hppSnapshot,
+      sku: products.sku,
+      category: products.category,
+    }).from(posReceiptItems)
+      .leftJoin(products, eq(posReceiptItems.productId, products.id))
+      .where(sql`${posReceiptItems.receiptId} IN (${sql.join(allReceiptIds.map(id => sql`${id}`), sql`, `)})`);
+
     for (const item of items) {
-      if (!byProduct[item.productId]) {
-        byProduct[item.productId] = { name: item.productName, qty: 0, revenue: 0, hpp: 0 };
+      // Build per-receipt items map
+      if (!receiptItemsMap[item.receiptId]) receiptItemsMap[item.receiptId] = [];
+      receiptItemsMap[item.receiptId].push({
+        productId: item.productId,
+        productName: item.productName,
+        sku: item.sku,
+        qty: item.qty,
+        unitPrice: item.unitPrice,
+        totalPrice: item.totalPrice,
+        hppSnapshot: item.hppSnapshot ?? 0,
+      });
+
+      // Aggregate by product (only non-refunded)
+      if (activeReceiptIds.includes(item.receiptId)) {
+        if (!byProduct[item.productId]) {
+          byProduct[item.productId] = { name: item.productName, sku: item.sku, category: item.category, qty: 0, revenue: 0, hpp: 0 };
+        }
+        byProduct[item.productId].qty += item.qty;
+        byProduct[item.productId].revenue += item.totalPrice;
+        byProduct[item.productId].hpp += (item.hppSnapshot ?? 0) * item.qty;
       }
-      byProduct[item.productId].qty += item.qty;
-      byProduct[item.productId].revenue += item.totalPrice;
-      byProduct[item.productId].hpp += (item.hppSnapshot ?? 0) * item.qty;
     }
   }
 
+  // Enrich receipts with customer name and cashier
+  const clientIds = Array.from(new Set(receipts.filter(r => r.clientId).map(r => r.clientId!)));
+  const clientMap: Record<number, string> = {};
+  if (clientIds.length > 0) {
+    const clientRows = await db.select({ id: clients.id, name: clients.name }).from(clients)
+      .where(sql`${clients.id} IN (${sql.join(clientIds.map(id => sql`${id}`), sql`, `)})`);
+    for (const c of clientRows) clientMap[c.id] = c.name;
+  }
+
+  const shiftIds = Array.from(new Set(receipts.filter(r => r.shiftId).map(r => r.shiftId!)));
+  const cashierMap: Record<number, string> = {};
+  if (shiftIds.length > 0) {
+    const shiftRows = await db.select({ id: posShifts.id, userId: posShifts.userId }).from(posShifts)
+      .where(sql`${posShifts.id} IN (${sql.join(shiftIds.map(id => sql`${id}`), sql`, `)})`);
+    const userIds = shiftRows.map(s => s.userId);
+    if (userIds.length > 0) {
+      const userRows = await db.select({ id: users.id, name: users.name }).from(users)
+        .where(sql`${users.id} IN (${sql.join(userIds.map(id => sql`${id}`), sql`, `)})`);
+      const userMap: Record<number, string> = {};
+      for (const u of userRows) userMap[u.id] = u.name || "Unknown";
+      for (const s of shiftRows) cashierMap[s.id] = userMap[s.userId] || "Unknown";
+    }
+  }
+
+  const enrichedReceipts = receipts.map(r => ({
+    ...r,
+    customerName: r.clientId ? (clientMap[r.clientId] || null) : null,
+    cashierName: r.shiftId ? (cashierMap[r.shiftId] || null) : null,
+    items: receiptItemsMap[r.id] || [],
+    itemCount: (receiptItemsMap[r.id] || []).reduce((s, i) => s + i.qty, 0),
+  }));
+
   return {
     date,
-    receipts,
+    receipts: enrichedReceipts,
     totalSales,
     totalDiscount,
     totalRefunds,
@@ -3903,6 +3966,9 @@ export async function getDailySalesReport(businessId: number, date: string) {
     byPaymentMethod,
     byHour,
     byProduct: Object.values(byProduct).sort((a, b) => b.revenue - a.revenue),
+    totalItemsSold: Object.values(byProduct).reduce((s, p) => s + p.qty, 0),
+    totalHPP: Object.values(byProduct).reduce((s, p) => s + p.hpp, 0),
+    grossProfit: totalSales - Object.values(byProduct).reduce((s, p) => s + p.hpp, 0),
   };
 }
 
@@ -3930,22 +3996,84 @@ export async function getPeriodSalesReport(businessId: number, startDate: string
 
   const netSales = totalSales - totalRefunds;
 
-  // Product breakdown from pos_receipt_items (not transactions)
-  const receiptIds = receipts.filter(r => !r.isRefunded).map(r => r.id);
-  const byProduct: Record<number, { name: string; qty: number; revenue: number; hpp: number }> = {};
-  if (receiptIds.length > 0) {
-    const items = await db.select().from(posReceiptItems).where(
-      sql`${posReceiptItems.receiptId} IN (${sql.join(receiptIds.map(id => sql`${id}`), sql`, `)})`
-    );
+  // Product breakdown from pos_receipt_items
+  const allReceiptIds = receipts.map(r => r.id);
+  const activeReceiptIds = receipts.filter(r => !r.isRefunded).map(r => r.id);
+  const byProduct: Record<number, { name: string; sku: string | null; category: string | null; qty: number; revenue: number; hpp: number }> = {};
+  const receiptItemsMap: Record<number, Array<{ productId: number; productName: string; sku: string | null; qty: number; unitPrice: number; totalPrice: number; hppSnapshot: number }>> = {};
+
+  if (allReceiptIds.length > 0) {
+    const items = await db.select({
+      id: posReceiptItems.id,
+      receiptId: posReceiptItems.receiptId,
+      productId: posReceiptItems.productId,
+      productName: posReceiptItems.productName,
+      qty: posReceiptItems.qty,
+      unitPrice: posReceiptItems.unitPrice,
+      totalPrice: posReceiptItems.totalPrice,
+      hppSnapshot: posReceiptItems.hppSnapshot,
+      sku: products.sku,
+      category: products.category,
+    }).from(posReceiptItems)
+      .leftJoin(products, eq(posReceiptItems.productId, products.id))
+      .where(sql`${posReceiptItems.receiptId} IN (${sql.join(allReceiptIds.map(id => sql`${id}`), sql`, `)})`);
+
     for (const item of items) {
-      if (!byProduct[item.productId]) byProduct[item.productId] = { name: item.productName, qty: 0, revenue: 0, hpp: 0 };
-      byProduct[item.productId].qty += item.qty;
-      byProduct[item.productId].revenue += item.totalPrice;
-      byProduct[item.productId].hpp += (item.hppSnapshot ?? 0) * item.qty;
+      if (!receiptItemsMap[item.receiptId]) receiptItemsMap[item.receiptId] = [];
+      receiptItemsMap[item.receiptId].push({
+        productId: item.productId, productName: item.productName, sku: item.sku,
+        qty: item.qty, unitPrice: item.unitPrice, totalPrice: item.totalPrice, hppSnapshot: item.hppSnapshot ?? 0,
+      });
+      if (activeReceiptIds.includes(item.receiptId)) {
+        if (!byProduct[item.productId]) byProduct[item.productId] = { name: item.productName, sku: item.sku, category: item.category, qty: 0, revenue: 0, hpp: 0 };
+        byProduct[item.productId].qty += item.qty;
+        byProduct[item.productId].revenue += item.totalPrice;
+        byProduct[item.productId].hpp += (item.hppSnapshot ?? 0) * item.qty;
+      }
     }
   }
 
-  return { startDate, endDate, receipts, totalSales, totalDiscount, totalRefunds, netSales, totalTransactions, byPaymentMethod, byDate, byProduct: Object.values(byProduct).sort((a, b) => b.revenue - a.revenue) };
+  // Enrich receipts with customer & cashier
+  const clientIds = Array.from(new Set(receipts.filter(r => r.clientId).map(r => r.clientId!)));
+  const clientMap: Record<number, string> = {};
+  if (clientIds.length > 0) {
+    const clientRows = await db.select({ id: clients.id, name: clients.name }).from(clients)
+      .where(sql`${clients.id} IN (${sql.join(clientIds.map(id => sql`${id}`), sql`, `)})`);
+    for (const c of clientRows) clientMap[c.id] = c.name;
+  }
+  const shiftIds = Array.from(new Set(receipts.filter(r => r.shiftId).map(r => r.shiftId!)));
+  const cashierMap: Record<number, string> = {};
+  if (shiftIds.length > 0) {
+    const shiftRows = await db.select({ id: posShifts.id, userId: posShifts.userId }).from(posShifts)
+      .where(sql`${posShifts.id} IN (${sql.join(shiftIds.map(id => sql`${id}`), sql`, `)})`);
+    const userIds = shiftRows.map(s => s.userId);
+    if (userIds.length > 0) {
+      const userRows = await db.select({ id: users.id, name: users.name }).from(users)
+        .where(sql`${users.id} IN (${sql.join(userIds.map(id => sql`${id}`), sql`, `)})`);
+      const userMap: Record<number, string> = {};
+      for (const u of userRows) userMap[u.id] = u.name || "Unknown";
+      for (const s of shiftRows) cashierMap[s.id] = userMap[s.userId] || "Unknown";
+    }
+  }
+
+  const enrichedReceipts = receipts.map(r => ({
+    ...r,
+    customerName: r.clientId ? (clientMap[r.clientId] || null) : null,
+    cashierName: r.shiftId ? (cashierMap[r.shiftId] || null) : null,
+    items: receiptItemsMap[r.id] || [],
+    itemCount: (receiptItemsMap[r.id] || []).reduce((s, i) => s + i.qty, 0),
+  }));
+
+  return {
+    startDate, endDate,
+    receipts: enrichedReceipts,
+    totalSales, totalDiscount, totalRefunds, netSales, totalTransactions,
+    byPaymentMethod, byDate,
+    byProduct: Object.values(byProduct).sort((a, b) => b.revenue - a.revenue),
+    totalItemsSold: Object.values(byProduct).reduce((s, p) => s + p.qty, 0),
+    totalHPP: Object.values(byProduct).reduce((s, p) => s + p.hpp, 0),
+    grossProfit: totalSales - Object.values(byProduct).reduce((s, p) => s + p.hpp, 0),
+  };
 }
 
 export async function getPosReceiptById(id: number): Promise<PosReceipt | undefined> {
@@ -3953,6 +4081,71 @@ export async function getPosReceiptById(id: number): Promise<PosReceipt | undefi
   if (!db) return undefined;
   const rows = await db.select().from(posReceipts).where(eq(posReceipts.id, id)).limit(1);
   return rows[0];
+}
+
+// ─── ERP-Grade Receipt Detail ───
+export async function getReceiptDetailERP(businessId: number, receiptId: number) {
+  const db = await getDb();
+  if (!db) return null;
+  const rows = await db.select().from(posReceipts).where(and(eq(posReceipts.id, receiptId), eq(posReceipts.businessId, businessId))).limit(1);
+  const receipt = rows[0];
+  if (!receipt) return null;
+
+  // Get line items with product SKU
+  const items = await db.select({
+    id: posReceiptItems.id,
+    productId: posReceiptItems.productId,
+    productName: posReceiptItems.productName,
+    qty: posReceiptItems.qty,
+    unitPrice: posReceiptItems.unitPrice,
+    totalPrice: posReceiptItems.totalPrice,
+    hppSnapshot: posReceiptItems.hppSnapshot,
+    sku: products.sku,
+    category: products.category,
+    barcode: products.barcode,
+  }).from(posReceiptItems)
+    .leftJoin(products, eq(posReceiptItems.productId, products.id))
+    .where(eq(posReceiptItems.receiptId, receiptId));
+
+  // Get customer info if clientId exists
+  let customer: { name: string; phone?: string | null; type?: string | null } | null = null;
+  if (receipt.clientId) {
+    const clientRows = await db.select({ name: clients.name, phone: clients.phone, type: clients.type })
+      .from(clients).where(eq(clients.id, receipt.clientId)).limit(1);
+    customer = clientRows[0] || null;
+  }
+
+  // Get cashier/staff info from shift
+  let cashier: { name: string; email: string } | null = null;
+  if (receipt.shiftId) {
+    const shiftRows = await db.select({ userId: posShifts.userId }).from(posShifts)
+      .where(eq(posShifts.id, receipt.shiftId)).limit(1);
+    if (shiftRows[0]) {
+      const userRows = await db.select({ name: users.name, email: users.email }).from(users)
+        .where(eq(users.id, shiftRows[0].userId)).limit(1);
+      if (userRows[0]) {
+        cashier = { name: userRows[0].name || "Unknown", email: userRows[0].email || "" };
+      }
+    }
+  }
+
+  // Calculate item-level margins
+  const itemsWithMargin = items.map(item => {
+    const hpp = (item.hppSnapshot ?? 0) * item.qty;
+    const margin = item.totalPrice - hpp;
+    const marginPct = item.totalPrice > 0 ? Math.round((margin / item.totalPrice) * 100) : 0;
+    return { ...item, hppTotal: hpp, margin, marginPct };
+  });
+
+  return {
+    receipt,
+    items: itemsWithMargin,
+    customer,
+    cashier,
+    totalItems: items.reduce((s, i) => s + i.qty, 0),
+    totalHPP: itemsWithMargin.reduce((s, i) => s + i.hppTotal, 0),
+    grossProfit: receipt.grandTotal - itemsWithMargin.reduce((s, i) => s + i.hppTotal, 0),
+  };
 }
 
 export async function refundPosReceipt(receiptId: number, reason: string) {
@@ -4861,8 +5054,10 @@ export async function getSalesByDate(businessId: number, startDate: string, endD
       date: posReceipts.date,
       transactionCount: sql<number>`COUNT(*)`,
       totalPenjualan: sql<number>`SUM(${posReceipts.grandTotal})`,
+      totalSubtotal: sql<number>`SUM(${posReceipts.subtotal})`,
       totalDiskon: sql<number>`SUM(${posReceipts.discountAmount})`,
       refundCount: sql<number>`SUM(CASE WHEN ${posReceipts.isRefunded} = 1 THEN 1 ELSE 0 END)`,
+      refundAmount: sql<number>`SUM(CASE WHEN ${posReceipts.isRefunded} = 1 THEN ${posReceipts.grandTotal} ELSE 0 END)`,
     })
     .from(posReceipts)
     .where(
@@ -4875,13 +5070,50 @@ export async function getSalesByDate(businessId: number, startDate: string, endD
     .groupBy(posReceipts.date)
     .orderBy(posReceipts.date);
 
+  // Get HPP per date from receipt items
+  const allReceiptIds = await db.select({ id: posReceipts.id, date: posReceipts.date })
+    .from(posReceipts)
+    .where(and(
+      eq(posReceipts.businessId, businessId),
+      sql`${posReceipts.date} >= ${startDate}`,
+      sql`${posReceipts.date} <= ${endDate}`,
+      eq(posReceipts.isRefunded, false),
+    ));
+
+  const hppByDate: Record<string, number> = {};
+  const itemCountByDate: Record<string, number> = {};
+  if (allReceiptIds.length > 0) {
+    const receiptDateMap: Record<number, string> = {};
+    for (const r of allReceiptIds) receiptDateMap[r.id] = r.date;
+
+    const items = await db.select({
+      receiptId: posReceiptItems.receiptId,
+      qty: posReceiptItems.qty,
+      hppSnapshot: posReceiptItems.hppSnapshot,
+    }).from(posReceiptItems)
+      .where(sql`${posReceiptItems.receiptId} IN (${sql.join(allReceiptIds.map(r => sql`${r.id}`), sql`, `)})`);
+
+    for (const item of items) {
+      const date = receiptDateMap[item.receiptId];
+      if (date) {
+        hppByDate[date] = (hppByDate[date] || 0) + (item.hppSnapshot ?? 0) * item.qty;
+        itemCountByDate[date] = (itemCountByDate[date] || 0) + item.qty;
+      }
+    }
+  }
+
   return rows.map((r) => ({
     date: r.date,
     transactionCount: r.transactionCount,
     totalPenjualan: r.totalPenjualan,
+    totalSubtotal: r.totalSubtotal || r.totalPenjualan,
     totalDiskon: r.totalDiskon,
     refundCount: r.refundCount,
+    refundAmount: r.refundAmount || 0,
     netPenjualan: r.totalPenjualan - r.totalDiskon,
+    totalHPP: hppByDate[r.date] || 0,
+    grossProfit: (r.totalPenjualan - (r.refundAmount || 0)) - (hppByDate[r.date] || 0),
+    itemsSold: itemCountByDate[r.date] || 0,
   }));
 }
 

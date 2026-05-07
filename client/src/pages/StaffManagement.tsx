@@ -11,7 +11,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import {
   Crown, Shield, ShoppingBag, Warehouse, Eye, Plus, Trash2, Pencil,
-  Mail, Check, X, ToggleRight
+  Mail, Check, X, ToggleRight, Copy, Clock, Link2, RefreshCw
 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { toast } from "sonner";
@@ -119,14 +119,26 @@ export default function StaffManagement() {
   const { data: members, isLoading } = trpc.team.list.useQuery();
   const utils = trpc.useUtils();
 
+  const [inviteResult, setInviteResult] = useState<{ token: string; expiresAt: string } | null>(null);
+
   const inviteMut = trpc.team.invite.useMutation({
-    onSuccess: () => {
+    onSuccess: (data) => {
       utils.team.list.invalidate();
-      setShowInviteDialog(false);
-      setInviteForm({ email: "", role: "kasir", permissions: defaultPermissions });
-      toast.success("Undangan berhasil dikirim!");
+      utils.team.invites.invalidate();
+      // Show invite link instead of closing dialog
+      setInviteResult({ token: data.token, expiresAt: data.expiresAt as any });
+      toast.success("Link undangan berhasil dibuat!");
     },
-    onError: (e) => toast.error(e.message || "Gagal mengirim undangan"),
+    onError: (e) => toast.error(e.message || "Gagal membuat undangan"),
+  });
+
+  // Pending invites query
+  const { data: pendingInvites, refetch: refetchInvites } = trpc.team.invites.useQuery();
+  const cancelInviteMut = trpc.team.cancelInvite.useMutation({
+    onSuccess: () => {
+      utils.team.invites.invalidate();
+      toast.success("Undangan dibatalkan");
+    },
   });
 
   const updateMut = trpc.team.updateMember.useMutation({
@@ -581,100 +593,285 @@ export default function StaffManagement() {
         </Card>
       )}
 
+      {/* Pending Invites Section */}
+      {pendingInvites && pendingInvites.length > 0 && (
+        <Card className="border-0 shadow-md dark:bg-slate-900/50 backdrop-blur-sm overflow-hidden">
+          <div className="px-6 py-4 bg-gradient-to-r from-orange-500 to-amber-500 border-b border-white/10">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <Clock className="h-5 w-5 text-white" />
+                <div>
+                  <h2 className="text-lg font-semibold text-white">Undangan Tertunda</h2>
+                  <p className="text-sm text-white/70">{pendingInvites.length} undangan menunggu</p>
+                </div>
+              </div>
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => refetchInvites()}
+                className="text-white hover:bg-white/20 h-8"
+              >
+                <RefreshCw className="h-4 w-4" />
+              </Button>
+            </div>
+          </div>
+          <div className="divide-y divide-white/5">
+            {pendingInvites.map((invite: any) => {
+              const isExpired = new Date(invite.expiresAt) < new Date() || invite.status === "expired";
+              const inviteUrl = `${window.location.origin}/invite/${invite.token}`;
+              const roleConfig = roleConfigs[invite.role as Role] || roleConfigs.viewer;
+              return (
+                <div key={invite.id} className="p-4 sm:p-5">
+                  <div className="flex items-start justify-between gap-4">
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2 mb-1">
+                        <Mail className="h-4 w-4 text-muted-foreground" />
+                        <span className="font-medium text-sm truncate">{invite.email}</span>
+                        <Badge className={`text-xs ${roleConfig.badgeColor} shrink-0`}>
+                          {roleConfig.label}
+                        </Badge>
+                      </div>
+                      <div className="flex items-center gap-3 mt-1.5 text-xs text-muted-foreground">
+                        <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full ${
+                          isExpired
+                            ? "bg-red-100 dark:bg-red-900/30 text-red-600 dark:text-red-400"
+                            : invite.status === "accepted"
+                            ? "bg-green-100 dark:bg-green-900/30 text-green-600 dark:text-green-400"
+                            : "bg-yellow-100 dark:bg-yellow-900/30 text-yellow-600 dark:text-yellow-400"
+                        }`}>
+                          {isExpired ? (
+                            <><X className="h-2.5 w-2.5" /> Expired</>
+                          ) : invite.status === "accepted" ? (
+                            <><Check className="h-2.5 w-2.5" /> Accepted</>
+                          ) : (
+                            <><Clock className="h-2.5 w-2.5" /> Pending</>
+                          )}
+                        </span>
+                        <span>
+                          Exp: {new Date(invite.expiresAt).toLocaleDateString("id-ID", { day: "numeric", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" })}
+                        </span>
+                      </div>
+                      {!isExpired && invite.status === "pending" && (
+                        <div className="mt-2 flex items-center gap-2">
+                          <code className="text-xs bg-muted px-2 py-1 rounded truncate max-w-[280px] block">
+                            {inviteUrl}
+                          </code>
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="h-7 w-7 shrink-0"
+                            onClick={() => {
+                              navigator.clipboard.writeText(inviteUrl);
+                              toast.success("Link disalin!");
+                            }}
+                          >
+                            <Copy className="h-3.5 w-3.5" />
+                          </Button>
+                        </div>
+                      )}
+                    </div>
+                    <div className="flex gap-1 shrink-0">
+                      {!isExpired && invite.status === "pending" && (
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="h-8 w-8 hover:bg-red-500/20 hover:text-red-600"
+                          onClick={() => cancelInviteMut.mutate({ id: invite.id })}
+                          disabled={cancelInviteMut.isPending}
+                          title="Batalkan undangan"
+                        >
+                          <X className="h-4 w-4" />
+                        </Button>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </Card>
+      )}
+
       {/* Invite Dialog */}
-      <Dialog open={showInviteDialog} onOpenChange={setShowInviteDialog}>
+      <Dialog open={showInviteDialog} onOpenChange={(open) => {
+        setShowInviteDialog(open);
+        if (!open) setInviteResult(null);
+      }}>
         <DialogContent className="max-w-md">
           <DialogHeader>
             <DialogTitle>Undang Anggota Tim</DialogTitle>
           </DialogHeader>
-          <div className="space-y-4">
-            <div>
-              <Label htmlFor="invite-email" className="text-sm font-semibold">
-                Email *
-              </Label>
-              <Input
-                id="invite-email"
-                type="email"
-                placeholder="anggota@contoh.com"
-                value={inviteForm.email}
-                onChange={(e) =>
-                  setInviteForm({ ...inviteForm, email: e.target.value })
-                }
-                className="mt-1"
-              />
-            </div>
 
-            <div>
-              <Label htmlFor="invite-role" className="text-sm font-semibold">
-                Peran *
-              </Label>
-              <Select
-                value={inviteForm.role}
-                onValueChange={(value) =>
-                  setInviteForm({ ...inviteForm, role: value as Role })
-                }
-              >
-                <SelectTrigger id="invite-role" className="mt-1">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {roleOrder.map((r) => (
-                    <SelectItem key={r} value={r}>
-                      {roleConfigs[r].label}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-              <p className="text-xs text-muted-foreground mt-1">
-                Pilih peran yang sesuai dengan tanggung jawab anggota
-              </p>
-            </div>
+          {inviteResult ? (
+            /* Success: Show invite link */
+            <div className="space-y-4">
+              <div className="rounded-lg bg-green-50 dark:bg-green-950/30 border border-green-200 dark:border-green-800 p-4">
+                <div className="flex items-center gap-2 mb-2">
+                  <Check className="h-5 w-5 text-green-600" />
+                  <span className="font-semibold text-green-800 dark:text-green-300">Undangan Berhasil Dibuat!</span>
+                </div>
+                <p className="text-sm text-green-700 dark:text-green-400">
+                  Kirim link di bawah ini ke <strong>{inviteForm.email}</strong> via WhatsApp, Telegram, atau media lainnya.
+                </p>
+              </div>
 
-            <div>
-              <Label className="text-sm font-semibold block mb-3">Izin Akses</Label>
-              <div className="space-y-2">
-                {Object.keys(defaultPermissions).map((perm) => (
-                  <div key={perm} className="flex items-center space-x-2">
-                    <Checkbox
-                      id={`invite-perm-${perm}`}
-                      checked={inviteForm.permissions[perm] || false}
-                      onCheckedChange={(checked) =>
-                        setInviteForm({
-                          ...inviteForm,
-                          permissions: {
-                            ...inviteForm.permissions,
-                            [perm]: !!checked,
-                          },
-                        })
-                      }
-                    />
-                    <Label
-                      htmlFor={`invite-perm-${perm}`}
-                      className="text-sm cursor-pointer"
-                    >
-                      {permissionLabels[perm]}
-                    </Label>
-                  </div>
-                ))}
+              <div>
+                <Label className="text-sm font-semibold">Link Undangan</Label>
+                <div className="mt-1 flex items-center gap-2">
+                  <Input
+                    readOnly
+                    value={`${window.location.origin}/invite/${inviteResult.token}`}
+                    className="text-xs font-mono"
+                  />
+                  <Button
+                    variant="outline"
+                    size="icon"
+                    className="shrink-0"
+                    onClick={() => {
+                      navigator.clipboard.writeText(`${window.location.origin}/invite/${inviteResult.token}`);
+                      toast.success("Link disalin ke clipboard!");
+                    }}
+                  >
+                    <Copy className="h-4 w-4" />
+                  </Button>
+                </div>
+                <p className="text-xs text-muted-foreground mt-1.5">
+                  Link berlaku sampai {new Date(inviteResult.expiresAt).toLocaleDateString("id-ID", { day: "numeric", month: "long", year: "numeric", hour: "2-digit", minute: "2-digit" })}
+                </p>
+              </div>
+
+              <div className="flex gap-2">
+                <Button
+                  className="flex-1 bg-green-600 hover:bg-green-700"
+                  onClick={() => {
+                    const url = `${window.location.origin}/invite/${inviteResult.token}`;
+                    const text = `Halo! Kamu diundang untuk bergabung di tim kami di County. Klik link ini untuk bergabung: ${url}`;
+                    window.open(`https://wa.me/?text=${encodeURIComponent(text)}`, "_blank");
+                  }}
+                >
+                  <Link2 className="h-4 w-4 mr-2" /> Kirim via WhatsApp
+                </Button>
+                <Button
+                  variant="outline"
+                  onClick={() => {
+                    setInviteResult(null);
+                    setInviteForm({ email: "", role: "kasir", permissions: defaultPermissions });
+                  }}
+                >
+                  Undang Lagi
+                </Button>
+              </div>
+
+              <div className="flex justify-end pt-1">
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => {
+                    setShowInviteDialog(false);
+                    setInviteResult(null);
+                  }}
+                >
+                  Tutup
+                </Button>
               </div>
             </div>
+          ) : (
+            /* Form: Create invite */
+            <div className="space-y-4">
+              <div>
+                <Label htmlFor="invite-email" className="text-sm font-semibold">
+                  Email *
+                </Label>
+                <Input
+                  id="invite-email"
+                  type="email"
+                  placeholder="anggota@contoh.com"
+                  value={inviteForm.email}
+                  onChange={(e) =>
+                    setInviteForm({ ...inviteForm, email: e.target.value })
+                  }
+                  className="mt-1"
+                />
+              </div>
 
-            <div className="flex gap-2 justify-end pt-2">
-              <Button
-                variant="outline"
-                onClick={() => setShowInviteDialog(false)}
-              >
-                Batal
-              </Button>
-              <Button
-                onClick={handleInvite}
-                disabled={inviteMut.isPending}
-                className="bg-gradient-to-r from-blue-600 to-cyan-600"
-              >
-                {inviteMut.isPending ? "Mengirim..." : "Kirim Undangan"}
-              </Button>
+              <div>
+                <Label htmlFor="invite-role" className="text-sm font-semibold">
+                  Peran *
+                </Label>
+                <Select
+                  value={inviteForm.role}
+                  onValueChange={(value) =>
+                    setInviteForm({ ...inviteForm, role: value as Role })
+                  }
+                >
+                  <SelectTrigger id="invite-role" className="mt-1">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {roleOrder.map((r) => (
+                      <SelectItem key={r} value={r}>
+                        {roleConfigs[r].label}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <p className="text-xs text-muted-foreground mt-1">
+                  Pilih peran yang sesuai dengan tanggung jawab anggota
+                </p>
+              </div>
+
+              <div>
+                <Label className="text-sm font-semibold block mb-3">Izin Akses</Label>
+                <div className="space-y-2">
+                  {Object.keys(defaultPermissions).map((perm) => (
+                    <div key={perm} className="flex items-center space-x-2">
+                      <Checkbox
+                        id={`invite-perm-${perm}`}
+                        checked={inviteForm.permissions[perm] || false}
+                        onCheckedChange={(checked) =>
+                          setInviteForm({
+                            ...inviteForm,
+                            permissions: {
+                              ...inviteForm.permissions,
+                              [perm]: !!checked,
+                            },
+                          })
+                        }
+                      />
+                      <Label
+                        htmlFor={`invite-perm-${perm}`}
+                        className="text-sm cursor-pointer"
+                      >
+                        {permissionLabels[perm]}
+                      </Label>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              <div className="rounded-lg bg-blue-50 dark:bg-blue-950/30 border border-blue-200 dark:border-blue-800 p-3">
+                <p className="text-xs text-blue-700 dark:text-blue-400">
+                  <strong>Catatan:</strong> Sistem tidak mengirim email otomatis. Setelah membuat undangan, Anda akan mendapat link yang bisa dikirim langsung via WhatsApp atau media lainnya.
+                </p>
+              </div>
+
+              <div className="flex gap-2 justify-end pt-2">
+                <Button
+                  variant="outline"
+                  onClick={() => setShowInviteDialog(false)}
+                >
+                  Batal
+                </Button>
+                <Button
+                  onClick={handleInvite}
+                  disabled={inviteMut.isPending}
+                  className="bg-gradient-to-r from-blue-600 to-cyan-600"
+                >
+                  {inviteMut.isPending ? "Membuat..." : "Buat Link Undangan"}
+                </Button>
+              </div>
             </div>
-          </div>
+          )}
         </DialogContent>
       </Dialog>
     </div>

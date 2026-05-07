@@ -50,7 +50,7 @@ import {
   createPosShift, getOpenShift, closePosShift, getShiftsByBusiness, getPosShiftById,
   createDiscountCode, getDiscountCodesByBusiness, validateDiscountCode, incrementDiscountUsage, updateDiscountCode, deleteDiscountCode,
   generateReceiptCode, createPosReceipt, createPosReceiptItems, getPosReceiptsByBusiness, getPosReceiptById, refundPosReceipt, getPosReceiptItemsByReceipt,
-  getDailySalesReport, getPeriodSalesReport,
+  getDailySalesReport, getPeriodSalesReport, getReceiptDetailERP,
   getSalesByProduct, getPaymentMethodSummary, getTopProductsAndCategories,
   seedDummyData, clearBusinessData,
   generateNeraca, generatePerubahanModal, generateCALK, validateFinancialConsistency,
@@ -1255,6 +1255,14 @@ export const appRouter = router({
       if (!biz) throw new TRPCError({ code: "NOT_FOUND" });
       return getPeriodSalesReport(biz.id, input.startDate, input.endDate);
     }),
+
+    // ─── ERP-grade receipt detail with line items, customer, staff ───
+    receiptDetail: protectedProcedure.input(z.object({ receiptId: z.number() })).query(async ({ ctx, input }) => {
+      const biz = (await resolveBusinessForUser(ctx.user.id, ctx.requestedBusinessId, ctx.user.role))?.business;
+      if (!biz) throw new TRPCError({ code: "NOT_FOUND" });
+      return getReceiptDetailERP(biz.id, input.receiptId);
+    }),
+
     rekeningKoran: protectedProcedure.input(z.object({
       bankAccountName: z.string(),
       startDate: z.string(),
