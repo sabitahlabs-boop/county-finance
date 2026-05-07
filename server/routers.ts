@@ -2470,6 +2470,61 @@ Penting: Kembalikan HANYA JSON valid, tidak ada teks penjelasan.`,
       }
       return { totalFixed, details };
     }),
+    // Inventory anomaly detection — find suspicious stock movements
+    auditInventory: adminProcedure.input(z.object({
+      businessId: z.number(),
+    })).mutation(async ({ input }) => {
+      const db = await getDb();
+      if (!db) return { anomalies: [] };
+      const businessId = input.businessId;
+
+      const anomalies: { type: string; productName: string; detail: string; severity: "warning" | "critical" }[] = [];
+
+      // 1. Products with negative stock
+      const [negStock] = await db.execute(sql.raw(
+        `SELECT name, stockCurrent FROM products WHERE businessId = ${businessId} AND stockCurrent < 0`
+      )) as any;
+      for (const p of (negStock || [])) {
+        anomalies.push({ type: "negative_stock", productName: p.name, detail: `Stok negatif: ${p.stockCurrent}`, severity: "critical" });
+      }
+
+      // 2. Stock log entries with abnormally large qty (>500 for single movement)
+      const [bigMoves] = await db.execute(sql.raw(
+        `SELECT sl.qty, sl.movementType, sl.notes, p.name as productName
+         FROM stock_logs sl JOIN products p ON sl.productId = p.id
+         WHERE sl.businessId = ${businessId} AND sl.qty > 500
+         ORDER BY sl.createdAt DESC LIMIT 20`
+      )) as any;
+      for (const m of (bigMoves || [])) {
+        anomalies.push({ type: "large_movement", productName: m.productName, detail: `${m.movementType} ${m.qty} unit — ${m.notes || ""}`, severity: "warning" });
+      }
+
+      // 3. Products where stockCurrent != SUM(warehouse_stock)
+      const [mismatch] = await db.execute(sql.raw(
+        `SELECT p.name, p.stockCurrent, COALESCE(SUM(ws.quantity), 0) as warehouseTotal
+         FROM products p
+         LEFT JOIN warehouse_stock ws ON ws.productId = p.id
+         WHERE p.businessId = ${businessId}
+         GROUP BY p.id
+         HAVING p.stockCurrent != warehouseTotal`
+      )) as any;
+      for (const m of (mismatch || [])) {
+        anomalies.push({ type: "stock_mismatch", productName: m.name, detail: `Product: ${m.stockCurrent}, Warehouse: ${m.warehouseTotal}`, severity: "critical" });
+      }
+
+      // 4. Receiving detail mismatches
+      const [recvMismatch] = await db.execute(sql.raw(
+        `SELECT productName, qtyOrdered, qtyReceived, poNumber, status
+         FROM po_receiving_details
+         WHERE businessId = ${businessId} AND status != 'match'
+         ORDER BY receivedAt DESC LIMIT 20`
+      )) as any;
+      for (const r of (recvMismatch || [])) {
+        anomalies.push({ type: "receiving_mismatch", productName: r.productName, detail: `PO ${r.poNumber}: ordered ${r.qtyOrdered}, received ${r.qtyReceived} (${r.status})`, severity: "warning" });
+      }
+
+      return { anomalies, total: anomalies.length };
+    }),
   }),
 
   // ─── Pro Link Activation (Public) ───
