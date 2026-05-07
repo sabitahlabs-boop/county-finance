@@ -72,7 +72,13 @@ Aturan:
 - Format tanggal: YYYY-MM-DD
 - Jika informasi tidak terlihat jelas, berikan estimasi terbaik
 - Kategori: bahan_baku, operasional, marketing, gaji, transportasi, utilitas, perlengkapan, lainnya
-- Jika metode pembayaran tidak terlihat, gunakan "unknown"`,
+- Jika metode pembayaran tidak terlihat, gunakan "unknown"
+
+ATURAN KRITIS untuk quantity:
+- quantity adalah JUMLAH UNIT item, biasanya angka kecil (1-100 untuk retail/UMKM)
+- JANGAN menambahkan nol di belakang. "5 pcs" = 5, BUKAN 50. "13 pcs" = 13, BUKAN 130
+- Cross-check WAJIB: quantity x unitPrice HARUS = totalPrice. Jika tidak cocok, perbaiki quantity
+- Contoh: jika totalPrice=150000 dan unitPrice=30000, maka quantity=5 (bukan 50)`,
           },
           {
             type: "image",
@@ -84,7 +90,26 @@ Aturan:
     temperature: 0.1,
   });
 
-  return object;
+  // ── Server-side qty validation: cross-check qty * unitPrice = totalPrice ──
+  const validatedItems = object.items.map((item) => {
+    const qty = item.quantity;
+    const price = item.unitPrice;
+    const total = item.totalPrice;
+    let correctedQty = qty;
+
+    if (price > 0 && total > 0) {
+      const expectedQty = Math.round(total / price);
+      if (expectedQty > 0 && expectedQty !== qty) {
+        // AI added trailing zero (5→50, 13→130)
+        if (qty === expectedQty * 10) {
+          correctedQty = expectedQty;
+        }
+      }
+    }
+    return { ...item, quantity: correctedQty };
+  });
+
+  return { ...object, items: validatedItems };
 }
 
 // ── Express Route ──

@@ -2145,6 +2145,13 @@ Format JSON yang WAJIB dikembalikan (hanya JSON, tanpa teks lain):
   "notes": "catatan tambahan atau null"
 }
 
+ATURAN KRITIS untuk qty:
+- qty adalah JUMLAH UNIT item, biasanya angka kecil (1-100 untuk retail/UMKM)
+- JANGAN menambahkan nol di belakang qty. Contoh: "5 pcs" = qty 5, BUKAN 50
+- Cross-check: qty x price HARUS = subtotal. Jika tidak cocok, perbaiki qty
+- Contoh validasi: jika subtotal=150000 dan price=30000, maka qty=5, BUKAN 50
+- Jika ragu antara 5 dan 50, pilih angka yang membuat qty x price = subtotal
+
 Penting: Kembalikan HANYA JSON valid, tidak ada teks penjelasan.`,
                 },
               ],
@@ -2168,6 +2175,44 @@ Penting: Kembalikan HANYA JSON valid, tidak ada teks penjelasan.`,
         }
 
         const parsed = JSON.parse(jsonMatch[0]);
+
+        // ── Server-side qty validation: cross-check qty * price = subtotal ──
+        const validatedItems = (parsed.items ?? []).map((item: any) => {
+          const qty = Number(item.qty) || 1;
+          const price = Number(item.price) || 0;
+          const subtotal = Number(item.subtotal) || 0;
+          let correctedQty = qty;
+          let qtyWarning: string | undefined;
+
+          if (price > 0 && subtotal > 0) {
+            const expectedQty = Math.round(subtotal / price);
+            // If AI qty doesn't match math, and the math-derived qty is reasonable
+            if (expectedQty > 0 && expectedQty !== qty) {
+              // Check if AI added a trailing zero (common OCR error: 5→50, 13→130)
+              if (qty === expectedQty * 10) {
+                correctedQty = expectedQty;
+                qtyWarning = `Auto-koreksi: ${qty} → ${expectedQty} (qty x harga harus = subtotal)`;
+              } else if (qty > expectedQty * 3) {
+                // Qty suspiciously high — flag it but don't auto-correct
+                qtyWarning = `Qty mencurigakan: ${qty} (berdasarkan harga seharusnya ~${expectedQty})`;
+              }
+            }
+          }
+          // Flag any qty > 500 as suspicious for UMKM context
+          if (correctedQty > 500) {
+            qtyWarning = qtyWarning || `Qty sangat besar: ${correctedQty}. Harap verifikasi.`;
+          }
+
+          return {
+            name: item.name,
+            qty: correctedQty,
+            originalQty: qty !== correctedQty ? qty : undefined,
+            price: price,
+            subtotal: subtotal,
+            qtyWarning,
+          };
+        });
+
         return {
           success: true,
           type: parsed.type ?? "expense",
@@ -2175,7 +2220,7 @@ Penting: Kembalikan HANYA JSON valid, tidak ada teks penjelasan.`,
           description: parsed.description ?? "",
           category: parsed.category ?? "",
           date: parsed.date ?? new Date().toISOString().substring(0, 10),
-          items: parsed.items ?? [],
+          items: validatedItems,
           vendor: parsed.vendor ?? null,
           notes: parsed.notes ?? null,
         };

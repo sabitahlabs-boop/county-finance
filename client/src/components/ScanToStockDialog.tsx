@@ -164,6 +164,31 @@ export function ScanToStockDialog({
     }));
   };
 
+  // ── Qty anomaly detection ──
+  const getQtyWarning = (item: ScannedItem): string | null => {
+    if (!item || item.qty <= 0) return null;
+    const { qty, price, total } = item;
+    // Cross-check: qty * price should ≈ total
+    if (price > 0 && total > 0) {
+      const expectedQty = Math.round(total / price);
+      if (expectedQty > 0 && expectedQty !== qty) {
+        if (qty === expectedQty * 10) {
+          return `⚠️ Qty mencurigakan! Scan membaca ${qty}, tapi berdasarkan harga (${formatRupiah(price)} x ${expectedQty} = ${formatRupiah(total)}), seharusnya ${expectedQty}. Cek ulang!`;
+        }
+        if (qty > expectedQty * 3) {
+          return `⚠️ Qty ${qty} tidak wajar. Berdasarkan harga seharusnya ~${expectedQty}. Harap verifikasi!`;
+        }
+      }
+    }
+    // Flag very large qty for UMKM
+    if (qty > 200) {
+      return `⚠️ Qty ${qty} sangat besar untuk transaksi UMKM. Pastikan ini benar.`;
+    }
+    return null;
+  };
+
+  const currentWarning = currentItem ? getQtyWarning(currentItem) : null;
+
   if (!items.length) return null;
 
   return (
@@ -214,16 +239,34 @@ export function ScanToStockDialog({
         {!isFinished && currentItem && (
           <div className="space-y-4">
             {/* Original scan data */}
-            <div className="rounded-lg bg-muted/50 p-3 text-sm">
+            <div className={`rounded-lg p-3 text-sm ${currentWarning ? 'bg-amber-50 dark:bg-amber-950/40 border border-amber-300 dark:border-amber-700' : 'bg-muted/50'}`}>
               <p className="text-xs font-medium text-muted-foreground mb-1">Data dari struk:</p>
               <div className="flex items-center justify-between">
                 <span className="font-medium">{currentItem.name}</span>
-                <span className="text-muted-foreground">{currentItem.qty}x @ {formatRupiah(currentItem.price)}</span>
+                <span className={currentWarning ? "text-amber-600 dark:text-amber-400 font-bold" : "text-muted-foreground"}>
+                  {currentItem.qty}x @ {formatRupiah(currentItem.price)}
+                </span>
               </div>
               <div className="text-right text-xs text-muted-foreground mt-0.5">
                 Total: {formatRupiah(currentItem.total)}
               </div>
             </div>
+
+            {/* Qty anomaly warning */}
+            {currentWarning && (
+              <div className="rounded-lg bg-red-50 dark:bg-red-950/40 border border-red-300 dark:border-red-700 p-3 text-sm">
+                <div className="flex items-start gap-2">
+                  <AlertCircle className="h-4 w-4 text-red-600 dark:text-red-400 mt-0.5 flex-shrink-0" />
+                  <div>
+                    <p className="font-semibold text-red-700 dark:text-red-400 text-xs">PERINGATAN KUANTITAS</p>
+                    <p className="text-red-600 dark:text-red-300 text-xs mt-1">{currentWarning}</p>
+                    <p className="text-red-500 dark:text-red-400 text-xs mt-1 font-medium">
+                      → Perbaiki qty di form bawah sebelum menyimpan!
+                    </p>
+                  </div>
+                </div>
+              </div>
+            )}
 
             {/* Matched existing products */}
             {matchedProducts && matchedProducts.length > 0 && (
@@ -255,12 +298,15 @@ export function ScanToStockDialog({
                 {form.matchedProductId && (
                   <div className="flex gap-2">
                     <div className="flex-1">
-                      <Label className="text-xs">Qty masuk</Label>
+                      <Label className={`text-xs ${currentWarning ? "text-red-600 dark:text-red-400 font-bold" : ""}`}>
+                        Qty masuk {currentWarning ? "← VERIFIKASI!" : ""}
+                      </Label>
                       <Input
                         type="number"
                         value={form.qty}
                         onChange={(e) => setForm(prev => ({ ...prev, qty: parseInt(e.target.value) || 0 }))}
                         min={1}
+                        className={currentWarning ? "border-red-500 bg-red-50 dark:bg-red-950/30 ring-2 ring-red-400 font-bold text-lg" : ""}
                       />
                     </div>
                     <div className="flex-1 flex items-end">
@@ -297,15 +343,21 @@ export function ScanToStockDialog({
               <div className="grid grid-cols-2 gap-3">
                 <div>
                   <div className="flex items-center justify-between mb-1">
-                    <Label className="text-xs">Qty (Stok Awal)</Label>
-                    {currentItem?.qty > 0 && <span className="text-xs text-primary font-medium bg-primary/10 px-1.5 py-0.5 rounded">Dari scan</span>}
+                    <Label className={`text-xs ${currentWarning ? "text-red-600 dark:text-red-400 font-bold" : ""}`}>
+                      Qty (Stok Awal) {currentWarning ? "← VERIFIKASI!" : ""}
+                    </Label>
+                    {!currentWarning && currentItem?.qty > 0 && <span className="text-xs text-primary font-medium bg-primary/10 px-1.5 py-0.5 rounded">Dari scan</span>}
+                    {currentWarning && <span className="text-xs text-red-600 dark:text-red-400 font-bold bg-red-50 dark:bg-red-950 px-1.5 py-0.5 rounded">⚠️ CEK!</span>}
                   </div>
                   <Input
                     type="number"
                     value={form.qty}
                     onChange={(e) => setForm(prev => ({ ...prev, qty: parseInt(e.target.value) || 1 }))}
                     min={1}
-                    className={currentItem?.qty > 0 ? "border-primary/40 bg-primary/5" : ""}
+                    className={currentWarning
+                      ? "border-red-500 bg-red-50 dark:bg-red-950/30 ring-2 ring-red-400 text-red-700 dark:text-red-300 font-bold text-lg"
+                      : currentItem?.qty > 0 ? "border-primary/40 bg-primary/5" : ""
+                    }
                   />
                 </div>
                 <div>

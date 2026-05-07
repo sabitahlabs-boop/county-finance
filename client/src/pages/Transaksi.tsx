@@ -683,7 +683,21 @@ export default function Transaksi() {
     });
     // Only offer stock entry if user chose "Masukkan ke Stok"
     if (mode === "stock" && result.items && result.items.length > 0) {
-      setScanToStockItems(result.items);
+      // Frontend-level qty cross-check: fix trailing-zero OCR errors
+      const validatedItems = result.items.map((item: any) => {
+        const qty = Number(item.qty) || 1;
+        const price = Number(item.price) || 0;
+        const total = Number(item.total) || Number(item.subtotal) || 0;
+        let correctedQty = qty;
+        if (price > 0 && total > 0) {
+          const expected = Math.round(total / price);
+          if (expected > 0 && qty === expected * 10) {
+            correctedQty = expected; // Fix 5→50, 13→130
+          }
+        }
+        return { ...item, qty: correctedQty };
+      });
+      setScanToStockItems(validatedItems);
       setScanToStockVendor(result.storeName || "");
       setTimeout(() => setScanToStockOpen(true), 500);
     } else if (mode === "expense") {
