@@ -1,9 +1,11 @@
-import { useRef } from "react";
+import { useRef, useState, useCallback, useEffect } from "react";
 import { Dialog, DialogContent } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
-import { Printer, X } from "lucide-react";
+import { Badge } from "@/components/ui/badge";
+import { Printer, X, Bluetooth, BluetoothConnected, Loader2, Unplug, CheckCircle2, AlertCircle } from "lucide-react";
 import { formatRupiah } from "../../../shared/finance";
 import { getProxiedImageUrl } from "@/lib/utils";
+import { thermalPrinter, type PrinterStatus, type ReceiptData } from "@/lib/thermalPrinter";
 
 type ReceiptItem = {
   name: string;
@@ -52,6 +54,63 @@ export function POSReceiptPrint({
   const printRef = useRef<HTMLDivElement>(null);
   const brandColor = business.brandColor || "#2D8B84";
   const logoUrl = getProxiedImageUrl(business.logoUrl);
+
+  // Bluetooth printer state
+  const [btStatus, setBtStatus] = useState<PrinterStatus>(thermalPrinter.status);
+  const [btError, setBtError] = useState<string>("");
+  const [btSuccess, setBtSuccess] = useState(false);
+  const btSupported = typeof navigator !== "undefined" && !!(navigator as any).bluetooth;
+
+  useEffect(() => {
+    thermalPrinter.onStatusChange = (s) => setBtStatus(s);
+    setBtStatus(thermalPrinter.status);
+    return () => { thermalPrinter.onStatusChange = null; };
+  }, []);
+
+  const handleBtConnect = useCallback(async () => {
+    setBtError("");
+    setBtSuccess(false);
+    try {
+      await thermalPrinter.connect(32);
+    } catch (err: any) {
+      setBtError(err.message || "Gagal menyambung printer.");
+    }
+  }, []);
+
+  const handleBtDisconnect = useCallback(() => {
+    thermalPrinter.disconnect();
+    setBtError("");
+    setBtSuccess(false);
+  }, []);
+
+  const handleBtPrint = useCallback(async () => {
+    setBtError("");
+    setBtSuccess(false);
+    try {
+      const receiptData: ReceiptData = {
+        businessName: business.businessName,
+        address: business.address,
+        phone: business.phone,
+        receiptCode,
+        date,
+        cashierName,
+        customerName,
+        items,
+        subtotal,
+        discount,
+        grandTotal,
+        payments,
+        customerPaid,
+        changeAmount,
+        footerText: business.invoiceFooter,
+      };
+      await thermalPrinter.printReceipt(receiptData);
+      setBtSuccess(true);
+      setTimeout(() => setBtSuccess(false), 3000);
+    } catch (err: any) {
+      setBtError(err.message || "Gagal mencetak.");
+    }
+  }, [business, receiptCode, date, cashierName, customerName, items, subtotal, discount, grandTotal, payments, customerPaid, changeAmount]);
 
   const formattedDate = (() => {
     try {
@@ -200,16 +259,65 @@ export function POSReceiptPrint({
     <Dialog open={open} onOpenChange={onClose}>
       <DialogContent className="max-w-xs p-0 overflow-hidden">
         {/* Toolbar */}
-        <div className="flex items-center justify-between px-3 py-2 border-b bg-muted/30">
-          <h2 className="font-semibold text-xs">Preview Struk</h2>
-          <div className="flex items-center gap-1.5">
-            <Button size="sm" onClick={handlePrint} className="gap-1 h-7 text-xs" style={{ backgroundColor: brandColor }}>
-              <Printer className="h-3 w-3" /> Cetak
-            </Button>
-            <Button size="sm" variant="ghost" onClick={onClose} className="h-7 w-7 p-0">
-              <X className="h-3.5 w-3.5" />
-            </Button>
+        <div className="px-3 py-2 border-b bg-muted/30 space-y-2">
+          <div className="flex items-center justify-between">
+            <h2 className="font-semibold text-xs">Preview Struk</h2>
+            <div className="flex items-center gap-1.5">
+              <Button size="sm" onClick={handlePrint} className="gap-1 h-7 text-xs" style={{ backgroundColor: brandColor }}>
+                <Printer className="h-3 w-3" /> Cetak
+              </Button>
+              <Button size="sm" variant="ghost" onClick={onClose} className="h-7 w-7 p-0">
+                <X className="h-3.5 w-3.5" />
+              </Button>
+            </div>
           </div>
+
+          {/* Bluetooth Printer Section */}
+          {btSupported && (
+            <div className="flex items-center gap-1.5 flex-wrap">
+              {btStatus === "disconnected" || btStatus === "error" ? (
+                <Button size="sm" variant="outline" onClick={handleBtConnect} className="gap-1 h-7 text-xs">
+                  <Bluetooth className="h-3 w-3" /> Sambungkan Printer BT
+                </Button>
+              ) : btStatus === "connecting" ? (
+                <Button size="sm" variant="outline" disabled className="gap-1 h-7 text-xs">
+                  <Loader2 className="h-3 w-3 animate-spin" /> Menyambungkan...
+                </Button>
+              ) : (
+                <>
+                  <Badge variant="outline" className="h-6 text-[10px] gap-1 text-green-600 border-green-300 bg-green-50 dark:bg-green-950/30">
+                    <BluetoothConnected className="h-3 w-3" /> {thermalPrinter.printerName}
+                  </Badge>
+                  <Button
+                    size="sm"
+                    onClick={handleBtPrint}
+                    disabled={btStatus === "printing"}
+                    className="gap-1 h-7 text-xs bg-blue-600 hover:bg-blue-700"
+                  >
+                    {btStatus === "printing"
+                      ? <><Loader2 className="h-3 w-3 animate-spin" /> Mencetak...</>
+                      : <><Printer className="h-3 w-3" /> Cetak BT</>
+                    }
+                  </Button>
+                  <Button size="sm" variant="ghost" onClick={handleBtDisconnect} className="h-7 w-7 p-0 text-muted-foreground">
+                    <Unplug className="h-3 w-3" />
+                  </Button>
+                </>
+              )}
+            </div>
+          )}
+
+          {/* BT Status messages */}
+          {btError && (
+            <div className="flex items-center gap-1.5 text-[10px] text-red-600">
+              <AlertCircle className="h-3 w-3 shrink-0" /> {btError}
+            </div>
+          )}
+          {btSuccess && (
+            <div className="flex items-center gap-1.5 text-[10px] text-green-600">
+              <CheckCircle2 className="h-3 w-3 shrink-0" /> Struk berhasil dicetak!
+            </div>
+          )}
         </div>
 
         {/* Receipt Preview */}
