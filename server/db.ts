@@ -6801,6 +6801,161 @@ export async function getDepositReport(businessId: number, startDate?: string, e
     .where(and(...conditions));
 }
 
+// ─── PURCHASE REPORT (Rincian Pembelian per Barang — Accurate-style) ───
+export async function getPurchaseReport(businessId: number, startDate: string, endDate: string) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+
+  // Fetch POs in date range with items + supplier
+  const poRows = await db
+    .select({
+      poId: purchaseOrders.id,
+      poNumber: purchaseOrders.poNumber,
+      date: purchaseOrders.date,
+      description: purchaseOrders.description,
+      totalAmount: purchaseOrders.totalAmount,
+      paymentStatus: purchaseOrders.paymentStatus,
+      receiptStatus: purchaseOrders.receiptStatus,
+      notes: purchaseOrders.notes,
+      supplierId: purchaseOrders.supplierId,
+      supplierName: suppliers.name,
+      supplierPhone: suppliers.phone,
+    })
+    .from(purchaseOrders)
+    .leftJoin(suppliers, eq(purchaseOrders.supplierId, suppliers.id))
+    .where(
+      and(
+        eq(purchaseOrders.businessId, businessId),
+        gte(purchaseOrders.date, startDate),
+        lte(purchaseOrders.date, endDate)
+      )
+    )
+    .orderBy(purchaseOrders.date, purchaseOrders.poNumber);
+
+  if (poRows.length === 0) {
+    return {
+      items: [],
+      summary: { totalPOs: 0, totalItems: 0, totalQty: 0, totalAmount: 0, totalPaid: 0, totalUnpaid: 0 },
+      bySupplier: [] as { supplierName: string; totalAmount: number; poCount: number }[],
+      byProduct: [] as { productName: string; totalQty: number; totalAmount: number; category: string | null }[],
+    };
+  }
+
+  // Fetch all PO items with product info
+  const poIds = poRows.map(p => p.poId);
+  const allItems = await db
+    .select({
+      poItemId: purchaseOrderItems.id,
+      purchaseOrderId: purchaseOrderItems.purchaseOrderId,
+      productId: purchaseOrderItems.productId,
+      productName: purchaseOrderItems.productName,
+      qty: purchaseOrderItems.qty,
+      unitPrice: purchaseOrderItems.unitPrice,
+      totalPrice: purchaseOrderItems.totalPrice,
+      receivedQty: purchaseOrderItems.receivedQty,
+      sku: products.sku,
+      category: products.category,
+    })
+    .from(purchaseOrderItems)
+    .leftJoin(products, eq(purchaseOrderItems.productId, products.id))
+    .where(inArray(purchaseOrderItems.purchaseOrderId, poIds));
+
+  // Group items by PO
+  const itemsByPO = new Map<number, typeof allItems>();
+  for (const item of allItems) {
+    const arr = itemsByPO.get(item.purchaseOrderId) || [];
+    arr.push(item);
+    itemsByPO.set(item.purchaseOrderId, arr);
+  }
+
+  // Build flat detail rows (Accurate-style: one row per item)
+  const detailItems: {
+    poNumber: string;
+    date: string;
+    supplierName: string;
+    supplierPhone: string | null;
+    description: string | null;
+    productName: string;
+    sku: string | null;
+    category: string | null;
+    qty: number;
+    unitPrice: number;
+    totalPrice: number;
+    receivedQty: number;
+    paymentStatus: string;
+    receiptStatus: string;
+    notes: string | null;
+  }[] = [];
+
+  for (const po of poRows) {
+    const poItems = itemsByPO.get(po.poId) || [];
+    for (const item of poItems) {
+      detailItems.push({
+        poNumber: po.poNumber,
+        date: po.date,
+        supplierName: po.supplierName || "Unknown",
+        supplierPhone: po.supplierPhone,
+        description: po.description,
+        productName: item.productName,
+        sku: item.sku,
+        category: item.category,
+        qty: item.qty,
+        unitPrice: item.unitPrice,
+        totalPrice: item.totalPrice,
+        receivedQty: item.receivedQty,
+        paymentStatus: po.paymentStatus,
+        receiptStatus: po.receiptStatus,
+        notes: po.notes,
+      });
+    }
+  }
+
+  // Summaries
+  const totalAmount = poRows.reduce((s, p) => s + Number(p.totalAmount), 0);
+  const totalPaid = poRows.filter(p => p.paymentStatus === "paid").reduce((s, p) => s + Number(p.totalAmount), 0);
+  const partialPaid = poRows.filter(p => p.paymentStatus === "partial").reduce((s, p) => s + Number(p.totalAmount), 0);
+  const totalQty = allItems.reduce((s, i) => s + i.qty, 0);
+
+  // By supplier
+  const supplierMap = new Map<string, { totalAmount: number; poCount: number }>();
+  for (const po of poRows) {
+    const name = po.supplierName || "Unknown";
+    const existing = supplierMap.get(name) || { totalAmount: 0, poCount: 0 };
+    existing.totalAmount += Number(po.totalAmount);
+    existing.poCount += 1;
+    supplierMap.set(name, existing);
+  }
+  const bySupplier = Array.from(supplierMap.entries())
+    .map(([supplierName, data]) => ({ supplierName, ...data }))
+    .sort((a, b) => b.totalAmount - a.totalAmount);
+
+  // By product
+  const productMap = new Map<string, { totalQty: number; totalAmount: number; category: string | null }>();
+  for (const item of allItems) {
+    const existing = productMap.get(item.productName) || { totalQty: 0, totalAmount: 0, category: item.category };
+    existing.totalQty += item.qty;
+    existing.totalAmount += item.totalPrice;
+    productMap.set(item.productName, existing);
+  }
+  const byProduct = Array.from(productMap.entries())
+    .map(([productName, data]) => ({ productName, ...data }))
+    .sort((a, b) => b.totalAmount - a.totalAmount);
+
+  return {
+    items: detailItems,
+    summary: {
+      totalPOs: poRows.length,
+      totalItems: allItems.length,
+      totalQty,
+      totalAmount,
+      totalPaid,
+      totalUnpaid: totalAmount - totalPaid - (partialPaid * 0.5), // rough estimate
+    },
+    bySupplier,
+    byProduct,
+  };
+}
+
 // ─── SALES BY STAFF ───
 export async function getSalesByStaff(businessId: number, startDate: string, endDate: string) {
   const db = await getDb();

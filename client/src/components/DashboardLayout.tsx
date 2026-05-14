@@ -77,6 +77,7 @@ import {
   Star,
   Coins,
   Target,
+  ShoppingCart,
 } from "lucide-react";
 import { useTheme } from "@/contexts/ThemeContext";
 import { CSSProperties, useEffect, useMemo, useRef, useState } from "react";
@@ -112,7 +113,7 @@ const FEATURE_PATH_MAP: Record<string, string[]> = {
   "laporan-detail": ["/laporan-gl", "/rekening-koran", "/mutasi-persediaan", "/penjualan-produk",
     "/ringkasan-pembayaran", "/top-produk", "/penjualan-pelanggan", "/penjualan-jam",
     "/penjualan-tanggal", "/penjualan-kredit", "/ringkasan-diskon", "/void-refund",
-    "/transaksi-tunai", "/komisi"],
+    "/transaksi-tunai", "/komisi", "/laporan-pembelian"],
   analitik: ["/analitik"],
   fifo: ["/valuasi-fifo"],
   jurnal: ["/jurnal-adjustment"],
@@ -225,6 +226,7 @@ const UMKM_SIDEBAR: SidebarEntry[] = [
       { icon: Clock, label: "Laporan Shift", path: "/laporan-shift" },
       { icon: Wallet, label: "Transaksi Tunai", path: "/transaksi-tunai" },
       { icon: Coins, label: "Komisi Staff", path: "/komisi" },
+      { icon: ShoppingCart, label: "Laporan Pembelian", path: "/laporan-pembelian" },
     ],
   },
   { icon: Users, label: "Pelanggan", path: "/client" },

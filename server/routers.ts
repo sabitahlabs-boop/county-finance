@@ -50,7 +50,7 @@ import {
   createPosShift, getOpenShift, closePosShift, getShiftsByBusiness, getPosShiftById,
   createDiscountCode, getDiscountCodesByBusiness, validateDiscountCode, incrementDiscountUsage, updateDiscountCode, deleteDiscountCode,
   generateReceiptCode, createPosReceipt, createPosReceiptItems, getPosReceiptsByBusiness, getPosReceiptById, refundPosReceipt, getPosReceiptItemsByReceipt,
-  getDailySalesReport, getPeriodSalesReport, getReceiptDetailERP,
+  getDailySalesReport, getPeriodSalesReport, getReceiptDetailERP, getPurchaseReport,
   getSalesByProduct, getPaymentMethodSummary, getTopProductsAndCategories,
   seedDummyData, clearBusinessData,
   generateNeraca, generatePerubahanModal, generateCALK, validateFinancialConsistency,
@@ -1261,6 +1261,12 @@ export const appRouter = router({
       const biz = (await resolveBusinessForUser(ctx.user.id, ctx.requestedBusinessId, ctx.user.role))?.business;
       if (!biz) throw new TRPCError({ code: "NOT_FOUND" });
       return getReceiptDetailERP(biz.id, input.receiptId);
+    }),
+
+    purchaseReport: protectedProcedure.input(z.object({ startDate: z.string(), endDate: z.string() })).query(async ({ ctx, input }) => {
+      const biz = (await resolveBusinessForUser(ctx.user.id, ctx.requestedBusinessId, ctx.user.role))?.business;
+      if (!biz) throw new TRPCError({ code: "NOT_FOUND" });
+      return getPurchaseReport(biz.id, input.startDate, input.endDate);
     }),
 
     rekeningKoran: protectedProcedure.input(z.object({
