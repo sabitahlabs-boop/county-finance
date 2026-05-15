@@ -4544,17 +4544,17 @@ export async function clearBusinessData(businessId: number): Promise<{ success: 
   await safeDel(() => db.delete(warehouses).where(and(eq(warehouses.businessId, businessId), eq(warehouses.isDefault, false))), "warehouses");
 
   // PO Receiving details
-  await safeDel(() => db.execute(sql.raw(`DELETE FROM po_receiving_details WHERE businessId = ${businessId}`)), "po_receiving_details");
+  await safeDel(() => db.execute(sql`DELETE FROM po_receiving_details WHERE businessId = ${businessId}`), "po_receiving_details");
 
   // Personal Finance tables (pf_*)
-  await safeDel(() => db.execute(sql.raw(`DELETE FROM pf_goals WHERE businessId = ${businessId}`)), "pf_goals");
-  await safeDel(() => db.execute(sql.raw(`DELETE FROM pf_heritage WHERE businessId = ${businessId}`)), "pf_heritage");
-  await safeDel(() => db.execute(sql.raw(`DELETE FROM pf_insurances WHERE businessId = ${businessId}`)), "pf_insurances");
-  await safeDel(() => db.execute(sql.raw(`DELETE FROM pf_liabilities WHERE businessId = ${businessId}`)), "pf_liabilities");
-  await safeDel(() => db.execute(sql.raw(`DELETE FROM pf_assets WHERE businessId = ${businessId}`)), "pf_assets");
-  await safeDel(() => db.execute(sql.raw(`DELETE FROM pf_expense_categories WHERE businessId = ${businessId}`)), "pf_expense_categories");
-  await safeDel(() => db.execute(sql.raw(`DELETE FROM pf_income_sources WHERE businessId = ${businessId}`)), "pf_income_sources");
-  await safeDel(() => db.execute(sql.raw(`DELETE FROM pf_profiles WHERE businessId = ${businessId}`)), "pf_profiles");
+  await safeDel(() => db.execute(sql`DELETE FROM pf_goals WHERE businessId = ${businessId}`), "pf_goals");
+  await safeDel(() => db.execute(sql`DELETE FROM pf_heritage WHERE businessId = ${businessId}`), "pf_heritage");
+  await safeDel(() => db.execute(sql`DELETE FROM pf_insurances WHERE businessId = ${businessId}`), "pf_insurances");
+  await safeDel(() => db.execute(sql`DELETE FROM pf_liabilities WHERE businessId = ${businessId}`), "pf_liabilities");
+  await safeDel(() => db.execute(sql`DELETE FROM pf_assets WHERE businessId = ${businessId}`), "pf_assets");
+  await safeDel(() => db.execute(sql`DELETE FROM pf_expense_categories WHERE businessId = ${businessId}`), "pf_expense_categories");
+  await safeDel(() => db.execute(sql`DELETE FROM pf_income_sources WHERE businessId = ${businessId}`), "pf_income_sources");
+  await safeDel(() => db.execute(sql`DELETE FROM pf_profiles WHERE businessId = ${businessId}`), "pf_profiles");
 
   // Reset business flags so user goes back to setup wizard
   await db.update(businesses).set({
@@ -8349,7 +8349,7 @@ export async function getBukuBesarGL(
 export async function getPfProfile(businessId: number) {
   const db = await getDb();
   if (!db) return null;
-  const [rows] = await db.execute(sql.raw(`SELECT * FROM pf_profiles WHERE businessId = ${businessId} LIMIT 1`)) as any;
+  const [rows] = await db.execute(sql`SELECT * FROM pf_profiles WHERE businessId = ${businessId} LIMIT 1`) as any;
   return rows?.[0] || null;
 }
 
@@ -8361,20 +8361,18 @@ export async function upsertPfProfile(businessId: number, data: {
   if (!db) return;
   const existing = await getPfProfile(businessId);
   if (existing) {
-    const sets: string[] = [];
-    if (data.fullName !== undefined) sets.push(`fullName = '${data.fullName.replace(/'/g, "''")}'`);
-    if (data.age !== undefined) sets.push(`age = ${data.age}`);
-    if (data.maritalStatus !== undefined) sets.push(`maritalStatus = '${data.maritalStatus}'`);
-    if (data.dependents !== undefined) sets.push(`dependents = ${data.dependents}`);
-    if (data.occupation !== undefined) sets.push(`occupation = '${data.occupation?.replace(/'/g, "''") || ""}'`);
-    if (data.monthlyIncome !== undefined) sets.push(`monthlyIncome = ${data.monthlyIncome}`);
-    if (data.setupCompleted !== undefined) sets.push(`setupCompleted = ${data.setupCompleted ? 1 : 0}`);
-    if (data.setupStep !== undefined) sets.push(`setupStep = ${data.setupStep}`);
-    if (sets.length > 0) {
-      await db.execute(sql.raw(`UPDATE pf_profiles SET ${sets.join(", ")} WHERE businessId = ${businessId}`));
-    }
+    await db.execute(sql`UPDATE pf_profiles SET
+      fullName = ${data.fullName ?? existing.fullName},
+      age = ${data.age ?? existing.age},
+      maritalStatus = ${data.maritalStatus ?? existing.maritalStatus},
+      dependents = ${data.dependents ?? existing.dependents},
+      occupation = ${data.occupation ?? existing.occupation ?? ""},
+      monthlyIncome = ${data.monthlyIncome ?? existing.monthlyIncome},
+      setupCompleted = ${data.setupCompleted !== undefined ? (data.setupCompleted ? 1 : 0) : existing.setupCompleted},
+      setupStep = ${data.setupStep ?? existing.setupStep}
+      WHERE businessId = ${businessId}`);
   } else {
-    await db.execute(sql.raw(`INSERT INTO pf_profiles (businessId, fullName, age, maritalStatus, dependents, occupation, monthlyIncome, setupCompleted, setupStep) VALUES (${businessId}, '${(data.fullName || "").replace(/'/g, "''")}', ${data.age || 25}, '${data.maritalStatus || "single"}', ${data.dependents || 0}, '${(data.occupation || "").replace(/'/g, "''")}', ${data.monthlyIncome || 0}, ${data.setupCompleted ? 1 : 0}, ${data.setupStep || 0})`));
+    await db.execute(sql`INSERT INTO pf_profiles (businessId, fullName, age, maritalStatus, dependents, occupation, monthlyIncome, setupCompleted, setupStep) VALUES (${businessId}, ${data.fullName || ""}, ${data.age || 25}, ${data.maritalStatus || "single"}, ${data.dependents || 0}, ${data.occupation || ""}, ${data.monthlyIncome || 0}, ${data.setupCompleted ? 1 : 0}, ${data.setupStep || 0})`);
   }
 }
 
@@ -8382,7 +8380,7 @@ export async function upsertPfProfile(businessId: number, data: {
 export async function getPfIncomeSources(businessId: number) {
   const db = await getDb();
   if (!db) return [];
-  const [rows] = await db.execute(sql.raw(`SELECT * FROM pf_income_sources WHERE businessId = ${businessId} AND isActive = 1 ORDER BY id`)) as any;
+  const [rows] = await db.execute(sql`SELECT * FROM pf_income_sources WHERE businessId = ${businessId} AND isActive = 1 ORDER BY id`) as any;
   return rows || [];
 }
 
@@ -8390,23 +8388,23 @@ export async function upsertPfIncomeSource(businessId: number, data: { id?: numb
   const db = await getDb();
   if (!db) return;
   if (data.id) {
-    await db.execute(sql.raw(`UPDATE pf_income_sources SET name = '${data.name.replace(/'/g, "''")}', category = '${data.category}', amount = ${data.amount}, frequency = '${data.frequency || "bulanan"}' WHERE id = ${data.id} AND businessId = ${businessId}`));
+    await db.execute(sql`UPDATE pf_income_sources SET name = ${data.name}, category = ${data.category}, amount = ${data.amount}, frequency = ${data.frequency || "bulanan"} WHERE id = ${data.id} AND businessId = ${businessId}`);
   } else {
-    await db.execute(sql.raw(`INSERT INTO pf_income_sources (businessId, name, category, amount, frequency) VALUES (${businessId}, '${data.name.replace(/'/g, "''")}', '${data.category}', ${data.amount}, '${data.frequency || "bulanan"}')`));
+    await db.execute(sql`INSERT INTO pf_income_sources (businessId, name, category, amount, frequency) VALUES (${businessId}, ${data.name}, ${data.category}, ${data.amount}, ${data.frequency || "bulanan"})`);
   }
 }
 
 export async function deletePfIncomeSource(businessId: number, id: number) {
   const db = await getDb();
   if (!db) return;
-  await db.execute(sql.raw(`UPDATE pf_income_sources SET isActive = 0 WHERE id = ${id} AND businessId = ${businessId}`));
+  await db.execute(sql`UPDATE pf_income_sources SET isActive = 0 WHERE id = ${id} AND businessId = ${businessId}`);
 }
 
 // ─── Expense Categories ───
 export async function getPfExpenseCategories(businessId: number) {
   const db = await getDb();
   if (!db) return [];
-  const [rows] = await db.execute(sql.raw(`SELECT * FROM pf_expense_categories WHERE businessId = ${businessId} AND isActive = 1 ORDER BY id`)) as any;
+  const [rows] = await db.execute(sql`SELECT * FROM pf_expense_categories WHERE businessId = ${businessId} AND isActive = 1 ORDER BY id`) as any;
   return rows || [];
 }
 
@@ -8414,23 +8412,23 @@ export async function upsertPfExpenseCategory(businessId: number, data: { id?: n
   const db = await getDb();
   if (!db) return;
   if (data.id) {
-    await db.execute(sql.raw(`UPDATE pf_expense_categories SET name = '${data.name.replace(/'/g, "''")}', category = '${data.category}', budgetAmount = ${data.budgetAmount}, icon = '${data.icon || "📋"}', color = '${data.color || "#6B7280"}' WHERE id = ${data.id} AND businessId = ${businessId}`));
+    await db.execute(sql`UPDATE pf_expense_categories SET name = ${data.name}, category = ${data.category}, budgetAmount = ${data.budgetAmount}, icon = ${data.icon || "📋"}, color = ${data.color || "#6B7280"} WHERE id = ${data.id} AND businessId = ${businessId}`);
   } else {
-    await db.execute(sql.raw(`INSERT INTO pf_expense_categories (businessId, name, category, budgetAmount, icon, color) VALUES (${businessId}, '${data.name.replace(/'/g, "''")}', '${data.category}', ${data.budgetAmount}, '${data.icon || "📋"}', '${data.color || "#6B7280"}')`));
+    await db.execute(sql`INSERT INTO pf_expense_categories (businessId, name, category, budgetAmount, icon, color) VALUES (${businessId}, ${data.name}, ${data.category}, ${data.budgetAmount}, ${data.icon || "📋"}, ${data.color || "#6B7280"})`);
   }
 }
 
 export async function deletePfExpenseCategory(businessId: number, id: number) {
   const db = await getDb();
   if (!db) return;
-  await db.execute(sql.raw(`UPDATE pf_expense_categories SET isActive = 0 WHERE id = ${id} AND businessId = ${businessId}`));
+  await db.execute(sql`UPDATE pf_expense_categories SET isActive = 0 WHERE id = ${id} AND businessId = ${businessId}`);
 }
 
 // ─── Assets ───
 export async function getPfAssets(businessId: number) {
   const db = await getDb();
   if (!db) return [];
-  const [rows] = await db.execute(sql.raw(`SELECT * FROM pf_assets WHERE businessId = ${businessId} AND isActive = 1 ORDER BY assetType, id`)) as any;
+  const [rows] = await db.execute(sql`SELECT * FROM pf_assets WHERE businessId = ${businessId} AND isActive = 1 ORDER BY assetType, id`) as any;
   return rows || [];
 }
 
@@ -8438,23 +8436,23 @@ export async function upsertPfAsset(businessId: number, data: { id?: number; nam
   const db = await getDb();
   if (!db) return;
   if (data.id) {
-    await db.execute(sql.raw(`UPDATE pf_assets SET name = '${data.name.replace(/'/g, "''")}', assetType = '${data.assetType}', subType = ${data.subType ? `'${data.subType}'` : "NULL"}, currentValue = ${data.currentValue}, purchaseValue = ${data.purchaseValue || 0}, notes = ${data.notes ? `'${data.notes.replace(/'/g, "''")}'` : "NULL"}, icon = '${data.icon || "💰"}' WHERE id = ${data.id} AND businessId = ${businessId}`));
+    await db.execute(sql`UPDATE pf_assets SET name = ${data.name}, assetType = ${data.assetType}, subType = ${data.subType ?? null}, currentValue = ${data.currentValue}, purchaseValue = ${data.purchaseValue || 0}, notes = ${data.notes ?? null}, icon = ${data.icon || "💰"} WHERE id = ${data.id} AND businessId = ${businessId}`);
   } else {
-    await db.execute(sql.raw(`INSERT INTO pf_assets (businessId, name, assetType, subType, currentValue, purchaseValue, notes, icon) VALUES (${businessId}, '${data.name.replace(/'/g, "''")}', '${data.assetType}', ${data.subType ? `'${data.subType}'` : "NULL"}, ${data.currentValue}, ${data.purchaseValue || 0}, ${data.notes ? `'${data.notes.replace(/'/g, "''")}'` : "NULL"}, '${data.icon || "💰"}')`));
+    await db.execute(sql`INSERT INTO pf_assets (businessId, name, assetType, subType, currentValue, purchaseValue, notes, icon) VALUES (${businessId}, ${data.name}, ${data.assetType}, ${data.subType ?? null}, ${data.currentValue}, ${data.purchaseValue || 0}, ${data.notes ?? null}, ${data.icon || "💰"})`);
   }
 }
 
 export async function deletePfAsset(businessId: number, id: number) {
   const db = await getDb();
   if (!db) return;
-  await db.execute(sql.raw(`UPDATE pf_assets SET isActive = 0 WHERE id = ${id} AND businessId = ${businessId}`));
+  await db.execute(sql`UPDATE pf_assets SET isActive = 0 WHERE id = ${id} AND businessId = ${businessId}`);
 }
 
 // ─── Liabilities ───
 export async function getPfLiabilities(businessId: number) {
   const db = await getDb();
   if (!db) return [];
-  const [rows] = await db.execute(sql.raw(`SELECT * FROM pf_liabilities WHERE businessId = ${businessId} AND isActive = 1 ORDER BY id`)) as any;
+  const [rows] = await db.execute(sql`SELECT * FROM pf_liabilities WHERE businessId = ${businessId} AND isActive = 1 ORDER BY id`) as any;
   return rows || [];
 }
 
@@ -8462,23 +8460,23 @@ export async function upsertPfLiability(businessId: number, data: { id?: number;
   const db = await getDb();
   if (!db) return;
   if (data.id) {
-    await db.execute(sql.raw(`UPDATE pf_liabilities SET name = '${data.name.replace(/'/g, "''")}', liabilityType = '${data.liabilityType}', totalAmount = ${data.totalAmount}, remainingAmount = ${data.remainingAmount}, monthlyPayment = ${data.monthlyPayment}, interestRate = ${data.interestRate || 0}, notes = ${data.notes ? `'${data.notes.replace(/'/g, "''")}'` : "NULL"} WHERE id = ${data.id} AND businessId = ${businessId}`));
+    await db.execute(sql`UPDATE pf_liabilities SET name = ${data.name}, liabilityType = ${data.liabilityType}, totalAmount = ${data.totalAmount}, remainingAmount = ${data.remainingAmount}, monthlyPayment = ${data.monthlyPayment}, interestRate = ${data.interestRate || 0}, notes = ${data.notes ?? null} WHERE id = ${data.id} AND businessId = ${businessId}`);
   } else {
-    await db.execute(sql.raw(`INSERT INTO pf_liabilities (businessId, name, liabilityType, totalAmount, remainingAmount, monthlyPayment, interestRate, notes) VALUES (${businessId}, '${data.name.replace(/'/g, "''")}', '${data.liabilityType}', ${data.totalAmount}, ${data.remainingAmount}, ${data.monthlyPayment}, ${data.interestRate || 0}, ${data.notes ? `'${data.notes.replace(/'/g, "''")}'` : "NULL"})`));
+    await db.execute(sql`INSERT INTO pf_liabilities (businessId, name, liabilityType, totalAmount, remainingAmount, monthlyPayment, interestRate, notes) VALUES (${businessId}, ${data.name}, ${data.liabilityType}, ${data.totalAmount}, ${data.remainingAmount}, ${data.monthlyPayment}, ${data.interestRate || 0}, ${data.notes ?? null})`);
   }
 }
 
 export async function deletePfLiability(businessId: number, id: number) {
   const db = await getDb();
   if (!db) return;
-  await db.execute(sql.raw(`UPDATE pf_liabilities SET isActive = 0 WHERE id = ${id} AND businessId = ${businessId}`));
+  await db.execute(sql`UPDATE pf_liabilities SET isActive = 0 WHERE id = ${id} AND businessId = ${businessId}`);
 }
 
 // ─── Insurances ───
 export async function getPfInsurances(businessId: number) {
   const db = await getDb();
   if (!db) return [];
-  const [rows] = await db.execute(sql.raw(`SELECT * FROM pf_insurances WHERE businessId = ${businessId} AND isActive = 1 ORDER BY id`)) as any;
+  const [rows] = await db.execute(sql`SELECT * FROM pf_insurances WHERE businessId = ${businessId} AND isActive = 1 ORDER BY id`) as any;
   return rows || [];
 }
 
@@ -8486,23 +8484,23 @@ export async function upsertPfInsurance(businessId: number, data: { id?: number;
   const db = await getDb();
   if (!db) return;
   if (data.id) {
-    await db.execute(sql.raw(`UPDATE pf_insurances SET name = '${data.name.replace(/'/g, "''")}', insuranceType = '${data.insuranceType}', provider = ${data.provider ? `'${data.provider.replace(/'/g, "''")}'` : "NULL"}, premiumAmount = ${data.premiumAmount}, premiumFrequency = '${data.premiumFrequency || "bulanan"}', coverageAmount = ${data.coverageAmount} WHERE id = ${data.id} AND businessId = ${businessId}`));
+    await db.execute(sql`UPDATE pf_insurances SET name = ${data.name}, insuranceType = ${data.insuranceType}, provider = ${data.provider ?? null}, premiumAmount = ${data.premiumAmount}, premiumFrequency = ${data.premiumFrequency || "bulanan"}, coverageAmount = ${data.coverageAmount} WHERE id = ${data.id} AND businessId = ${businessId}`);
   } else {
-    await db.execute(sql.raw(`INSERT INTO pf_insurances (businessId, name, insuranceType, provider, premiumAmount, premiumFrequency, coverageAmount) VALUES (${businessId}, '${data.name.replace(/'/g, "''")}', '${data.insuranceType}', ${data.provider ? `'${data.provider.replace(/'/g, "''")}'` : "NULL"}, ${data.premiumAmount}, '${data.premiumFrequency || "bulanan"}', ${data.coverageAmount})`));
+    await db.execute(sql`INSERT INTO pf_insurances (businessId, name, insuranceType, provider, premiumAmount, premiumFrequency, coverageAmount) VALUES (${businessId}, ${data.name}, ${data.insuranceType}, ${data.provider ?? null}, ${data.premiumAmount}, ${data.premiumFrequency || "bulanan"}, ${data.coverageAmount})`);
   }
 }
 
 export async function deletePfInsurance(businessId: number, id: number) {
   const db = await getDb();
   if (!db) return;
-  await db.execute(sql.raw(`UPDATE pf_insurances SET isActive = 0 WHERE id = ${id} AND businessId = ${businessId}`));
+  await db.execute(sql`UPDATE pf_insurances SET isActive = 0 WHERE id = ${id} AND businessId = ${businessId}`);
 }
 
 // ─── Heritage ───
 export async function getPfHeritage(businessId: number) {
   const db = await getDb();
   if (!db) return null;
-  const [rows] = await db.execute(sql.raw(`SELECT * FROM pf_heritage WHERE businessId = ${businessId} LIMIT 1`)) as any;
+  const [rows] = await db.execute(sql`SELECT * FROM pf_heritage WHERE businessId = ${businessId} LIMIT 1`) as any;
   return rows?.[0] || null;
 }
 
@@ -8511,14 +8509,14 @@ export async function upsertPfHeritage(businessId: number, data: { hasWill?: boo
   if (!db) return;
   const existing = await getPfHeritage(businessId);
   if (existing) {
-    const sets: string[] = [];
-    if (data.hasWill !== undefined) sets.push(`hasWill = ${data.hasWill ? 1 : 0}`);
-    if (data.hasInsuranceBeneficiary !== undefined) sets.push(`hasInsuranceBeneficiary = ${data.hasInsuranceBeneficiary ? 1 : 0}`);
-    if (data.heritageStatus !== undefined) sets.push(`heritageStatus = '${data.heritageStatus}'`);
-    if (data.notes !== undefined) sets.push(`notes = ${data.notes ? `'${data.notes.replace(/'/g, "''")}'` : "NULL"}`);
-    if (sets.length > 0) await db.execute(sql.raw(`UPDATE pf_heritage SET ${sets.join(", ")} WHERE businessId = ${businessId}`));
+    await db.execute(sql`UPDATE pf_heritage SET
+      hasWill = ${data.hasWill !== undefined ? (data.hasWill ? 1 : 0) : existing.hasWill},
+      hasInsuranceBeneficiary = ${data.hasInsuranceBeneficiary !== undefined ? (data.hasInsuranceBeneficiary ? 1 : 0) : existing.hasInsuranceBeneficiary},
+      heritageStatus = ${data.heritageStatus ?? existing.heritageStatus},
+      notes = ${data.notes !== undefined ? (data.notes ?? null) : existing.notes}
+      WHERE businessId = ${businessId}`);
   } else {
-    await db.execute(sql.raw(`INSERT INTO pf_heritage (businessId, hasWill, hasInsuranceBeneficiary, heritageStatus, notes) VALUES (${businessId}, ${data.hasWill ? 1 : 0}, ${data.hasInsuranceBeneficiary ? 1 : 0}, '${data.heritageStatus || "belum_siap"}', ${data.notes ? `'${data.notes.replace(/'/g, "''")}'` : "NULL"})`));
+    await db.execute(sql`INSERT INTO pf_heritage (businessId, hasWill, hasInsuranceBeneficiary, heritageStatus, notes) VALUES (${businessId}, ${data.hasWill ? 1 : 0}, ${data.hasInsuranceBeneficiary ? 1 : 0}, ${data.heritageStatus || "belum_siap"}, ${data.notes ?? null})`);
   }
 }
 
@@ -8526,7 +8524,7 @@ export async function upsertPfHeritage(businessId: number, data: { hasWill?: boo
 export async function getPfGoals(businessId: number) {
   const db = await getDb();
   if (!db) return [];
-  const [rows] = await db.execute(sql.raw(`SELECT * FROM pf_goals WHERE businessId = ${businessId} AND isCompleted = 0 ORDER BY priority, id`)) as any;
+  const [rows] = await db.execute(sql`SELECT * FROM pf_goals WHERE businessId = ${businessId} AND isCompleted = 0 ORDER BY priority, id`) as any;
   return rows || [];
 }
 
@@ -8534,16 +8532,16 @@ export async function upsertPfGoal(businessId: number, data: { id?: number; name
   const db = await getDb();
   if (!db) return;
   if (data.id) {
-    await db.execute(sql.raw(`UPDATE pf_goals SET name = '${data.name.replace(/'/g, "''")}', goalType = '${data.goalType}', targetAmount = ${data.targetAmount}, currentAmount = ${data.currentAmount || 0}, targetDate = ${data.targetDate ? `'${data.targetDate}'` : "NULL"}, priority = ${data.priority || 1}, icon = '${data.icon || "🎯"}', color = '${data.color || "#3b82f6"}' WHERE id = ${data.id} AND businessId = ${businessId}`));
+    await db.execute(sql`UPDATE pf_goals SET name = ${data.name}, goalType = ${data.goalType}, targetAmount = ${data.targetAmount}, currentAmount = ${data.currentAmount || 0}, targetDate = ${data.targetDate ?? null}, priority = ${data.priority || 1}, icon = ${data.icon || "🎯"}, color = ${data.color || "#3b82f6"} WHERE id = ${data.id} AND businessId = ${businessId}`);
   } else {
-    await db.execute(sql.raw(`INSERT INTO pf_goals (businessId, name, goalType, targetAmount, currentAmount, targetDate, priority, icon, color) VALUES (${businessId}, '${data.name.replace(/'/g, "''")}', '${data.goalType}', ${data.targetAmount}, ${data.currentAmount || 0}, ${data.targetDate ? `'${data.targetDate}'` : "NULL"}, ${data.priority || 1}, '${data.icon || "🎯"}', '${data.color || "#3b82f6"}')`));
+    await db.execute(sql`INSERT INTO pf_goals (businessId, name, goalType, targetAmount, currentAmount, targetDate, priority, icon, color) VALUES (${businessId}, ${data.name}, ${data.goalType}, ${data.targetAmount}, ${data.currentAmount || 0}, ${data.targetDate ?? null}, ${data.priority || 1}, ${data.icon || "🎯"}, ${data.color || "#3b82f6"})`);
   }
 }
 
 export async function deletePfGoal(businessId: number, id: number) {
   const db = await getDb();
   if (!db) return;
-  await db.execute(sql.raw(`DELETE FROM pf_goals WHERE id = ${id} AND businessId = ${businessId}`));
+  await db.execute(sql`DELETE FROM pf_goals WHERE id = ${id} AND businessId = ${businessId}`);
 }
 
 // ─── Dashboard Summary (aggregated) ───

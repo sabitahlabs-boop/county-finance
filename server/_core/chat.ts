@@ -7,7 +7,7 @@
  */
 
 import { createAnthropic } from "@ai-sdk/anthropic";
-import { streamText, type CoreMessage } from "ai";
+import { streamText, type ModelMessage } from "ai";
 import type { Express, Request, Response } from "express";
 import { ENV } from "./env";
 
@@ -50,7 +50,7 @@ export function registerChatRoutes(app: Express) {
 
     try {
       const { messages, context } = req.body as {
-        messages: CoreMessage[];
+        messages: ModelMessage[];
         context?: string;
       };
 
@@ -66,12 +66,12 @@ export function registerChatRoutes(app: Express) {
         model: anthropic(ENV.aiModel),
         system: systemMessage,
         messages,
-        maxTokens: 1024,
+        maxOutputTokens: 1024,
         temperature: 0.7,
       });
 
-      // Stream response
-      result.pipeDataStreamToResponse(res);
+      // Stream response using v6 API
+      result.pipeTextStreamToResponse(res);
     } catch (error) {
       console.error("[AI Chat] Error:", error);
       res.status(500).json({ error: "AI chat failed" });

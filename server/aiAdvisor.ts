@@ -124,7 +124,7 @@ ${JSON.stringify(kpiData, null, 2)}
 Format: Paragraf singkat, Bahasa Indonesia, gunakan angka Rupiah dengan format "Rp X,X juta" atau "Rp X ribu".
 Contoh: "Bulan ini bisnis kamu menghasilkan Rp 15,2 juta dengan margin 42%. Ada peningkatan 8% dari bulan lalu!"`,
     temperature: 0.5,
-    maxTokens: 200,
+    maxOutputTokens: 200,
   });
   return text;
 }

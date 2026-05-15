@@ -116,7 +116,7 @@ export default function BusinessProfileWizard({ currentBusinessType, onComplete 
     try {
       // Always-on features + selected features
       const alwaysOn = ALL_FEATURES.filter(f => f.alwaysOn).map(f => f.key);
-      const allEnabled = [...new Set([...alwaysOn, ...selectedFeatures])];
+      const allEnabled = Array.from(new Set([...alwaysOn, ...selectedFeatures]));
 
       await saveProfile.mutateAsync({
         businessType,

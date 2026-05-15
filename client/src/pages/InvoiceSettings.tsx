@@ -9,7 +9,6 @@ import { Label } from '@/components/ui/label';
 import { trpc } from '@/lib/trpc';
 import { getProxiedImageUrl } from '@/lib/utils';
 import { toast } from 'sonner';
-import { toast } from 'sonner';
 
 interface InvoiceSettingsState {
   showCustomerName: boolean;

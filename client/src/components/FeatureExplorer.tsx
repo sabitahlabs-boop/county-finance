@@ -38,7 +38,7 @@ export default function FeatureExplorer({ currentFeatures, businessScale, onClos
     setIsSaving(true);
     try {
       const alwaysOn = ALL_FEATURES.filter(f => f.alwaysOn).map(f => f.key);
-      const allEnabled = [...new Set([...alwaysOn, ...features])];
+      const allEnabled = Array.from(new Set([...alwaysOn, ...features]));
       await updateFeatures.mutateAsync({ enabledFeatures: allEnabled });
       utils.business.mine.invalidate();
       toast.success("Fitur sidebar diperbarui!");

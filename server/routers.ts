@@ -3717,41 +3717,51 @@ Penting: Kembalikan HANYA JSON valid, tidak ada teks penjelasan.`,
         txCodes.push(await generateTxCode(bizId));
       }
 
-      // ─── CRITICAL BUG FIX 4: Stock validation BEFORE transaction to prevent oversell ───
-      for (const item of input.items) {
-        const product = await getProductById(item.productId);
-        if (!product) {
-          throw new TRPCError({
-            code: "NOT_FOUND",
-            message: `Produk tidak ditemukan (ID: ${item.productId})`,
-          });
-        }
-
-        // Check warehouse stock if specified
-        if (item.warehouseId) {
-          const ws = await getOrCreateWarehouseStock(item.warehouseId, item.productId);
-          if (ws.quantity < item.productQty) {
-            throw new TRPCError({
-              code: "BAD_REQUEST",
-              message: `Stok ${product.name} tidak cukup (tersedia: ${ws.quantity}, diminta: ${item.productQty})`,
-            });
-          }
-        } else {
-          // Check overall product stock
-          if ((product.stockCurrent ?? 0) < item.productQty) {
-            throw new TRPCError({
-              code: "BAD_REQUEST",
-              message: `Stok ${product.name} tidak cukup (tersedia: ${product.stockCurrent ?? 0}, diminta: ${item.productQty})`,
-            });
-          }
-        }
-      }
-
       // ─── ATOMIC: Receipt + Items + Journal entries + Stock operations in single transaction ───
       const db = await getDb();
       if (!db) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Database not available" });
 
       const { receiptId } = await db.transaction(async (tx) => {
+        // ─── Stock validation INSIDE transaction with row locking to prevent oversell ───
+        for (const item of input.items) {
+          // Lock the product row with SELECT FOR UPDATE to prevent concurrent modifications
+          const [lockedProducts] = await tx.execute(
+            sql`SELECT id, name, stockCurrent, productType FROM products WHERE id = ${item.productId} FOR UPDATE`
+          ) as any;
+          const product = lockedProducts?.[0];
+          if (!product) {
+            throw new TRPCError({
+              code: "NOT_FOUND",
+              message: `Produk tidak ditemukan (ID: ${item.productId})`,
+            });
+          }
+
+          // Skip stock check for jasa products
+          if (product.productType === "jasa") continue;
+
+          // Check warehouse stock if specified
+          if (item.warehouseId) {
+            const [lockedWs] = await tx.execute(
+              sql`SELECT quantity FROM warehouse_stock WHERE warehouseId = ${item.warehouseId} AND productId = ${item.productId} FOR UPDATE`
+            ) as any;
+            const wsQty = lockedWs?.[0]?.quantity ?? 0;
+            if (wsQty < item.productQty) {
+              throw new TRPCError({
+                code: "BAD_REQUEST",
+                message: `Stok ${product.name} tidak cukup (tersedia: ${wsQty}, diminta: ${item.productQty})`,
+              });
+            }
+          } else {
+            // Check overall product stock
+            if ((product.stockCurrent ?? 0) < item.productQty) {
+              throw new TRPCError({
+                code: "BAD_REQUEST",
+                message: `Stok ${product.name} tidak cukup (tersedia: ${product.stockCurrent ?? 0}, diminta: ${item.productQty})`,
+              });
+            }
+          }
+        }
+
         // Create the receipt
         const [receiptResult] = await tx.insert(posReceipts).values({
           businessId: bizId,
