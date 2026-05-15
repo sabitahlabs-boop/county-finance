@@ -12,7 +12,7 @@ import {
   ShoppingCart, Search, Plus, Minus, Trash2, CreditCard, Banknote,
   QrCode, Receipt, CheckCircle2, Package, X, Loader2, Printer, Warehouse,
   SplitSquareHorizontal, Tag, Percent, Wallet, CalendarDays, UserPlus, Users, Phone, User,
-  AlertTriangle, Undo2,
+  AlertTriangle, Undo2, ClipboardList, Save, Clock,
 } from "lucide-react";
 import { formatRupiah } from "../../../shared/finance";
 import { getProxiedImageUrl } from "@/lib/utils";
@@ -173,6 +173,10 @@ export default function POS() {
       utils.product.list.invalidate();
       utils.warehouse.stock.invalidate();
       utils.posReceipt.list.invalidate();
+      // If this was an open bill checkout, close it
+      if (activeBillId) {
+        closeBillMutation.mutate({ id: activeBillId, receiptId: data.receiptId });
+      }
       setLastReceiptCode(data.receiptCode);
       setLastCart([...cart]);
       setLastTotal(grandTotal);
@@ -218,6 +222,123 @@ export default function POS() {
     setSelectedClientName("");
     setCustomerSearchQuery("");
     setShowNewCustomerForm(false);
+    setActiveBillId(null);
+    setActiveBillCode(null);
+  };
+
+  // ─── Open Bill system ───
+  const [openBillsOpen, setOpenBillsOpen] = useState(false);
+  const [activeBillId, setActiveBillId] = useState<number | null>(null);
+  const [activeBillCode, setActiveBillCode] = useState<string | null>(null);
+  const [saveBillCustomerName, setSaveBillCustomerName] = useState("");
+  const [saveBillDialogOpen, setSaveBillDialogOpen] = useState(false);
+
+  const { data: openBills = [], isLoading: openBillsLoading } = trpc.openBill.list.useQuery(undefined, { retry: false });
+
+  const saveOpenBill = trpc.openBill.create.useMutation({
+    onSuccess: (data) => {
+      utils.openBill.list.invalidate();
+      toast.success(`Bill ${data.billCode} tersimpan`);
+      setSaveBillDialogOpen(false);
+      setSaveBillCustomerName("");
+      resetCheckout();
+    },
+    onError: (err) => toast.error(err.message),
+  });
+
+  const updateBill = trpc.openBill.update.useMutation({
+    onSuccess: () => {
+      utils.openBill.list.invalidate();
+      toast.success("Bill diperbarui");
+      setSaveBillDialogOpen(false);
+      setSaveBillCustomerName("");
+      resetCheckout();
+    },
+    onError: (err) => toast.error(err.message),
+  });
+
+  const cancelBill = trpc.openBill.cancel.useMutation({
+    onSuccess: () => {
+      utils.openBill.list.invalidate();
+      toast.success("Bill dibatalkan");
+    },
+    onError: (err) => toast.error(err.message),
+  });
+
+  const closeBillMutation = trpc.openBill.close.useMutation({
+    onSuccess: () => {
+      utils.openBill.list.invalidate();
+    },
+  });
+
+  const handleSaveOpenBill = () => {
+    if (cart.length === 0) { toast.error("Keranjang kosong"); return; }
+    const billItems = cart.map(item => ({
+      productId: item.productId,
+      productName: item.name,
+      sku: "",
+      qty: item.qty,
+      unitPrice: item.price,
+      totalPrice: item.price * item.qty,
+    }));
+
+    if (activeBillId) {
+      // Update existing bill
+      updateBill.mutate({
+        id: activeBillId,
+        customerName: saveBillCustomerName || undefined,
+        items: billItems,
+        subtotal,
+        notes: notes || undefined,
+      });
+    } else {
+      // Create new bill
+      saveOpenBill.mutate({
+        customerName: saveBillCustomerName || undefined,
+        items: billItems,
+        subtotal,
+        notes: notes || undefined,
+      });
+    }
+  };
+
+  const handleLoadBill = (bill: any) => {
+    // Load bill items into cart
+    const loadedCart: CartItem[] = bill.items.map((item: any) => ({
+      productId: item.productId,
+      name: item.productName,
+      price: item.unitPrice,
+      basePrice: item.unitPrice,
+      hpp: 0,
+      qty: item.qty,
+      unit: "pcs",
+      imageUrl: null,
+      maxStock: 9999,
+      priceType: "fixed" as const,
+      discountPercent: 0,
+    }));
+
+    // Enrich with current product data if available
+    if (products) {
+      loadedCart.forEach(ci => {
+        const prod = (products as any[]).find((p: any) => p.id === ci.productId);
+        if (prod) {
+          ci.hpp = prod.hpp || 0;
+          ci.unit = prod.unit || "pcs";
+          ci.imageUrl = prod.imageUrl;
+          ci.maxStock = prod.stockCurrent;
+          ci.basePrice = prod.price;
+          ci.price = ci.price || prod.price; // keep bill price
+        }
+      });
+    }
+
+    setCart(loadedCart);
+    setActiveBillId(bill.id);
+    setActiveBillCode(bill.billCode);
+    setNotes(bill.notes || "");
+    setOpenBillsOpen(false);
+    toast.success(`Bill ${bill.billCode} dimuat ke keranjang`);
   };
 
   // ─── Product filtering ───
@@ -603,13 +724,35 @@ export default function POS() {
         </ScrollArea>
 
         <div className="border-t p-4 space-y-3">
+          {activeBillCode && (
+            <div className="flex items-center gap-2 text-xs text-amber-600 dark:text-amber-400 bg-amber-50 dark:bg-amber-900/20 px-2.5 py-1.5 rounded-md">
+              <ClipboardList className="h-3.5 w-3.5 shrink-0" />
+              <span>Open Bill: <strong>{activeBillCode}</strong></span>
+              <Button variant="ghost" size="sm" className="h-5 px-1.5 ml-auto text-[10px]" onClick={() => { setActiveBillId(null); setActiveBillCode(null); }}>
+                <X className="h-3 w-3" />
+              </Button>
+            </div>
+          )}
           <div className="flex justify-between items-center">
             <span className="text-sm text-muted-foreground">Subtotal ({totalItems} item)</span>
             <span className="text-lg font-bold text-primary">{formatRupiah(subtotal)}</span>
           </div>
           <div className="flex gap-2">
-            <Button variant="outline" className="flex-1" disabled={cart.length === 0} onClick={() => setConfirmClearCartOpen(true)}>
+            <Button variant="outline" size="sm" className="flex-1" disabled={cart.length === 0} onClick={() => setConfirmClearCartOpen(true)}>
               <Trash2 className="h-4 w-4 mr-1.5" /> Hapus
+            </Button>
+            <Button variant="outline" size="sm" className="flex-1 text-amber-600 border-amber-300 hover:bg-amber-50 dark:text-amber-400 dark:border-amber-700 dark:hover:bg-amber-900/20" disabled={cart.length === 0} onClick={() => setSaveBillDialogOpen(true)}>
+              <Save className="h-4 w-4 mr-1.5" /> {activeBillId ? "Update Bill" : "Open Bill"}
+            </Button>
+          </div>
+          <div className="flex gap-2">
+            <Button variant="outline" size="sm" onClick={() => setOpenBillsOpen(true)} className="relative">
+              <ClipboardList className="h-4 w-4 mr-1.5" /> Bills
+              {openBills.length > 0 && (
+                <span className="absolute -top-1.5 -right-1.5 bg-amber-500 text-white text-[10px] font-bold rounded-full h-4 min-w-[16px] flex items-center justify-center px-1">
+                  {openBills.length}
+                </span>
+              )}
             </Button>
             <Button className="flex-1" disabled={cart.length === 0} onClick={() => setCheckoutOpen(true)}>
               <CreditCard className="h-4 w-4 mr-1.5" /> Bayar
@@ -1167,10 +1310,103 @@ export default function POS() {
             <Button variant="outline" className="flex-1" onClick={() => setConfirmClearCartOpen(false)}>
               Batal
             </Button>
-            <Button variant="destructive" className="flex-1" onClick={() => { setCart([]); setConfirmClearCartOpen(false); toast.info("Keranjang dikosongkan"); }}>
+            <Button variant="destructive" className="flex-1" onClick={() => { setCart([]); setConfirmClearCartOpen(false); setActiveBillId(null); setActiveBillCode(null); toast.info("Keranjang dikosongkan"); }}>
               <Trash2 className="h-4 w-4 mr-2" /> Ya, Hapus Semua
             </Button>
           </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* ─── Save Open Bill Dialog ─── */}
+      <Dialog open={saveBillDialogOpen} onOpenChange={setSaveBillDialogOpen}>
+        <DialogContent className="max-w-sm">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Save className="h-5 w-5 text-amber-500" />
+              {activeBillId ? "Update Open Bill" : "Simpan Open Bill"}
+            </DialogTitle>
+          </DialogHeader>
+          <div className="space-y-3 py-2">
+            <p className="text-sm text-muted-foreground">
+              {activeBillId
+                ? `Update bill ${activeBillCode} dengan ${cart.length} item (${formatRupiah(subtotal)})`
+                : `Simpan ${cart.length} item (${formatRupiah(subtotal)}) sebagai Open Bill`
+              }
+            </p>
+            <div>
+              <label className="text-xs font-medium text-muted-foreground mb-1 block">Nama Customer / Meja (opsional)</label>
+              <Input
+                placeholder="cth: Meja 5, Pak Budi"
+                value={saveBillCustomerName}
+                onChange={(e) => setSaveBillCustomerName(e.target.value)}
+              />
+            </div>
+          </div>
+          <DialogFooter className="flex gap-2 sm:gap-2">
+            <Button variant="outline" className="flex-1" onClick={() => setSaveBillDialogOpen(false)}>Batal</Button>
+            <Button className="flex-1 bg-amber-500 hover:bg-amber-600 text-white" disabled={saveOpenBill.isPending || updateBill.isPending} onClick={handleSaveOpenBill}>
+              {(saveOpenBill.isPending || updateBill.isPending) ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Save className="h-4 w-4 mr-2" />}
+              {activeBillId ? "Update" : "Simpan"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* ─── Open Bills List Dialog ─── */}
+      <Dialog open={openBillsOpen} onOpenChange={setOpenBillsOpen}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <ClipboardList className="h-5 w-5 text-amber-500" />
+              Open Bills ({openBills.length})
+            </DialogTitle>
+          </DialogHeader>
+          <ScrollArea className="max-h-[60vh]">
+            {openBillsLoading ? (
+              <div className="flex items-center justify-center py-8">
+                <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
+              </div>
+            ) : openBills.length === 0 ? (
+              <div className="text-center py-8">
+                <ClipboardList className="h-8 w-8 text-muted-foreground/30 mx-auto mb-2" />
+                <p className="text-sm text-muted-foreground">Tidak ada open bill</p>
+              </div>
+            ) : (
+              <div className="space-y-2 p-1">
+                {openBills.map((bill: any) => (
+                  <div key={bill.id} className="p-3 rounded-lg border bg-card hover:bg-muted/30 transition-colors">
+                    <div className="flex items-center justify-between mb-2">
+                      <div>
+                        <span className="text-xs font-mono font-semibold text-amber-600 dark:text-amber-400">{bill.billCode}</span>
+                        {bill.customerName && <span className="text-xs text-muted-foreground ml-2">— {bill.customerName}</span>}
+                      </div>
+                      <div className="flex items-center gap-1 text-[10px] text-muted-foreground">
+                        <Clock className="h-3 w-3" />
+                        {new Date(bill.createdAt).toLocaleString("id-ID", { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" })}
+                      </div>
+                    </div>
+                    <div className="text-xs text-muted-foreground mb-2">
+                      {(bill.items as any[]).length} item — <span className="font-semibold text-foreground">{formatRupiah(bill.subtotal)}</span>
+                    </div>
+                    <div className="flex flex-wrap gap-1 mb-2">
+                      {(bill.items as any[]).slice(0, 3).map((item: any, idx: number) => (
+                        <Badge key={idx} variant="secondary" className="text-[10px]">{item.productName} x{item.qty}</Badge>
+                      ))}
+                      {(bill.items as any[]).length > 3 && <Badge variant="secondary" className="text-[10px]">+{(bill.items as any[]).length - 3} lagi</Badge>}
+                    </div>
+                    <div className="flex gap-2">
+                      <Button size="sm" className="flex-1 h-7 text-xs" onClick={() => handleLoadBill(bill)}>
+                        <ShoppingCart className="h-3 w-3 mr-1" /> Muat ke Keranjang
+                      </Button>
+                      <Button size="sm" variant="outline" className="h-7 text-xs text-destructive hover:text-destructive" onClick={() => cancelBill.mutate({ id: bill.id })}>
+                        <X className="h-3 w-3 mr-1" /> Batal
+                      </Button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </ScrollArea>
         </DialogContent>
       </Dialog>
     </div>

@@ -50,6 +50,7 @@ import {
   createPosShift, getOpenShift, closePosShift, getShiftsByBusiness, getPosShiftById,
   createDiscountCode, getDiscountCodesByBusiness, validateDiscountCode, incrementDiscountUsage, updateDiscountCode, deleteDiscountCode,
   generateReceiptCode, createPosReceipt, createPosReceiptItems, getPosReceiptsByBusiness, getPosReceiptById, refundPosReceipt, getPosReceiptItemsByReceipt,
+  generateBillCode, createOpenBill, getOpenBills, getAllOpenBills, getOpenBillById, updateOpenBill, closeOpenBill, cancelOpenBill,
   getDailySalesReport, getPeriodSalesReport, getReceiptDetailERP, getPurchaseReport,
   getSalesByProduct, getPaymentMethodSummary, getTopProductsAndCategories,
   seedDummyData, clearBusinessData,
@@ -4236,6 +4237,110 @@ Penting: Kembalikan HANYA JSON valid, tidak ada teks penjelasan.`,
       });
 
       return { success: true, refundAmount: receipt.grandTotal };
+    }),
+  }),
+
+  // ─── POS Open Bills ───
+  openBill: router({
+    list: protectedProcedure.query(async ({ ctx }) => {
+      const resolved = await resolveBusinessForUser(ctx.user.id, ctx.requestedBusinessId, ctx.user.role);
+      if (!resolved) return [];
+      return getOpenBills(resolved.business.id);
+    }),
+
+    listAll: protectedProcedure.input(z.object({ limit: z.number().optional() }).optional()).query(async ({ ctx, input }) => {
+      const resolved = await resolveBusinessForUser(ctx.user.id, ctx.requestedBusinessId, ctx.user.role);
+      if (!resolved) return [];
+      return getAllOpenBills(resolved.business.id, input?.limit ?? 100);
+    }),
+
+    get: protectedProcedure.input(z.object({ id: z.number() })).query(async ({ ctx, input }) => {
+      const resolved = await resolveBusinessForUser(ctx.user.id, ctx.requestedBusinessId, ctx.user.role);
+      if (!resolved) throw new TRPCError({ code: "NOT_FOUND" });
+      const bill = await getOpenBillById(input.id);
+      if (!bill || bill.businessId !== resolved.business.id) throw new TRPCError({ code: "NOT_FOUND" });
+      return bill;
+    }),
+
+    create: protectedProcedure.input(z.object({
+      customerName: z.string().optional(),
+      items: z.array(z.object({
+        productId: z.number(),
+        productName: z.string(),
+        sku: z.string(),
+        qty: z.number(),
+        unitPrice: z.number(),
+        totalPrice: z.number(),
+      })),
+      subtotal: z.number(),
+      notes: z.string().optional(),
+    })).mutation(async ({ ctx, input }) => {
+      const resolved = await resolveBusinessForUser(ctx.user.id, ctx.requestedBusinessId, ctx.user.role);
+      if (!resolved) throw new TRPCError({ code: "FORBIDDEN" });
+      const bizId = resolved.business.id;
+      const billCode = await generateBillCode(bizId);
+      const id = await createOpenBill({
+        businessId: bizId,
+        billCode,
+        customerName: input.customerName || null,
+        items: input.items,
+        subtotal: input.subtotal,
+        notes: input.notes || null,
+        status: "open",
+        createdBy: ctx.user.name || ctx.user.email || null,
+      });
+      return { id, billCode };
+    }),
+
+    update: protectedProcedure.input(z.object({
+      id: z.number(),
+      customerName: z.string().optional().nullable(),
+      items: z.array(z.object({
+        productId: z.number(),
+        productName: z.string(),
+        sku: z.string(),
+        qty: z.number(),
+        unitPrice: z.number(),
+        totalPrice: z.number(),
+      })),
+      subtotal: z.number(),
+      notes: z.string().optional().nullable(),
+    })).mutation(async ({ ctx, input }) => {
+      const resolved = await resolveBusinessForUser(ctx.user.id, ctx.requestedBusinessId, ctx.user.role);
+      if (!resolved) throw new TRPCError({ code: "FORBIDDEN" });
+      const bill = await getOpenBillById(input.id);
+      if (!bill || bill.businessId !== resolved.business.id || bill.status !== "open")
+        throw new TRPCError({ code: "NOT_FOUND", message: "Bill tidak ditemukan atau sudah ditutup" });
+      await updateOpenBill(input.id, {
+        items: input.items,
+        subtotal: input.subtotal,
+        customerName: input.customerName,
+        notes: input.notes,
+      });
+      return { success: true };
+    }),
+
+    close: protectedProcedure.input(z.object({
+      id: z.number(),
+      receiptId: z.number(),
+    })).mutation(async ({ ctx, input }) => {
+      const resolved = await resolveBusinessForUser(ctx.user.id, ctx.requestedBusinessId, ctx.user.role);
+      if (!resolved) throw new TRPCError({ code: "FORBIDDEN" });
+      const bill = await getOpenBillById(input.id);
+      if (!bill || bill.businessId !== resolved.business.id || bill.status !== "open")
+        throw new TRPCError({ code: "NOT_FOUND", message: "Bill tidak ditemukan atau sudah ditutup" });
+      await closeOpenBill(input.id, input.receiptId);
+      return { success: true };
+    }),
+
+    cancel: protectedProcedure.input(z.object({ id: z.number() })).mutation(async ({ ctx, input }) => {
+      const resolved = await resolveBusinessForUser(ctx.user.id, ctx.requestedBusinessId, ctx.user.role);
+      if (!resolved) throw new TRPCError({ code: "FORBIDDEN" });
+      const bill = await getOpenBillById(input.id);
+      if (!bill || bill.businessId !== resolved.business.id || bill.status !== "open")
+        throw new TRPCError({ code: "NOT_FOUND", message: "Bill tidak ditemukan atau sudah ditutup" });
+      await cancelOpenBill(input.id);
+      return { success: true };
     }),
   }),
 

@@ -28,6 +28,7 @@ import {
   discountCodes, InsertDiscountCode, DiscountCode,
   posReceipts, InsertPosReceipt, PosReceipt,
   posReceiptItems, InsertPosReceiptItem, PosReceiptItem,
+  posOpenBills, InsertPosOpenBill, PosOpenBill,
   suppliers, InsertSupplier, Supplier,
   purchaseOrders, InsertPurchaseOrder, PurchaseOrder,
   purchaseOrderItems, InsertPurchaseOrderItem, PurchaseOrderItem,
@@ -3833,6 +3834,82 @@ export async function getPosReceiptsByDate(businessId: number, date: string): Pr
   return db.select().from(posReceipts)
     .where(and(eq(posReceipts.businessId, businessId), eq(posReceipts.date, date)))
     .orderBy(desc(posReceipts.createdAt));
+}
+
+// ─── POS Open Bills ───
+
+export async function generateBillCode(businessId: number): Promise<string> {
+  const db = await getDb();
+  if (!db) return `BILL-${Date.now()}`;
+  const today = new Date().toISOString().slice(0, 10).replace(/-/g, "");
+  const prefix = `BILL-${today}-`;
+  const existing = await db.select({ billCode: posOpenBills.billCode })
+    .from(posOpenBills)
+    .where(and(eq(posOpenBills.businessId, businessId), sql`${posOpenBills.billCode} LIKE ${prefix + "%"}`))
+    .orderBy(desc(posOpenBills.billCode))
+    .limit(1);
+  const lastNum = existing.length > 0
+    ? parseInt(existing[0].billCode.replace(prefix, ""), 10) || 0
+    : 0;
+  return `${prefix}${String(lastNum + 1).padStart(3, "0")}`;
+}
+
+export async function createOpenBill(data: InsertPosOpenBill): Promise<number> {
+  const db = await getDb();
+  if (!db) throw new Error("DB unavailable");
+  const [result] = await db.insert(posOpenBills).values(data);
+  return result.insertId;
+}
+
+export async function getOpenBills(businessId: number): Promise<PosOpenBill[]> {
+  const db = await getDb();
+  if (!db) return [];
+  return db.select().from(posOpenBills)
+    .where(and(eq(posOpenBills.businessId, businessId), eq(posOpenBills.status, "open")))
+    .orderBy(desc(posOpenBills.createdAt));
+}
+
+export async function getAllOpenBills(businessId: number, limit = 100): Promise<PosOpenBill[]> {
+  const db = await getDb();
+  if (!db) return [];
+  return db.select().from(posOpenBills)
+    .where(eq(posOpenBills.businessId, businessId))
+    .orderBy(desc(posOpenBills.createdAt))
+    .limit(limit);
+}
+
+export async function getOpenBillById(id: number): Promise<PosOpenBill | undefined> {
+  const db = await getDb();
+  if (!db) return undefined;
+  const rows = await db.select().from(posOpenBills).where(eq(posOpenBills.id, id)).limit(1);
+  return rows[0];
+}
+
+export async function updateOpenBill(id: number, data: { items: InsertPosOpenBill["items"]; subtotal: number; customerName?: string | null; notes?: string | null }) {
+  const db = await getDb();
+  if (!db) return;
+  await db.update(posOpenBills).set({ ...data, updatedAt: new Date() }).where(eq(posOpenBills.id, id));
+}
+
+export async function closeOpenBill(id: number, receiptId: number) {
+  const db = await getDb();
+  if (!db) return;
+  await db.update(posOpenBills).set({
+    status: "closed",
+    closedAt: new Date(),
+    receiptId,
+    updatedAt: new Date(),
+  }).where(eq(posOpenBills.id, id));
+}
+
+export async function cancelOpenBill(id: number) {
+  const db = await getDb();
+  if (!db) return;
+  await db.update(posOpenBills).set({
+    status: "cancelled",
+    closedAt: new Date(),
+    updatedAt: new Date(),
+  }).where(eq(posOpenBills.id, id));
 }
 
 export async function getDailySalesReport(businessId: number, date: string) {

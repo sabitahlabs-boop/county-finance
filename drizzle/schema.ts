@@ -603,6 +603,36 @@ export const posReceiptItems = mysqlTable("pos_receipt_items", {
 export type PosReceiptItem = typeof posReceiptItems.$inferSelect;
 export type InsertPosReceiptItem = typeof posReceiptItems.$inferInsert;
 
+// ─── POS Open Bills (Pending bills for customers not yet paying) ───
+export const posOpenBills = mysqlTable("pos_open_bills", {
+  id: int("id").autoincrement().primaryKey(),
+  businessId: int("businessId").notNull().references(() => businesses.id),
+  billCode: varchar("billCode", { length: 30 }).notNull(), // BILL-YYYYMMDD-###
+  customerName: varchar("customerName", { length: 255 }), // optional name/table identifier
+  items: json("items").$type<Array<{
+    productId: number;
+    productName: string;
+    sku: string;
+    qty: number;
+    unitPrice: number;
+    totalPrice: number;
+  }>>().notNull(),
+  subtotal: bigint("subtotal", { mode: "number" }).notNull(),
+  notes: text("notes"),
+  status: varchar("status", { length: 20 }).notNull().default("open"), // open | closed | cancelled
+  createdBy: varchar("createdBy", { length: 100 }), // cashier name/id
+  closedAt: timestamp("closedAt"),
+  receiptId: int("receiptId"), // linked to pos_receipts once closed/paid
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().notNull(),
+}, (table) => [
+  index("idx_posOpenBills_businessId").on(table.businessId),
+  index("idx_posOpenBills_status").on(table.status),
+]);
+
+export type PosOpenBill = typeof posOpenBills.$inferSelect;
+export type InsertPosOpenBill = typeof posOpenBills.$inferInsert;
+
 // ─── Credit Sales (Penjualan Kredit / Beli Sekarang Bayar Nanti) ───
 export const creditSales = mysqlTable("credit_sales", {
   id: int("id").autoincrement().primaryKey(),

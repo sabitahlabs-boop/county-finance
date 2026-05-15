@@ -1,4 +1,4 @@
-import { useState, useMemo, useEffect, useRef, useCallback } from "react";
+import { useState, useMemo, useEffect, useRef, useCallback, Fragment } from "react";
 import { trpc } from "@/lib/trpc";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -9,7 +9,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/u
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Plus, Trash2, Search, ArrowUpRight, ArrowDownRight, Camera, Loader2, CheckCircle2, X, ImageIcon, Receipt, Package, Printer, Pencil, ArrowLeftRight, Ban } from "lucide-react";
+import { Plus, Trash2, Search, ArrowUpRight, ArrowDownRight, Camera, Loader2, CheckCircle2, X, ImageIcon, Receipt, Package, Printer, Pencil, ArrowLeftRight, Ban, ChevronDown, ChevronUp } from "lucide-react";
 import { InvoicePrintDialog } from "@/components/InvoicePrintDialog";
 import { formatRupiah, PEMASUKAN_CATEGORIES, MANUAL_PEMASUKAN_CATEGORIES, PENGELUARAN_CATEGORIES, PAYMENT_METHODS } from "../../../shared/finance";
 import { toast } from "sonner";
@@ -524,11 +524,18 @@ export default function Transaksi() {
   const [scanToStockItems, setScanToStockItems] = useState<{name:string;qty:number;price:number;total:number}[]>([]);
   const [scanToStockVendor, setScanToStockVendor] = useState<string>("");
   const [invoiceTx, setInvoiceTx] = useState<any>(null);
+  const [expandedReceiptId, setExpandedReceiptId] = useState<number | null>(null);
   const [editTx, setEditTx] = useState<any>(null);
   const [editForm, setEditForm] = useState({ date: "", type: "pemasukan" as "pemasukan" | "pengeluaran", category: "", description: "", amount: "", paymentMethod: "Tunai", notes: "" });
   const { data: business } = trpc.business.mine.useQuery(undefined, { retry: false });
   const searchParams = useSearch();
   const [, setLocation] = useLocation();
+
+  // On-demand receipt detail for POS transactions
+  const { data: receiptDetail, isLoading: receiptDetailLoading } = trpc.report.receiptDetail.useQuery(
+    { receiptId: expandedReceiptId! },
+    { enabled: !!expandedReceiptId, retry: false }
+  );
 
   const utils = trpc.useUtils();
   const { data: txList, isLoading } = trpc.transaction.list.useQuery(
@@ -850,61 +857,105 @@ export default function Transaksi() {
                   </tr>
                 </thead>
                 <tbody>
-                  {filteredTx.map((tx: any) => (
-                    <tr key={tx.id} className="border-b last:border-0 hover:bg-muted/20 transition-colors">
-                      <td className="p-3 text-muted-foreground text-xs">{tx.date}</td>
-                      <td className="p-3 font-medium">{tx.description || "-"}</td>
-                      <td className="p-3">
-                        <Badge variant="secondary" className="text-xs font-normal">{tx.category}</Badge>
-                      </td>
-                      <td className="p-3 text-muted-foreground text-xs">{tx.paymentMethod}</td>
-                      <td className={`p-3 text-right font-semibold ${tx.type === "pemasukan" ? "text-emerald-600" : "text-red-500"}`}>
-                        {tx.type === "pemasukan" ? "+" : "-"}{formatRupiah(tx.amount)}
-                      </td>
-                      <td className="p-3 text-right">
-                        <div className="flex items-center justify-end gap-1">
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            className="h-7 w-7 p-0 text-muted-foreground hover:text-primary"
-                            title="Cetak Invoice"
-                            onClick={() => setInvoiceTx(tx)}
-                          >
-                            <Printer className="h-3.5 w-3.5" />
-                          </Button>
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            className="h-7 w-7 p-0 text-muted-foreground hover:text-blue-600 dark:text-blue-400"
-                            title="Edit Transaksi"
-                            onClick={() => {
-                              setEditTx(tx);
-                              setEditForm({
-                                date: tx.date,
-                                type: tx.type,
-                                category: tx.category,
-                                description: tx.description ?? "",
-                                amount: String(tx.amount),
-                                paymentMethod: tx.paymentMethod ?? "Tunai",
-                                notes: tx.notes ?? "",
-                              });
-                            }}
-                          >
-                            <Pencil className="h-3.5 w-3.5" />
-                          </Button>
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            className="h-7 w-7 p-0 text-muted-foreground hover:text-destructive"
-                            title="Void Transaksi"
-                            onClick={() => setVoidDialog(tx)}
-                          >
-                            <Ban className="h-3.5 w-3.5" />
-                          </Button>
-                        </div>
-                      </td>
-                    </tr>
-                  ))}
+                  {filteredTx.map((tx: any) => {
+                    const isPOS = !!tx.receiptId;
+                    const isExpanded = expandedReceiptId === tx.receiptId;
+                    return (
+                      <Fragment key={tx.id}>
+                        <tr
+                          className={`border-b last:border-0 hover:bg-muted/20 transition-colors ${isPOS ? "cursor-pointer" : ""}`}
+                          onClick={isPOS ? () => setExpandedReceiptId(isExpanded ? null : tx.receiptId) : undefined}
+                        >
+                          <td className="p-3 text-muted-foreground text-xs">{tx.date}</td>
+                          <td className="p-3 font-medium">
+                            <div className="flex items-center gap-1.5">
+                              {isPOS && (
+                                isExpanded
+                                  ? <ChevronUp className="h-3.5 w-3.5 text-primary shrink-0" />
+                                  : <ChevronDown className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
+                              )}
+                              <span>{tx.description || "-"}</span>
+                              {isPOS && <Badge className="bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400 text-[9px] ml-1">POS</Badge>}
+                            </div>
+                          </td>
+                          <td className="p-3">
+                            <Badge variant="secondary" className="text-xs font-normal">{tx.category}</Badge>
+                          </td>
+                          <td className="p-3 text-muted-foreground text-xs">{tx.paymentMethod}</td>
+                          <td className={`p-3 text-right font-semibold ${tx.type === "pemasukan" ? "text-emerald-600" : "text-red-500"}`}>
+                            {tx.type === "pemasukan" ? "+" : "-"}{formatRupiah(tx.amount)}
+                          </td>
+                          <td className="p-3 text-right" onClick={(e) => e.stopPropagation()}>
+                            <div className="flex items-center justify-end gap-1">
+                              <Button variant="ghost" size="sm" className="h-7 w-7 p-0 text-muted-foreground hover:text-primary" title="Cetak Invoice" onClick={() => setInvoiceTx(tx)}>
+                                <Printer className="h-3.5 w-3.5" />
+                              </Button>
+                              <Button variant="ghost" size="sm" className="h-7 w-7 p-0 text-muted-foreground hover:text-blue-600" title="Edit Transaksi"
+                                onClick={() => { setEditTx(tx); setEditForm({ date: tx.date, type: tx.type, category: tx.category, description: tx.description ?? "", amount: String(tx.amount), paymentMethod: tx.paymentMethod ?? "Tunai", notes: tx.notes ?? "" }); }}>
+                                <Pencil className="h-3.5 w-3.5" />
+                              </Button>
+                              <Button variant="ghost" size="sm" className="h-7 w-7 p-0 text-muted-foreground hover:text-destructive" title="Void Transaksi" onClick={() => setVoidDialog(tx)}>
+                                <Ban className="h-3.5 w-3.5" />
+                              </Button>
+                            </div>
+                          </td>
+                        </tr>
+                        {/* Expandable POS receipt items */}
+                        {isPOS && isExpanded && (
+                          <tr>
+                            <td colSpan={6} className="p-0">
+                              <div className="bg-muted/30 border-y px-6 py-3">
+                                {receiptDetailLoading ? (
+                                  <div className="flex items-center gap-2 text-xs text-muted-foreground py-2">
+                                    <Loader2 className="h-3 w-3 animate-spin" /> Memuat detail item...
+                                  </div>
+                                ) : receiptDetail ? (
+                                  <div className="space-y-2">
+                                    <div className="flex items-center justify-between">
+                                      <span className="text-xs font-semibold text-muted-foreground">DETAIL ITEM — {receiptDetail.receipt.receiptCode}</span>
+                                      {receiptDetail.customer && <span className="text-[10px] text-muted-foreground">Pelanggan: {receiptDetail.customer.name}</span>}
+                                    </div>
+                                    <table className="w-full text-xs">
+                                      <thead>
+                                        <tr className="text-muted-foreground">
+                                          <th className="text-left py-1 font-medium">Produk</th>
+                                          <th className="text-left py-1 font-medium">SKU</th>
+                                          <th className="text-right py-1 font-medium">Qty</th>
+                                          <th className="text-right py-1 font-medium">Harga</th>
+                                          <th className="text-right py-1 font-medium">Subtotal</th>
+                                        </tr>
+                                      </thead>
+                                      <tbody>
+                                        {receiptDetail.items.map((item: any, idx: number) => (
+                                          <tr key={idx} className="border-t border-dashed">
+                                            <td className="py-1.5 font-medium">{item.productName}</td>
+                                            <td className="py-1.5 text-muted-foreground">{item.sku || "-"}</td>
+                                            <td className="py-1.5 text-right">{item.qty}</td>
+                                            <td className="py-1.5 text-right">{formatRupiah(item.unitPrice)}</td>
+                                            <td className="py-1.5 text-right font-medium">{formatRupiah(item.totalPrice)}</td>
+                                          </tr>
+                                        ))}
+                                      </tbody>
+                                      <tfoot>
+                                        <tr className="border-t font-semibold">
+                                          <td colSpan={2} className="py-1.5">{receiptDetail.items.length} item</td>
+                                          <td className="py-1.5 text-right">{receiptDetail.items.reduce((s: number, i: any) => s + i.qty, 0)}</td>
+                                          <td></td>
+                                          <td className="py-1.5 text-right">{formatRupiah(receiptDetail.receipt.grandTotal)}</td>
+                                        </tr>
+                                      </tfoot>
+                                    </table>
+                                  </div>
+                                ) : (
+                                  <p className="text-xs text-muted-foreground">Detail tidak tersedia</p>
+                                )}
+                              </div>
+                            </td>
+                          </tr>
+                        )}
+                      </Fragment>
+                    );
+                  })}
                 </tbody>
               </table>
             </div>
