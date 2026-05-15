@@ -4,6 +4,7 @@ import { Printer, Download, X } from "lucide-react";
 import { formatRupiah } from "../../../shared/finance";
 import { useRef, useMemo } from "react";
 import { getProxiedImageUrl } from "@/lib/utils";
+import { trpc } from "@/lib/trpc";
 
 type Transaction = {
   id: number;
@@ -16,6 +17,7 @@ type Transaction = {
   paymentMethod: string;
   notes?: string | null;
   createdAt: Date | string;
+  receiptId?: number | null;
 };
 
 type Business = {
@@ -44,6 +46,13 @@ export function InvoicePrintDialog({ open, onClose, transaction, business }: Inv
   const printRef = useRef<HTMLDivElement>(null);
   const brandColor = business.brandColor || "#2d9a5a";
   const proxiedLogoUrl = useMemo(() => getProxiedImageUrl(business.logoUrl), [business.logoUrl]);
+
+  // Fetch POS receipt items if this is a POS transaction
+  const isPOS = !!transaction.receiptId;
+  const { data: receiptDetail } = trpc.report.receiptDetail.useQuery(
+    { receiptId: transaction.receiptId! },
+    { enabled: open && isPOS, retry: false }
+  );
 
   const handlePrint = () => {
     const content = printRef.current;
@@ -264,6 +273,65 @@ export function InvoicePrintDialog({ open, onClose, transaction, business }: Inv
                 </div>
               )}
             </div>
+
+            {/* POS Item Details */}
+            {isPOS && receiptDetail && receiptDetail.items.length > 0 && (
+              <div style={{ padding: "20px 32px", borderBottom: "1px solid #f0f0f0" }}>
+                <div style={{ fontSize: "11px", color: "#888", fontWeight: "600", textTransform: "uppercase", letterSpacing: "0.5px", marginBottom: "12px" }}>
+                  Detail Item
+                </div>
+                <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "13px" }}>
+                  <thead>
+                    <tr style={{ borderBottom: "2px solid #e5e5e5" }}>
+                      <th style={{ textAlign: "left", padding: "6px 0", fontWeight: "600", color: "#555" }}>Produk</th>
+                      <th style={{ textAlign: "right", padding: "6px 0", fontWeight: "600", color: "#555", width: "50px" }}>Qty</th>
+                      <th style={{ textAlign: "right", padding: "6px 0", fontWeight: "600", color: "#555", width: "100px" }}>Harga</th>
+                      <th style={{ textAlign: "right", padding: "6px 0", fontWeight: "600", color: "#555", width: "110px" }}>Subtotal</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {receiptDetail.items.map((item: any, idx: number) => (
+                      <tr key={idx} style={{ borderBottom: "1px solid #f0f0f0" }}>
+                        <td style={{ padding: "8px 0", color: "#1a1a1a" }}>
+                          <div style={{ fontWeight: "500" }}>{item.productName}</div>
+                          {item.sku && <div style={{ fontSize: "11px", color: "#999" }}>{item.sku}</div>}
+                        </td>
+                        <td style={{ textAlign: "right", padding: "8px 0", color: "#1a1a1a" }}>{item.qty}</td>
+                        <td style={{ textAlign: "right", padding: "8px 0", color: "#666" }}>{formatRupiah(item.unitPrice)}</td>
+                        <td style={{ textAlign: "right", padding: "8px 0", color: "#1a1a1a", fontWeight: "500" }}>{formatRupiah(item.totalPrice)}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                  <tfoot>
+                    <tr style={{ borderTop: "2px solid #e5e5e5" }}>
+                      <td style={{ padding: "8px 0", fontWeight: "600", color: "#555" }}>
+                        {receiptDetail.items.length} item
+                      </td>
+                      <td style={{ textAlign: "right", padding: "8px 0", fontWeight: "600", color: "#555" }}>
+                        {receiptDetail.items.reduce((s: number, i: any) => s + i.qty, 0)}
+                      </td>
+                      <td></td>
+                      <td style={{ textAlign: "right", padding: "8px 0", fontWeight: "700", color: "#1a1a1a" }}>
+                        {formatRupiah(receiptDetail.receipt.grandTotal)}
+                      </td>
+                    </tr>
+                    {receiptDetail.receipt.discountAmount > 0 && (
+                      <tr>
+                        <td colSpan={3} style={{ padding: "4px 0", color: "#dc2626", fontSize: "12px" }}>Diskon</td>
+                        <td style={{ textAlign: "right", padding: "4px 0", color: "#dc2626", fontSize: "12px" }}>
+                          -{formatRupiah(receiptDetail.receipt.discountAmount)}
+                        </td>
+                      </tr>
+                    )}
+                  </tfoot>
+                </table>
+                {receiptDetail.customer && (
+                  <div style={{ marginTop: "10px", fontSize: "12px", color: "#666" }}>
+                    Pelanggan: <span style={{ fontWeight: "500", color: "#333" }}>{receiptDetail.customer.name}</span>
+                  </div>
+                )}
+              </div>
+            )}
 
             {/* Total Amount */}
             <div style={{ padding: "24px 32px", background: "#fafafa" }}>
