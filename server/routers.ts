@@ -3833,13 +3833,17 @@ Penting: Kembalikan HANYA JSON valid, tidak ada teks penjelasan.`,
           });
         }
 
-        // ─── CRITICAL BUG FIX 1: Stock operations INSIDE transaction ───
+        // ─── Stock operations INSIDE transaction ───
         // Reduce stock for each cart item (skip for productType "jasa" — no stock deduction)
+        // NOTE: We already locked product rows above with FOR UPDATE, so we use tx.execute
+        // instead of standalone functions to avoid deadlocks
         for (const item of input.items) {
-          // Check if product is "jasa" type — skip stock deduction entirely
-          const productForStock = await getProductById(item.productId);
-          if (productForStock?.productType === "jasa") {
-            // Jasa products: no stock deduction, no FIFO, no warehouse changes
+          // Re-read product type from locked data (already fetched above, but we need stockCurrent again)
+          const [prodRows] = await tx.execute(
+            sql`SELECT id, stockCurrent, productType FROM products WHERE id = ${item.productId}`
+          ) as any;
+          const productForStock = prodRows?.[0];
+          if (!productForStock || productForStock.productType === "jasa") {
             continue;
           }
 
@@ -3852,10 +3856,26 @@ Penting: Kembalikan HANYA JSON valid, tidak ada teks penjelasan.`,
 
           // ─── Reduce stock from warehouse ───
           if (item.warehouseId && item.productQty > 0) {
-            const ws = await getOrCreateWarehouseStock(item.warehouseId, item.productId);
-            const newQty = ws.quantity - item.productQty;
-            await updateWarehouseStockQty(item.warehouseId, item.productId, newQty);
-            await recalcProductStockFromWarehouses(item.productId);
+            // Read warehouse stock within transaction (row already locked by FOR UPDATE above)
+            const [wsRows] = await tx.execute(
+              sql`SELECT quantity FROM warehouse_stock WHERE warehouseId = ${item.warehouseId} AND productId = ${item.productId}`
+            ) as any;
+            const wsQty = wsRows?.[0]?.quantity ?? 0;
+            const newQty = wsQty - item.productQty;
+
+            // Update warehouse stock within transaction
+            await tx.execute(
+              sql`UPDATE warehouse_stock SET quantity = ${newQty} WHERE warehouseId = ${item.warehouseId} AND productId = ${item.productId}`
+            );
+
+            // Recalc product stock from all warehouses
+            const [totalRows] = await tx.execute(
+              sql`SELECT COALESCE(SUM(quantity), 0) as total FROM warehouse_stock WHERE productId = ${item.productId}`
+            ) as any;
+            const totalStock = Number(totalRows?.[0]?.total ?? 0);
+            await tx.execute(
+              sql`UPDATE products SET stockCurrent = ${totalStock} WHERE id = ${item.productId}`
+            );
 
             // Create stock log
             await createStockLog({
@@ -3865,16 +3885,17 @@ Penting: Kembalikan HANYA JSON valid, tidak ada teks penjelasan.`,
               movementType: "out",
               qty: item.productQty,
               direction: -1,
-              stockBefore: ws.quantity,
+              stockBefore: wsQty,
               stockAfter: newQty,
               notes: `Penjualan POS ${receiptCode}`,
             });
           } else {
-            // Fallback: directly reduce products.stockCurrent
-            if (productForStock) {
-              const newStock = (productForStock.stockCurrent ?? 0) - item.productQty;
-              await updateProduct(item.productId, { stockCurrent: newStock });
-            }
+            // Fallback: directly reduce products.stockCurrent within transaction
+            const currentStock = Number(productForStock.stockCurrent ?? 0);
+            const newStock = currentStock - item.productQty;
+            await tx.execute(
+              sql`UPDATE products SET stockCurrent = ${newStock} WHERE id = ${item.productId}`
+            );
           }
         }
 
