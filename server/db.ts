@@ -949,7 +949,26 @@ async function runAutoMigration(db: ReturnType<typeof drizzle>) {
     INDEX \`idx_po_recv_date\` (\`receivedAt\`)
   )`);
 
-  console.log("[Migration] Auto-migration complete (including pf_ tables + po_receiving_details).");
+  // ─── POS Open Bills ───
+  await safeExec(`CREATE TABLE IF NOT EXISTS \`pos_open_bills\` (
+    \`id\` int NOT NULL AUTO_INCREMENT PRIMARY KEY,
+    \`businessId\` int NOT NULL,
+    \`billCode\` varchar(30) NOT NULL,
+    \`customerName\` varchar(255) DEFAULT NULL,
+    \`items\` json NOT NULL,
+    \`subtotal\` bigint NOT NULL,
+    \`notes\` text DEFAULT NULL,
+    \`status\` varchar(20) NOT NULL DEFAULT 'open',
+    \`createdBy\` varchar(100) DEFAULT NULL,
+    \`closedAt\` timestamp NULL DEFAULT NULL,
+    \`receiptId\` int DEFAULT NULL,
+    \`createdAt\` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    \`updatedAt\` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    INDEX \`idx_posOpenBills_businessId\` (\`businessId\`),
+    INDEX \`idx_posOpenBills_status\` (\`status\`)
+  )`);
+
+  console.log("[Migration] Auto-migration complete (including pf_ tables + po_receiving_details + pos_open_bills).");
 }
 
 // ─── Audit Logging Helper ───
