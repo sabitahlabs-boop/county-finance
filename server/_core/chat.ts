@@ -71,7 +71,7 @@ export function registerChatRoutes(app: Express) {
       });
 
       // Stream response using v6 API
-      result.pipeTextStreamToResponse(res);
+      result.pipeUIMessageStreamToResponse(res);
     } catch (error) {
       console.error("[AI Chat] Error:", error);
       res.status(500).json({ error: "AI chat failed" });
