@@ -88,8 +88,11 @@ async function runAutoMigration(db: ReturnType<typeof drizzle>) {
 
   const safeExec = async (query: string) => {
     try { await db.execute(sql.raw(query)); } catch (e: any) {
-      // Ignore "duplicate column" or "table already exists" errors
-      if (e.errno === 1060 || e.errno === 1050) return;
+      // Ignore common "already exists" errors:
+      // 1050 = table already exists, 1060 = duplicate column, 1061 = duplicate key/index
+      if (e.errno === 1060 || e.errno === 1050 || e.errno === 1061) return;
+      // Also ignore duplicate index errors from CREATE INDEX IF NOT EXISTS on older MySQL
+      if (e.message?.includes("Duplicate") || e.message?.includes("already exists")) return;
       console.warn("[Migration] errno:", e.errno, "query:", query.substring(0, 120), "msg:", e.message);
     }
   };
@@ -917,8 +920,8 @@ async function runAutoMigration(db: ReturnType<typeof drizzle>) {
     INDEX \`idx_pf_goals_businessId\` (\`businessId\`)
   )`);
 
-  // PF indexes
-  await safeExec("CREATE INDEX IF NOT EXISTS `idx_pf_profiles_businessId` ON `pf_profiles` (`businessId`)");
+  // NOTE: pf_profiles already has UNIQUE INDEX uniq_pf_profiles_businessId inline in CREATE TABLE
+  // No standalone index needed
 
   // ── PO Receiving Detail Log (ERP audit trail) ──
   await safeExec(`CREATE TABLE IF NOT EXISTS \`po_receiving_details\` (
