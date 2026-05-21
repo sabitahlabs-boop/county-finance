@@ -48,7 +48,7 @@ export function BusinessProvider({ children }: { children: ReactNode }) {
 
   const { data: ownBiz, isLoading: bizLoading } = trpc.business.mine.useQuery();
   const { data: teamCtx, isLoading: teamLoading } = trpc.team.myContext.useQuery();
-  const { data: adminBizList } = trpc.team.adminAllBusinesses.useQuery(undefined, {
+  const { data: adminBizList, isLoading: adminBizLoading } = trpc.team.adminAllBusinesses.useQuery(undefined, {
     enabled: isAdmin,
     retry: false,
   });
@@ -100,6 +100,9 @@ export function BusinessProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     if (bizLoading || teamLoading) return;
+    // Admin: also wait for adminBizList to load before validating,
+    // otherwise impersonated business gets reset before it's in the list
+    if (isAdmin && adminBizLoading) return;
     if (businesses.length === 0) return;
     const currentValid = businesses.find(b => b.id === activeBusinessId);
     if (!currentValid) {
@@ -109,7 +112,7 @@ export function BusinessProvider({ children }: { children: ReactNode }) {
       localStorage.removeItem(ADMIN_IMPERSONATE_KEY);
       setImpersonating(false);
     }
-  }, [bizLoading, teamLoading, businesses, activeBusinessId]);
+  }, [bizLoading, teamLoading, isAdmin, adminBizLoading, businesses, activeBusinessId]);
 
   const switchBusiness = useCallback((businessId: number) => {
     setActiveBusinessId(businessId);
@@ -153,11 +156,11 @@ export function BusinessProvider({ children }: { children: ReactNode }) {
     activePermissions: activeBiz?.permissions ?? null,
     businesses,
     switchBusiness,
-    isLoading: bizLoading || teamLoading,
+    isLoading: bizLoading || teamLoading || (isAdmin && adminBizLoading),
     hasMultipleBusinesses: businesses.length > 1,
     isAdminImpersonating,
     stopImpersonating,
-  }), [activeBusinessId, activeBiz, businesses, switchBusiness, bizLoading, teamLoading, isAdminImpersonating, stopImpersonating]);
+  }), [activeBusinessId, activeBiz, businesses, switchBusiness, bizLoading, teamLoading, isAdmin, adminBizLoading, isAdminImpersonating, stopImpersonating]);
 
   return (
     <BusinessContext.Provider value={value}>
