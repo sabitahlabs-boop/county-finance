@@ -128,12 +128,27 @@ function TeamMemberWaiting() {
  */
 function useBusinessGuard() {
   const { user, loading: authLoading } = useAuth();
-  const { data: business, isLoading: bizLoading, refetch } = trpc.business.mine.useQuery(undefined, {
+  const { data: ownBusiness, isLoading: bizLoading, refetch } = trpc.business.mine.useQuery(undefined, {
     enabled: !!user,
     retry: false,
   });
+  const { activeBusinessId, isLoading: ctxLoading } = useBusinessContext();
 
-  return { user, authLoading, business, bizLoading, refetch };
+  // For team members: business.mine returns null (they don't own one),
+  // but they have a valid business via team membership in BusinessContext.
+  // We use a synthetic business object so route guards know a business exists.
+  const { data: teamBizPlan } = trpc.business.getPlan.useQuery(undefined, {
+    enabled: !!user && !ownBusiness && !bizLoading && !!activeBusinessId,
+    retry: false,
+  });
+
+  const business = ownBusiness ?? (activeBusinessId ? {
+    id: activeBusinessId,
+    plan: teamBizPlan?.plan ?? "free",
+    // Minimal shape to satisfy route guards
+  } as any : null);
+
+  return { user, authLoading, business, bizLoading: bizLoading || ctxLoading, refetch };
 }
 
 function AuthenticatedRoute({ component: Component, path }: { component: React.ComponentType; path?: string }) {
