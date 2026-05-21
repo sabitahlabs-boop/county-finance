@@ -214,9 +214,12 @@ export const appRouter = router({
           console.warn("[Team] Auto-accept invite failed:", e);
         }
       }
-      // Use resolveBusinessForUser to support multi-business switching
-      const resolved = await resolveBusinessForUser(ctx.user.id, ctx.requestedBusinessId, ctx.user.role);
-      return resolved?.business ?? null;
+      // IMPORTANT: Only return the user's OWN business here (where they are the owner).
+      // Team memberships are handled separately by team.myContext.
+      // Using resolveBusinessForUser here would cause team members' business to appear
+      // as "own" business, breaking sidebar permission filtering.
+      const ownBiz = await getBusinessByOwnerId(ctx.user.id);
+      return ownBiz ?? null;
     }),
     getPlan: protectedProcedure.query(async ({ ctx }) => {
       const resolved = await resolveBusinessForUser(ctx.user.id, ctx.requestedBusinessId, ctx.user.role);
