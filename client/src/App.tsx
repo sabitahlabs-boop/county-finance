@@ -33,6 +33,8 @@ import LaporanPenjualan from "./pages/LaporanPenjualan";
 import LaporanPembelian from "./pages/LaporanPembelian";
 import GudangPage from "./pages/Gudang";
 import AcceptInvite from "./pages/AcceptInvite";
+import { useBusinessContext } from "./contexts/BusinessContext";
+import { PATH_PERMISSION_MAP, getDefaultPathForRole } from "../../shared/permissions";
 import PurchaseOrderPage from "./pages/PurchaseOrder";
 import MarketingPage from "./pages/Marketing";
 import StaffManagementPage from "./pages/StaffManagement";
@@ -69,11 +71,14 @@ import { BusinessProvider } from "./contexts/BusinessContext";
 function AccessDenied() {
   return (
     <DashboardLayout>
-      <div className="flex items-center justify-center min-h-screen">
-        <div className="text-center">
-          <h1 className="text-2xl font-bold text-red-600 mb-2">Akses Ditolak</h1>
-          <p className="text-gray-600 mb-6">Anda tidak memiliki izin untuk halaman ini</p>
-          <a href="/" className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700">
+      <div className="flex items-center justify-center min-h-[60vh]">
+        <div className="text-center max-w-md mx-auto p-8">
+          <div className="h-16 w-16 mx-auto mb-4 rounded-2xl bg-red-100 dark:bg-red-900/30 flex items-center justify-center">
+            <span className="text-2xl">🚫</span>
+          </div>
+          <h1 className="text-xl font-bold text-red-600 dark:text-red-400 mb-2">Akses Ditolak</h1>
+          <p className="text-muted-foreground mb-6">Anda tidak memiliki izin untuk mengakses halaman ini. Hubungi pemilik bisnis untuk mengubah role Anda.</p>
+          <a href="/" className="inline-flex items-center px-4 py-2 bg-primary text-primary-foreground rounded-lg hover:bg-primary/90 transition-colors">
             Kembali ke Home
           </a>
         </div>
@@ -82,12 +87,58 @@ function AccessDenied() {
   );
 }
 
-function AuthenticatedRoute({ component: Component }: { component: React.ComponentType }) {
+/**
+ * TeamMemberWaiting: shown when a team_member user has no business resolved yet.
+ * This happens if they registered but invite hasn't been accepted/processed.
+ */
+function TeamMemberWaiting() {
+  const { refresh } = useAuth();
+  return (
+    <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-background via-background to-accent/30 p-4">
+      <div className="text-center max-w-md mx-auto">
+        <div className="h-16 w-16 mx-auto mb-4 rounded-2xl bg-blue-100 dark:bg-blue-900/30 flex items-center justify-center">
+          <span className="text-2xl">⏳</span>
+        </div>
+        <h2 className="text-xl font-bold mb-2">Menunggu Akses Tim</h2>
+        <p className="text-muted-foreground mb-6">
+          Akun Anda terdaftar sebagai anggota tim. Jika Anda baru saja menerima undangan, coba refresh halaman ini.
+        </p>
+        <div className="flex gap-3 justify-center">
+          <button
+            onClick={() => { refresh(); window.location.reload(); }}
+            className="px-4 py-2 bg-primary text-primary-foreground rounded-lg hover:bg-primary/90 transition-colors"
+          >
+            Refresh
+          </button>
+          <a href="/accept-invite" className="px-4 py-2 border rounded-lg hover:bg-muted transition-colors">
+            Buka Link Undangan
+          </a>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/**
+ * Resolves whether to show Onboarding, TeamMemberWaiting, or the actual component.
+ * Key logic:
+ * - team_member users NEVER see onboarding
+ * - owner users without business → Onboarding
+ * - team_member users without resolved business → TeamMemberWaiting
+ */
+function useBusinessGuard() {
   const { user, loading: authLoading } = useAuth();
   const { data: business, isLoading: bizLoading, refetch } = trpc.business.mine.useQuery(undefined, {
     enabled: !!user,
     retry: false,
   });
+
+  return { user, authLoading, business, bizLoading, refetch };
+}
+
+function AuthenticatedRoute({ component: Component, path }: { component: React.ComponentType; path?: string }) {
+  const { user, authLoading, business, bizLoading, refetch } = useBusinessGuard();
+  const { activePermissions, activeRole, isOwnBusiness } = useBusinessContext();
 
   if (authLoading || (user && bizLoading)) {
     return <DashboardLayoutSkeleton />;
@@ -102,7 +153,19 @@ function AuthenticatedRoute({ component: Component }: { component: React.Compone
   }
 
   if (!business) {
+    // Team members should NEVER see onboarding
+    if (user.accountType === "team_member") {
+      return <TeamMemberWaiting />;
+    }
     return <Onboarding onComplete={() => refetch()} />;
+  }
+
+  // Permission check for team members accessing restricted paths
+  if (!isOwnBusiness && activePermissions && path) {
+    const permKey = PATH_PERMISSION_MAP[path];
+    if (permKey && activePermissions[permKey] !== true) {
+      return <AccessDenied />;
+    }
   }
 
   return (
@@ -119,11 +182,7 @@ function ProtectedRoute({
   component: React.ComponentType;
   allowedRoles?: string[];
 }) {
-  const { user, loading: authLoading } = useAuth();
-  const { data: business, isLoading: bizLoading, refetch } = trpc.business.mine.useQuery(undefined, {
-    enabled: !!user,
-    retry: false,
-  });
+  const { user, authLoading, business, bizLoading, refetch } = useBusinessGuard();
 
   if (authLoading || (user && bizLoading)) {
     return <DashboardLayoutSkeleton />;
@@ -138,6 +197,9 @@ function ProtectedRoute({
   }
 
   if (!business) {
+    if (user.accountType === "team_member") {
+      return <TeamMemberWaiting />;
+    }
     return <Onboarding onComplete={() => refetch()} />;
   }
 
@@ -153,12 +215,9 @@ function ProtectedRoute({
   );
 }
 
-function ProPlusRoute({ component: Component }: { component: React.ComponentType }) {
-  const { user, loading: authLoading } = useAuth();
-  const { data: business, isLoading: bizLoading, refetch } = trpc.business.mine.useQuery(undefined, {
-    enabled: !!user,
-    retry: false,
-  });
+function ProPlusRoute({ component: Component, path }: { component: React.ComponentType; path?: string }) {
+  const { user, authLoading, business, bizLoading, refetch } = useBusinessGuard();
+  const { activePermissions, isOwnBusiness } = useBusinessContext();
 
   if (authLoading || (user && bizLoading)) {
     return <DashboardLayoutSkeleton />;
@@ -173,6 +232,9 @@ function ProPlusRoute({ component: Component }: { component: React.ComponentType
   }
 
   if (!business) {
+    if (user.accountType === "team_member") {
+      return <TeamMemberWaiting />;
+    }
     return <Onboarding onComplete={() => refetch()} />;
   }
 
@@ -182,6 +244,14 @@ function ProPlusRoute({ component: Component }: { component: React.ComponentType
     return null;
   }
 
+  // Permission check for team members
+  if (!isOwnBusiness && activePermissions && path) {
+    const permKey = PATH_PERMISSION_MAP[path];
+    if (permKey && activePermissions[permKey] !== true) {
+      return <AccessDenied />;
+    }
+  }
+
   return (
     <DashboardLayout>
       <Component />
@@ -189,62 +259,81 @@ function ProPlusRoute({ component: Component }: { component: React.ComponentType
   );
 }
 
+/**
+ * HomeWithRedirect: redirects team members to their role-appropriate default page
+ * e.g., kasir → /pos, gudang → /stok, finance → /transaksi
+ */
+function HomeWithRedirect() {
+  const { user } = useAuth();
+  const { activeRole, isOwnBusiness, isLoading } = useBusinessContext();
+
+  if (!isLoading && user && !isOwnBusiness && activeRole) {
+    const defaultPath = getDefaultPathForRole(activeRole);
+    if (defaultPath !== "/") {
+      window.location.replace(defaultPath);
+      return null;
+    }
+  }
+
+  return <Home />;
+}
+
 function Router() {
   return (
     <Switch>
-      <Route path="/" component={Home} />
+      <Route path="/" component={HomeWithRedirect} />
       <Route path="/sign-in/:rest*" component={CountySignIn} />
       <Route path="/sign-in" component={CountySignIn} />
       <Route path="/sign-up/:rest*" component={CountySignUp} />
       <Route path="/sign-up" component={CountySignUp} />
       <Route path="/dashboard">{() => { window.location.replace("/"); return null; }}</Route>
-      <Route path="/transaksi">{() => <AuthenticatedRoute component={TransaksiPage} />}</Route>
-      <Route path="/stok">{() => <AuthenticatedRoute component={StokProdukPage} />}</Route>
-      <Route path="/laporan">{() => <AuthenticatedRoute component={LaporanPage} />}</Route>
-      <Route path="/pajak">{() => <AuthenticatedRoute component={PajakPage} />}</Route>
-      <Route path="/pengaturan">{() => <AuthenticatedRoute component={PengaturanPage} />}</Route>
+      <Route path="/transaksi">{() => <AuthenticatedRoute component={TransaksiPage} path="/transaksi" />}</Route>
+      <Route path="/stok">{() => <AuthenticatedRoute component={StokProdukPage} path="/stok" />}</Route>
+      <Route path="/laporan">{() => <AuthenticatedRoute component={LaporanPage} path="/laporan" />}</Route>
+      <Route path="/pajak">{() => <AuthenticatedRoute component={PajakPage} path="/pajak" />}</Route>
+      <Route path="/pengaturan">{() => <AuthenticatedRoute component={PengaturanPage} path="/pengaturan" />}</Route>
       <Route path="/admin">{() => <ProtectedRoute component={SuperAdminPage} allowedRoles={["admin"]} />}</Route>
       <Route path="/upgrade">{() => <AuthenticatedRoute component={UpgradePage} />}</Route>
-      <Route path="/pos">{() => <AuthenticatedRoute component={POSPage} />}</Route>
-      <Route path="/laporan-penjualan">{() => <AuthenticatedRoute component={LaporanPenjualan} />}</Route>
-      <Route path="/laporan-pembelian">{() => <AuthenticatedRoute component={LaporanPembelian} />}</Route>
-      <Route path="/jurnal">{() => <AuthenticatedRoute component={JurnalPribadi} />}</Route>
-      <Route path="/riwayat-stok">{() => <AuthenticatedRoute component={RiwayatStok} />}</Route>
-      <Route path="/client">{() => <AuthenticatedRoute component={ClientManagement} />}</Route>
-      <Route path="/hutang-piutang">{() => <AuthenticatedRoute component={HutangPiutang} />}</Route>
-      <Route path="/anggaran">{() => <AuthenticatedRoute component={Anggaran} />}</Route>
-      <Route path="/analitik">{() => <AuthenticatedRoute component={SalesAnalytics} />}</Route>
-      <Route path="/gudang">{() => <ProPlusRoute component={GudangPage} />}</Route>
-      <Route path="/purchase-order">{() => <AuthenticatedRoute component={PurchaseOrderPage} />}</Route>
-      <Route path="/marketing">{() => <ProPlusRoute component={MarketingPage} />}</Route>
-      <Route path="/staff">{() => <ProPlusRoute component={StaffManagementPage} />}</Route>
-      <Route path="/invoice-settings">{() => <AuthenticatedRoute component={InvoiceSettingsPage} />}</Route>
-      <Route path="/barcode">{() => <AuthenticatedRoute component={BarcodeManagerPage} />}</Route>
+      <Route path="/pos">{() => <AuthenticatedRoute component={POSPage} path="/pos" />}</Route>
+      <Route path="/laporan-penjualan">{() => <AuthenticatedRoute component={LaporanPenjualan} path="/laporan-penjualan" />}</Route>
+      <Route path="/laporan-pembelian">{() => <AuthenticatedRoute component={LaporanPembelian} path="/laporan-pembelian" />}</Route>
+      <Route path="/jurnal">{() => <AuthenticatedRoute component={JurnalPribadi} path="/jurnal" />}</Route>
+      <Route path="/riwayat-stok">{() => <AuthenticatedRoute component={RiwayatStok} path="/riwayat-stok" />}</Route>
+      <Route path="/client">{() => <AuthenticatedRoute component={ClientManagement} path="/client" />}</Route>
+      <Route path="/hutang-piutang">{() => <AuthenticatedRoute component={HutangPiutang} path="/hutang-piutang" />}</Route>
+      <Route path="/anggaran">{() => <AuthenticatedRoute component={Anggaran} path="/anggaran" />}</Route>
+      <Route path="/analitik">{() => <AuthenticatedRoute component={SalesAnalytics} path="/analitik" />}</Route>
+      <Route path="/gudang">{() => <ProPlusRoute component={GudangPage} path="/gudang" />}</Route>
+      <Route path="/purchase-order">{() => <AuthenticatedRoute component={PurchaseOrderPage} path="/purchase-order" />}</Route>
+      <Route path="/marketing">{() => <ProPlusRoute component={MarketingPage} path="/marketing" />}</Route>
+      <Route path="/staff">{() => <ProPlusRoute component={StaffManagementPage} path="/staff" />}</Route>
+      <Route path="/invoice-settings">{() => <AuthenticatedRoute component={InvoiceSettingsPage} path="/invoice-settings" />}</Route>
+      <Route path="/barcode">{() => <AuthenticatedRoute component={BarcodeManagerPage} path="/barcode" />}</Route>
       <Route path="/select-warehouse" component={WarehouseSelectPage} />
-      <Route path="/rekening-koran">{() => <AuthenticatedRoute component={RekeningKoranPage} />}</Route>
-      <Route path="/mutasi-persediaan">{() => <AuthenticatedRoute component={MutasiPersediaanPage} />}</Route>
-      <Route path="/penjualan-produk">{() => <AuthenticatedRoute component={PenjualanProduk} />}</Route>
-      <Route path="/ringkasan-pembayaran">{() => <AuthenticatedRoute component={RingkasanPembayaran} />}</Route>
-      <Route path="/top-produk">{() => <AuthenticatedRoute component={TopProduk} />}</Route>
-      <Route path="/laporan-index">{() => <AuthenticatedRoute component={LaporanIndex} />}</Route>
-      <Route path="/laporan-gl">{() => <AuthenticatedRoute component={LaporanGL} />}</Route>
-      <Route path="/jurnal-adjustment">{() => <AuthenticatedRoute component={JurnalAdjustment} />}</Route>
-      <Route path="/laba-rugi-detail">{() => <AuthenticatedRoute component={LabaRugiDetail} />}</Route>
-      <Route path="/penjualan-pelanggan">{() => <AuthenticatedRoute component={PenjualanPelanggan} />}</Route>
-      <Route path="/penjualan-jam">{() => <AuthenticatedRoute component={PenjualanJam} />}</Route>
-      <Route path="/penjualan-tanggal">{() => <AuthenticatedRoute component={PenjualanTanggal} />}</Route>
-      <Route path="/penjualan-kredit">{() => <AuthenticatedRoute component={PenjualanKredit} />}</Route>
-      <Route path="/ringkasan-diskon">{() => <AuthenticatedRoute component={RingkasanDiskon} />}</Route>
-      <Route path="/void-refund">{() => <AuthenticatedRoute component={VoidRefundAnalysis} />}</Route>
-      <Route path="/komisi">{() => <AuthenticatedRoute component={KomisiStaff} />}</Route>
-      <Route path="/laporan-shift">{() => <AuthenticatedRoute component={LaporanShift} />}</Route>
-      <Route path="/transaksi-tunai">{() => <AuthenticatedRoute component={TransaksiTunai} />}</Route>
-      <Route path="/manajemen-rekening">{() => <AuthenticatedRoute component={ManajemenRekening} />}</Route>
-      <Route path="/loyalty">{() => <AuthenticatedRoute component={LoyaltyManagement} />}</Route>
-      <Route path="/valuasi-fifo">{() => <AuthenticatedRoute component={ValuasiFIFO} />}</Route>
-      <Route path="/stok-kedaluwarsa">{() => <AuthenticatedRoute component={StokKedaluwarsa} />}</Route>
-      <Route path="/usia-stok">{() => <AuthenticatedRoute component={UsiaStok} />}</Route>
-      <Route path="/peringatan-stok">{() => <AuthenticatedRoute component={PeringatanStok} />}</Route>
+      <Route path="/rekening-koran">{() => <AuthenticatedRoute component={RekeningKoranPage} path="/rekening-koran" />}</Route>
+      <Route path="/mutasi-persediaan">{() => <AuthenticatedRoute component={MutasiPersediaanPage} path="/mutasi-persediaan" />}</Route>
+      <Route path="/penjualan-produk">{() => <AuthenticatedRoute component={PenjualanProduk} path="/penjualan-produk" />}</Route>
+      <Route path="/ringkasan-pembayaran">{() => <AuthenticatedRoute component={RingkasanPembayaran} path="/ringkasan-pembayaran" />}</Route>
+      <Route path="/top-produk">{() => <AuthenticatedRoute component={TopProduk} path="/top-produk" />}</Route>
+      <Route path="/laporan-index">{() => <AuthenticatedRoute component={LaporanIndex} path="/laporan-index" />}</Route>
+      <Route path="/laporan-gl">{() => <AuthenticatedRoute component={LaporanGL} path="/laporan-gl" />}</Route>
+      <Route path="/jurnal-adjustment">{() => <AuthenticatedRoute component={JurnalAdjustment} path="/jurnal-adjustment" />}</Route>
+      <Route path="/laba-rugi-detail">{() => <AuthenticatedRoute component={LabaRugiDetail} path="/laba-rugi-detail" />}</Route>
+      <Route path="/penjualan-pelanggan">{() => <AuthenticatedRoute component={PenjualanPelanggan} path="/penjualan-pelanggan" />}</Route>
+      <Route path="/penjualan-jam">{() => <AuthenticatedRoute component={PenjualanJam} path="/penjualan-jam" />}</Route>
+      <Route path="/penjualan-tanggal">{() => <AuthenticatedRoute component={PenjualanTanggal} path="/penjualan-tanggal" />}</Route>
+      <Route path="/penjualan-kredit">{() => <AuthenticatedRoute component={PenjualanKredit} path="/penjualan-kredit" />}</Route>
+      <Route path="/ringkasan-diskon">{() => <AuthenticatedRoute component={RingkasanDiskon} path="/ringkasan-diskon" />}</Route>
+      <Route path="/void-refund">{() => <AuthenticatedRoute component={VoidRefundAnalysis} path="/void-refund" />}</Route>
+      <Route path="/komisi">{() => <AuthenticatedRoute component={KomisiStaff} path="/komisi" />}</Route>
+      <Route path="/laporan-shift">{() => <AuthenticatedRoute component={LaporanShift} path="/laporan-shift" />}</Route>
+      <Route path="/transaksi-tunai">{() => <AuthenticatedRoute component={TransaksiTunai} path="/transaksi-tunai" />}</Route>
+      <Route path="/manajemen-rekening">{() => <AuthenticatedRoute component={ManajemenRekening} path="/manajemen-rekening" />}</Route>
+      <Route path="/loyalty">{() => <AuthenticatedRoute component={LoyaltyManagement} path="/loyalty" />}</Route>
+      <Route path="/valuasi-fifo">{() => <AuthenticatedRoute component={ValuasiFIFO} path="/valuasi-fifo" />}</Route>
+      <Route path="/stok-kedaluwarsa">{() => <AuthenticatedRoute component={StokKedaluwarsa} path="/stok-kedaluwarsa" />}</Route>
+      <Route path="/usia-stok">{() => <AuthenticatedRoute component={UsiaStok} path="/usia-stok" />}</Route>
+      <Route path="/peringatan-stok">{() => <AuthenticatedRoute component={PeringatanStok} path="/peringatan-stok" />}</Route>
       <Route path="/pf-goals">{() => <AuthenticatedRoute component={PersonalGoals} />}</Route>
       <Route path="/onboarding" component={Home} />
       <Route path="/landing" component={LandingPage} />

@@ -117,6 +117,8 @@ async function runAutoMigration(db: ReturnType<typeof drizzle>) {
 
   // users: add loginMethod (added after initial schema)
   await safeExec("ALTER TABLE `users` ADD COLUMN `loginMethod` varchar(64) DEFAULT NULL");
+  // users: add accountType for owner vs team_member distinction
+  await safeExec("ALTER TABLE `users` ADD COLUMN `accountType` enum('owner','team_member') NOT NULL DEFAULT 'owner'");
 
   // businesses: add columns that may be missing from original CREATE TABLE
   await safeExec("ALTER TABLE `businesses` ADD COLUMN `invoiceFooter` text DEFAULT NULL");
@@ -328,19 +330,22 @@ async function runAutoMigration(db: ReturnType<typeof drizzle>) {
     \`id\` int NOT NULL AUTO_INCREMENT PRIMARY KEY,
     \`businessId\` int NOT NULL,
     \`userId\` int NOT NULL,
-    \`role\` enum('owner','manager','kasir','gudang','viewer') NOT NULL DEFAULT 'viewer',
+    \`role\` enum('owner','admin','manager','finance','kasir','gudang','viewer') NOT NULL DEFAULT 'viewer',
     \`permissions\` json NOT NULL,
+    \`defaultCashAccountId\` int DEFAULT NULL,
     \`invitedBy\` int DEFAULT NULL,
     \`status\` enum('active','suspended') NOT NULL DEFAULT 'active',
     \`joinedAt\` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
     \`updatedAt\` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
   )`);
+  // Expand team_members role enum for existing tables
+  await safeExec("ALTER TABLE `team_members` MODIFY COLUMN `role` enum('owner','admin','manager','finance','kasir','gudang','viewer') NOT NULL DEFAULT 'viewer'");
 
   await safeExec(`CREATE TABLE IF NOT EXISTS \`team_invites\` (
     \`id\` int NOT NULL AUTO_INCREMENT PRIMARY KEY,
     \`businessId\` int NOT NULL,
     \`email\` varchar(320) NOT NULL,
-    \`role\` enum('manager','kasir','gudang','viewer') NOT NULL DEFAULT 'viewer',
+    \`role\` enum('admin','manager','finance','kasir','gudang','viewer') NOT NULL DEFAULT 'viewer',
     \`permissions\` json NOT NULL,
     \`token\` varchar(64) NOT NULL UNIQUE,
     \`invitedBy\` int NOT NULL,
@@ -348,6 +353,8 @@ async function runAutoMigration(db: ReturnType<typeof drizzle>) {
     \`expiresAt\` timestamp NOT NULL,
     \`createdAt\` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP
   )`);
+  // Expand team_invites role enum for existing tables
+  await safeExec("ALTER TABLE `team_invites` MODIFY COLUMN `role` enum('admin','manager','finance','kasir','gudang','viewer') NOT NULL DEFAULT 'viewer'");
 
   await safeExec(`CREATE TABLE IF NOT EXISTS \`savings_goals\` (
     \`id\` int NOT NULL AUTO_INCREMENT PRIMARY KEY,
@@ -1113,6 +1120,12 @@ export async function deleteUserWithAllData(userId: number): Promise<{ deletedUs
 }
 
 // ─── Business Helpers ───
+export async function updateUserAccountType(userId: number, accountType: "owner" | "team_member"): Promise<void> {
+  const db = await getDb();
+  if (!db) return;
+  await db.update(users).set({ accountType }).where(eq(users.id, userId));
+}
+
 export async function getBusinessByOwnerId(ownerId: number): Promise<Business | undefined> {
   const db = await getDb();
   if (!db) return undefined;
@@ -3340,29 +3353,7 @@ export async function migrateStockToDefaultWarehouse(businessId: number): Promis
 // ═══════════════════════════════════════════════════════════════
 
 // Default permissions per role
-export const ROLE_PERMISSIONS: Record<string, Record<string, boolean>> = {
-  owner: { dashboard: true, transaksi: true, stok: true, gudang: true, pos: true, client: true, hutang: true, anggaran: true, analitik: true, laporan: true, pajak: true, pengaturan: true, team: true },
-  manager: { dashboard: true, transaksi: true, stok: true, gudang: true, pos: true, client: true, hutang: true, anggaran: true, analitik: true, laporan: true, pajak: false, pengaturan: false, team: false },
-  kasir: { dashboard: false, transaksi: true, stok: false, gudang: false, pos: true, client: false, hutang: false, anggaran: false, analitik: false, laporan: false, pajak: false, pengaturan: false, team: false },
-  gudang: { dashboard: false, transaksi: false, stok: true, gudang: true, pos: false, client: false, hutang: false, anggaran: false, analitik: false, laporan: false, pajak: false, pengaturan: false, team: false },
-  viewer: { dashboard: true, transaksi: false, stok: false, gudang: false, pos: false, client: false, hutang: false, anggaran: false, analitik: true, laporan: true, pajak: false, pengaturan: false, team: false },
-};
-
-export const PERMISSION_LABELS: Record<string, string> = {
-  dashboard: "Dashboard",
-  transaksi: "Transaksi",
-  stok: "Stok Produk",
-  gudang: "Gudang",
-  pos: "Kasir (POS)",
-  client: "Manajemen Client",
-  hutang: "Hutang & Piutang",
-  anggaran: "Anggaran",
-  analitik: "Analitik Penjualan",
-  laporan: "Laporan Keuangan",
-  pajak: "Pajak",
-  pengaturan: "Pengaturan",
-  team: "Kelola Tim",
-};
+export { ROLE_PERMISSIONS, PERMISSION_LABELS } from "../shared/permissions";
 
 // ─── Team Members ───
 export async function getTeamMembersByBusiness(businessId: number): Promise<TeamMember[]> {

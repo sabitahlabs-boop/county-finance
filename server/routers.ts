@@ -42,6 +42,7 @@ import {
   createTeamMember, updateTeamMember, deleteTeamMember, getTeamMemberById,
   createTeamInvite, getTeamInviteByToken, getTeamInvitesByBusiness, getPendingInvitesByEmail, updateTeamInviteStatus, deleteTeamInvite,
   getBusinessForTeamMember, getUserById, getUsersByIds,
+  updateUserAccountType,
   ROLE_PERMISSIONS, PERMISSION_LABELS,
   resolveBusinessForUser,
   getSavingsGoalsByBusiness, createSavingsGoal, updateSavingsGoal, deleteSavingsGoal, addToSavingsGoal,
@@ -94,6 +95,7 @@ import {
   getPfDashboardSummary,
 } from "./db";
 import { PLAN_LIMITS, BULAN_INDONESIA, formatRupiah } from "../shared/finance";
+import { PATH_PERMISSION_MAP, ROLE_PERMISSIONS as SHARED_ROLE_PERMISSIONS } from "../shared/permissions";
 import { notifyOwner } from "./_core/notification";
 
 // ─── Helper: Resolve bankAccountId from payment method name ───
@@ -129,6 +131,39 @@ async function checkRolePermission(
   }
 }
 
+/**
+ * Check if the current user has permission for a specific feature.
+ * Owners always have full access. Team members are checked against their permissions.
+ * @param permissionKey - key from ROLE_PERMISSIONS (e.g., "transaksi", "stok", "pos")
+ */
+async function checkFeaturePermission(
+  userId: number,
+  businessId: number,
+  permissionKey: string
+): Promise<void> {
+  // Check if user is the owner
+  const business = await getBusinessById(businessId);
+  if (business?.ownerId === userId) return; // owner = full access
+
+  // Check team member permissions
+  const teamMember = await getTeamMemberByUserAndBusiness(userId, businessId);
+  if (!teamMember) {
+    throw new TRPCError({
+      code: "FORBIDDEN",
+      message: "Anda bukan anggota tim bisnis ini.",
+    });
+  }
+
+  // Check granular permission from the member's permissions JSON
+  const perms = teamMember.permissions as Record<string, boolean> | null;
+  if (perms && perms[permissionKey] !== true) {
+    throw new TRPCError({
+      code: "FORBIDDEN",
+      message: `Akses ditolak. Anda tidak memiliki izin untuk fitur ini.`,
+    });
+  }
+}
+
 export const appRouter = router({
   system: systemRouter,
   auth: router({
@@ -148,6 +183,7 @@ export const appRouter = router({
       if (ctx.user.email) {
         try {
           const pendingInvites = await getPendingInvitesByEmail(ctx.user.email);
+          let acceptedAny = false;
           for (const invite of pendingInvites) {
             if (new Date() > invite.expiresAt) {
               await updateTeamInviteStatus(invite.id, "expired");
@@ -163,8 +199,16 @@ export const appRouter = router({
                 invitedBy: invite.invitedBy,
                 status: "active",
               });
+              acceptedAny = true;
             }
             await updateTeamInviteStatus(invite.id, "accepted");
+          }
+          // Mark user as team_member if they accepted an invite and don't own a business
+          if (acceptedAny) {
+            const ownBiz = await getBusinessByOwnerId(ctx.user.id);
+            if (!ownBiz) {
+              await updateUserAccountType(ctx.user.id, "team_member");
+            }
           }
         } catch (e) {
           console.warn("[Team] Auto-accept invite failed:", e);
@@ -206,6 +250,13 @@ export const appRouter = router({
       bankHolder: z.string().optional(),
       appMode: z.enum(["personal", "umkm"]).default("umkm"),
     })).mutation(async ({ ctx, input }) => {
+      // Block team members from creating their own business
+      if (ctx.user.accountType === "team_member") {
+        throw new TRPCError({
+          code: "FORBIDDEN",
+          message: "Anda terdaftar sebagai anggota tim. Anggota tim tidak dapat membuat bisnis sendiri. Hubungi pemilik bisnis Anda.",
+        });
+      }
       // Check if user already has a business with this mode — idempotent per mode
       const existingForMode = await getBusinessByOwnerAndMode(ctx.user.id, input.appMode);
       if (existingForMode) return { id: existingForMode.id };
@@ -639,8 +690,10 @@ export const appRouter = router({
       discountPercent: z.number().min(0).max(100).default(0),
       warehouseId: z.number().optional(),
     })).mutation(async ({ ctx, input }) => {
-      const biz = (await resolveBusinessForUser(ctx.user.id, ctx.requestedBusinessId, ctx.user.role))?.business;
+      const resolved = await resolveBusinessForUser(ctx.user.id, ctx.requestedBusinessId, ctx.user.role);
+      const biz = resolved?.business;
       if (!biz) throw new TRPCError({ code: "NOT_FOUND", message: "Bisnis tidak ditemukan" });
+      if (!resolved.isOwner) await checkFeaturePermission(ctx.user.id, biz.id, "stok");
       // No plan limits — all users are Pro
       const { warehouseId, ...restInput } = input;
       const id = await safeInsertProduct({ ...restInput, businessId: biz.id });
@@ -672,8 +725,10 @@ export const appRouter = router({
       priceType: z.enum(["fixed", "dynamic"]).optional(),
       discountPercent: z.number().min(0).max(100).optional(),
     })).mutation(async ({ ctx, input }) => {
-      const biz = (await resolveBusinessForUser(ctx.user.id, ctx.requestedBusinessId, ctx.user.role))?.business;
+      const resolved = await resolveBusinessForUser(ctx.user.id, ctx.requestedBusinessId, ctx.user.role);
+      const biz = resolved?.business;
       if (!biz) throw new TRPCError({ code: "NOT_FOUND" });
+      if (!resolved.isOwner) await checkFeaturePermission(ctx.user.id, biz.id, "stok");
       const product = await getProductById(input.id);
       if (!product || product.businessId !== biz.id) throw new TRPCError({ code: "NOT_FOUND" });
       const { id, discountPercent, ...rest } = input;
@@ -688,8 +743,10 @@ export const appRouter = router({
       notes: z.string().optional(),
       warehouseId: z.number().optional(),
     })).mutation(async ({ ctx, input }) => {
-      const biz = (await resolveBusinessForUser(ctx.user.id, ctx.requestedBusinessId, ctx.user.role))?.business;
+      const resolved = await resolveBusinessForUser(ctx.user.id, ctx.requestedBusinessId, ctx.user.role);
+      const biz = resolved?.business;
       if (!biz) throw new TRPCError({ code: "NOT_FOUND" });
+      if (!resolved.isOwner) await checkFeaturePermission(ctx.user.id, biz.id, "stok");
       const product = await getProductById(input.productId);
       if (!product || product.businessId !== biz.id) throw new TRPCError({ code: "NOT_FOUND" });
       const direction = input.type === "out" ? -1 : 1;
@@ -722,8 +779,10 @@ export const appRouter = router({
       return { stockBefore, stockAfter };
     }),
     delete: protectedProcedure.input(z.object({ id: z.number() })).mutation(async ({ ctx, input }) => {
-      const biz = (await resolveBusinessForUser(ctx.user.id, ctx.requestedBusinessId, ctx.user.role))?.business;
+      const resolved = await resolveBusinessForUser(ctx.user.id, ctx.requestedBusinessId, ctx.user.role);
+      const biz = resolved?.business;
       if (!biz) throw new TRPCError({ code: "NOT_FOUND" });
+      if (!resolved.isOwner) await checkFeaturePermission(ctx.user.id, biz.id, "stok");
       const product = await getProductById(input.id);
       if (!product || product.businessId !== biz.id) throw new TRPCError({ code: "NOT_FOUND" });
       await updateProduct(input.id, { isActive: false });
@@ -896,8 +955,11 @@ export const appRouter = router({
       notes: z.string().optional(),
       warehouseId: z.number().optional(),
     })).mutation(async ({ ctx, input }) => {
-      const biz = (await resolveBusinessForUser(ctx.user.id, ctx.requestedBusinessId, ctx.user.role))?.business;
+      const resolved = await resolveBusinessForUser(ctx.user.id, ctx.requestedBusinessId, ctx.user.role);
+      const biz = resolved?.business;
       if (!biz) throw new TRPCError({ code: "NOT_FOUND", message: "Bisnis tidak ditemukan" });
+      // Permission check: team members need 'transaksi' permission
+      if (!resolved.isOwner) await checkFeaturePermission(ctx.user.id, biz.id, "transaksi");
       // No plan limits — all users are Pro
       const txCode = await generateTxCode(biz.id);
       let productHppSnapshot: number | undefined;
@@ -976,8 +1038,10 @@ export const appRouter = router({
       paymentMethod: z.string().optional(),
       notes: z.string().optional(),
     })).mutation(async ({ ctx, input }) => {
-      const biz = (await resolveBusinessForUser(ctx.user.id, ctx.requestedBusinessId, ctx.user.role))?.business;
+      const resolved = await resolveBusinessForUser(ctx.user.id, ctx.requestedBusinessId, ctx.user.role);
+      const biz = resolved?.business;
       if (!biz) throw new TRPCError({ code: "NOT_FOUND" });
+      if (!resolved.isOwner) await checkFeaturePermission(ctx.user.id, biz.id, "transaksi");
       const tx = await getTransactionById(input.id);
       if (!tx || tx.businessId !== biz.id) throw new TRPCError({ code: "NOT_FOUND" });
       const { id, ...data } = input;
@@ -985,8 +1049,10 @@ export const appRouter = router({
       return { success: true };
     }),
     delete: protectedProcedure.input(z.object({ id: z.number() })).mutation(async ({ ctx, input }) => {
-      const biz = (await resolveBusinessForUser(ctx.user.id, ctx.requestedBusinessId, ctx.user.role))?.business;
+      const resolved = await resolveBusinessForUser(ctx.user.id, ctx.requestedBusinessId, ctx.user.role);
+      const biz = resolved?.business;
       if (!biz) throw new TRPCError({ code: "NOT_FOUND" });
+      if (!resolved.isOwner) await checkFeaturePermission(ctx.user.id, biz.id, "transaksi");
       // Check role permission: only owner, admin, or manager can delete transactions
       await checkRolePermission(ctx.user.id, biz.id, ["owner", "manager"]);
 
@@ -1010,8 +1076,10 @@ export const appRouter = router({
       id: z.number(),
       reason: z.string().min(1, "Alasan void wajib diisi"),
     })).mutation(async ({ ctx, input }) => {
-      const biz = (await resolveBusinessForUser(ctx.user.id, ctx.requestedBusinessId, ctx.user.role))?.business;
+      const resolved = await resolveBusinessForUser(ctx.user.id, ctx.requestedBusinessId, ctx.user.role);
+      const biz = resolved?.business;
       if (!biz) throw new TRPCError({ code: "NOT_FOUND" });
+      if (!resolved.isOwner) await checkFeaturePermission(ctx.user.id, biz.id, "transaksi");
       // Only owner, admin, or manager can void
       await checkRolePermission(ctx.user.id, biz.id, ["owner", "manager"]);
 
@@ -1161,8 +1229,10 @@ export const appRouter = router({
       status: z.enum(["LUNAS", "BELUM", "TERLAMBAT"]).default("LUNAS"),
       notes: z.string().optional(),
     })).mutation(async ({ ctx, input }) => {
-      const biz = (await resolveBusinessForUser(ctx.user.id, ctx.requestedBusinessId, ctx.user.role))?.business;
+      const resolved = await resolveBusinessForUser(ctx.user.id, ctx.requestedBusinessId, ctx.user.role);
+      const biz = resolved?.business;
       if (!biz) throw new TRPCError({ code: "NOT_FOUND" });
+      if (!resolved.isOwner) await checkFeaturePermission(ctx.user.id, biz.id, "pajak");
       const id = await createTaxPayment({ ...input, businessId: biz.id });
 
       // ─── GL: Tax Payment — DR Beban Pajak, CR Kas ───
@@ -2629,8 +2699,10 @@ Penting: Kembalikan HANYA JSON valid, tidak ada teks penjelasan.`,
       description: z.string().optional(),
       initialBalance: z.number().default(0),
     })).mutation(async ({ ctx, input }) => {
-      const biz = (await resolveBusinessForUser(ctx.user.id, ctx.requestedBusinessId, ctx.user.role))?.business;
+      const resolved = await resolveBusinessForUser(ctx.user.id, ctx.requestedBusinessId, ctx.user.role);
+      const biz = resolved?.business;
       if (!biz) throw new TRPCError({ code: "NOT_FOUND", message: "Bisnis tidak ditemukan" });
+      if (!resolved.isOwner) await checkFeaturePermission(ctx.user.id, biz.id, "transaksi");
       const id = await safeInsertBankAccount({ ...input, businessId: biz.id });
       return { id };
     }),
@@ -2643,8 +2715,10 @@ Penting: Kembalikan HANYA JSON valid, tidak ada teks penjelasan.`,
       description: z.string().nullable().optional(),
       initialBalance: z.number().optional(),
     })).mutation(async ({ ctx, input }) => {
-      const biz = (await resolveBusinessForUser(ctx.user.id, ctx.requestedBusinessId, ctx.user.role))?.business;
+      const resolved = await resolveBusinessForUser(ctx.user.id, ctx.requestedBusinessId, ctx.user.role);
+      const biz = resolved?.business;
       if (!biz) throw new TRPCError({ code: "NOT_FOUND" });
+      if (!resolved.isOwner) await checkFeaturePermission(ctx.user.id, biz.id, "transaksi");
       const account = await getBankAccountById(input.id);
       if (!account || account.businessId !== biz.id) throw new TRPCError({ code: "NOT_FOUND" });
       const { id, ...data } = input;
@@ -2652,8 +2726,10 @@ Penting: Kembalikan HANYA JSON valid, tidak ada teks penjelasan.`,
       return { success: true };
     }),
     delete: protectedProcedure.input(z.object({ id: z.number() })).mutation(async ({ ctx, input }) => {
-      const biz = (await resolveBusinessForUser(ctx.user.id, ctx.requestedBusinessId, ctx.user.role))?.business;
+      const resolved = await resolveBusinessForUser(ctx.user.id, ctx.requestedBusinessId, ctx.user.role);
+      const biz = resolved?.business;
       if (!biz) throw new TRPCError({ code: "NOT_FOUND" });
+      if (!resolved.isOwner) await checkFeaturePermission(ctx.user.id, biz.id, "transaksi");
       const account = await getBankAccountById(input.id);
       if (!account || account.businessId !== biz.id) throw new TRPCError({ code: "NOT_FOUND" });
       await deleteBankAccount(input.id);
@@ -2666,8 +2742,10 @@ Penting: Kembalikan HANYA JSON valid, tidak ada teks penjelasan.`,
       date: z.string(),
       notes: z.string().optional(),
     })).mutation(async ({ ctx, input }) => {
-      const biz = (await resolveBusinessForUser(ctx.user.id, ctx.requestedBusinessId, ctx.user.role))?.business;
+      const resolved = await resolveBusinessForUser(ctx.user.id, ctx.requestedBusinessId, ctx.user.role);
+      const biz = resolved?.business;
       if (!biz) throw new TRPCError({ code: "NOT_FOUND" });
+      if (!resolved.isOwner) await checkFeaturePermission(ctx.user.id, biz.id, "transaksi");
       if (input.fromAccount === input.toAccount) throw new TRPCError({ code: "BAD_REQUEST", message: "Akun asal dan tujuan harus berbeda" });
       const result = await createTransferBetweenAccounts(biz.id, input.fromAccount, input.toAccount, input.amount, input.date, input.notes);
 
@@ -2717,8 +2795,10 @@ Penting: Kembalikan HANYA JSON valid, tidak ada teks penjelasan.`,
       address: z.string().optional(),
       notes: z.string().optional(),
     })).mutation(async ({ ctx, input }) => {
-      const biz = (await resolveBusinessForUser(ctx.user.id, ctx.requestedBusinessId, ctx.user.role))?.business;
+      const resolved = await resolveBusinessForUser(ctx.user.id, ctx.requestedBusinessId, ctx.user.role);
+      const biz = resolved?.business;
       if (!biz) throw new TRPCError({ code: "NOT_FOUND" });
+      if (!resolved.isOwner) await checkFeaturePermission(ctx.user.id, biz.id, "client");
       const id = await createClient({ ...input, businessId: biz.id });
       return { id };
     }),
@@ -2731,8 +2811,10 @@ Penting: Kembalikan HANYA JSON valid, tidak ada teks penjelasan.`,
       address: z.string().optional(),
       notes: z.string().optional(),
     })).mutation(async ({ ctx, input }) => {
-      const biz = (await resolveBusinessForUser(ctx.user.id, ctx.requestedBusinessId, ctx.user.role))?.business;
+      const resolved = await resolveBusinessForUser(ctx.user.id, ctx.requestedBusinessId, ctx.user.role);
+      const biz = resolved?.business;
       if (!biz) throw new TRPCError({ code: "NOT_FOUND" });
+      if (!resolved.isOwner) await checkFeaturePermission(ctx.user.id, biz.id, "client");
       const client = await getClientById(input.id);
       if (!client || client.businessId !== biz.id) throw new TRPCError({ code: "NOT_FOUND" });
       const { id, ...data } = input;
@@ -2740,8 +2822,10 @@ Penting: Kembalikan HANYA JSON valid, tidak ada teks penjelasan.`,
       return { success: true };
     }),
     delete: protectedProcedure.input(z.object({ id: z.number() })).mutation(async ({ ctx, input }) => {
-      const biz = (await resolveBusinessForUser(ctx.user.id, ctx.requestedBusinessId, ctx.user.role))?.business;
+      const resolved = await resolveBusinessForUser(ctx.user.id, ctx.requestedBusinessId, ctx.user.role);
+      const biz = resolved?.business;
       if (!biz) throw new TRPCError({ code: "NOT_FOUND" });
+      if (!resolved.isOwner) await checkFeaturePermission(ctx.user.id, biz.id, "client");
       const client = await getClientById(input.id);
       if (!client || client.businessId !== biz.id) throw new TRPCError({ code: "NOT_FOUND" });
       await deleteClient(input.id);
@@ -2777,8 +2861,10 @@ Penting: Kembalikan HANYA JSON valid, tidak ada teks penjelasan.`,
       dueDate: z.string().optional(),
       notes: z.string().optional(),
     })).mutation(async ({ ctx, input }) => {
-      const biz = (await resolveBusinessForUser(ctx.user.id, ctx.requestedBusinessId, ctx.user.role))?.business;
+      const resolved = await resolveBusinessForUser(ctx.user.id, ctx.requestedBusinessId, ctx.user.role);
+      const biz = resolved?.business;
       if (!biz) throw new TRPCError({ code: "NOT_FOUND" });
+      if (!resolved.isOwner) await checkFeaturePermission(ctx.user.id, biz.id, "hutang");
       const id = await createDebt({ ...input, businessId: biz.id });
 
       // ─── GL JOURNAL: Debt Create (best-effort, non-blocking) ───
@@ -2840,8 +2926,10 @@ Penting: Kembalikan HANYA JSON valid, tidak ada teks penjelasan.`,
       notes: z.string().optional(),
       status: z.enum(["belum_lunas", "lunas", "terlambat"]).optional(),
     })).mutation(async ({ ctx, input }) => {
-      const biz = (await resolveBusinessForUser(ctx.user.id, ctx.requestedBusinessId, ctx.user.role))?.business;
+      const resolved = await resolveBusinessForUser(ctx.user.id, ctx.requestedBusinessId, ctx.user.role);
+      const biz = resolved?.business;
       if (!biz) throw new TRPCError({ code: "NOT_FOUND" });
+      if (!resolved.isOwner) await checkFeaturePermission(ctx.user.id, biz.id, "hutang");
       const debt = await getDebtById(input.id);
       if (!debt || debt.businessId !== biz.id) throw new TRPCError({ code: "NOT_FOUND" });
       const { id, ...data } = input;
@@ -2849,8 +2937,10 @@ Penting: Kembalikan HANYA JSON valid, tidak ada teks penjelasan.`,
       return { success: true };
     }),
     delete: protectedProcedure.input(z.object({ id: z.number() })).mutation(async ({ ctx, input }) => {
-      const biz = (await resolveBusinessForUser(ctx.user.id, ctx.requestedBusinessId, ctx.user.role))?.business;
+      const resolved = await resolveBusinessForUser(ctx.user.id, ctx.requestedBusinessId, ctx.user.role);
+      const biz = resolved?.business;
       if (!biz) throw new TRPCError({ code: "NOT_FOUND" });
+      if (!resolved.isOwner) await checkFeaturePermission(ctx.user.id, biz.id, "hutang");
       const debt = await getDebtById(input.id);
       if (!debt || debt.businessId !== biz.id) throw new TRPCError({ code: "NOT_FOUND" });
       await deleteDebt(input.id);
@@ -3033,8 +3123,10 @@ Penting: Kembalikan HANYA JSON valid, tidak ada teks penjelasan.`,
       budgetAmount: z.number().min(1),
       notes: z.string().optional(),
     })).mutation(async ({ ctx, input }) => {
-      const biz = (await resolveBusinessForUser(ctx.user.id, ctx.requestedBusinessId, ctx.user.role))?.business;
+      const resolved = await resolveBusinessForUser(ctx.user.id, ctx.requestedBusinessId, ctx.user.role);
+      const biz = resolved?.business;
       if (!biz) throw new TRPCError({ code: "NOT_FOUND" });
+      if (!resolved.isOwner) await checkFeaturePermission(ctx.user.id, biz.id, "anggaran");
       const id = await createBudget({ ...input, businessId: biz.id });
       return { id };
     }),
@@ -3044,8 +3136,10 @@ Penting: Kembalikan HANYA JSON valid, tidak ada teks penjelasan.`,
       budgetAmount: z.number().optional(),
       notes: z.string().optional(),
     })).mutation(async ({ ctx, input }) => {
-      const biz = (await resolveBusinessForUser(ctx.user.id, ctx.requestedBusinessId, ctx.user.role))?.business;
+      const resolved = await resolveBusinessForUser(ctx.user.id, ctx.requestedBusinessId, ctx.user.role);
+      const biz = resolved?.business;
       if (!biz) throw new TRPCError({ code: "NOT_FOUND" });
+      if (!resolved.isOwner) await checkFeaturePermission(ctx.user.id, biz.id, "anggaran");
       const budget = await getBudgetById(input.id);
       if (!budget || budget.businessId !== biz.id) throw new TRPCError({ code: "NOT_FOUND" });
       const { id, ...data } = input;
@@ -3053,8 +3147,10 @@ Penting: Kembalikan HANYA JSON valid, tidak ada teks penjelasan.`,
       return { success: true };
     }),
     delete: protectedProcedure.input(z.object({ id: z.number() })).mutation(async ({ ctx, input }) => {
-      const biz = (await resolveBusinessForUser(ctx.user.id, ctx.requestedBusinessId, ctx.user.role))?.business;
+      const resolved = await resolveBusinessForUser(ctx.user.id, ctx.requestedBusinessId, ctx.user.role);
+      const biz = resolved?.business;
       if (!biz) throw new TRPCError({ code: "NOT_FOUND" });
+      if (!resolved.isOwner) await checkFeaturePermission(ctx.user.id, biz.id, "anggaran");
       const budget = await getBudgetById(input.id);
       if (!budget || budget.businessId !== biz.id) throw new TRPCError({ code: "NOT_FOUND" });
       await deleteBudget(input.id);
@@ -3067,17 +3163,21 @@ Penting: Kembalikan HANYA JSON valid, tidak ada teks penjelasan.`,
     }),
   }),
 
-  // ─── Settings (Calculator, Signature) ───
+  // ─── Settings (Calculator, Signature) — owner/admin only ───
   settings: router({
     toggleCalculator: protectedProcedure.input(z.object({ enabled: z.boolean() })).mutation(async ({ ctx, input }) => {
-      const biz = (await resolveBusinessForUser(ctx.user.id, ctx.requestedBusinessId, ctx.user.role))?.business;
+      const resolved = await resolveBusinessForUser(ctx.user.id, ctx.requestedBusinessId, ctx.user.role);
+      const biz = resolved?.business;
       if (!biz) throw new TRPCError({ code: "NOT_FOUND" });
+      if (!resolved.isOwner) await checkFeaturePermission(ctx.user.id, biz.id, "pengaturan");
       await updateBusinessCalculator(biz.id, input.enabled);
       return { success: true };
     }),
     updateSignature: protectedProcedure.input(z.object({ signatureUrl: z.string().nullable() })).mutation(async ({ ctx, input }) => {
-      const biz = (await resolveBusinessForUser(ctx.user.id, ctx.requestedBusinessId, ctx.user.role))?.business;
+      const resolved = await resolveBusinessForUser(ctx.user.id, ctx.requestedBusinessId, ctx.user.role);
+      const biz = resolved?.business;
       if (!biz) throw new TRPCError({ code: "NOT_FOUND" });
+      if (!resolved.isOwner) await checkFeaturePermission(ctx.user.id, biz.id, "pengaturan");
       await updateBusinessSignature(biz.id, input.signatureUrl);
       return { success: true };
     }),
@@ -3192,8 +3292,10 @@ Penting: Kembalikan HANYA JSON valid, tidak ada teks penjelasan.`,
         notes: z.string().optional(),
       }))
       .mutation(async ({ ctx, input }) => {
-        const biz = (await resolveBusinessForUser(ctx.user.id, ctx.requestedBusinessId, ctx.user.role))?.business;
+        const resolved = await resolveBusinessForUser(ctx.user.id, ctx.requestedBusinessId, ctx.user.role);
+        const biz = resolved?.business;
         if (!biz) throw new TRPCError({ code: "NOT_FOUND", message: "Bisnis tidak ditemukan" });
+        if (!resolved.isOwner) await checkFeaturePermission(ctx.user.id, biz.id, "gudang");
         const id = await createWarehouse({
           businessId: biz.id,
           name: input.name,
@@ -3276,8 +3378,10 @@ Penting: Kembalikan HANYA JSON valid, tidak ada teks penjelasan.`,
         notes: z.string().optional(),
       }))
       .mutation(async ({ ctx, input }) => {
-        const biz = (await resolveBusinessForUser(ctx.user.id, ctx.requestedBusinessId, ctx.user.role))?.business;
+        const resolved = await resolveBusinessForUser(ctx.user.id, ctx.requestedBusinessId, ctx.user.role);
+        const biz = resolved?.business;
         if (!biz) throw new TRPCError({ code: "NOT_FOUND" });
+        if (!resolved.isOwner) await checkFeaturePermission(ctx.user.id, biz.id, "gudang");
         if (input.fromWarehouseId === input.toWarehouseId) {
           throw new TRPCError({ code: "BAD_REQUEST", message: "Gudang asal dan tujuan harus berbeda" });
         }
@@ -3381,7 +3485,7 @@ Penting: Kembalikan HANYA JSON valid, tidak ada teks penjelasan.`,
     // Create invite link (owner only, Pro+ only, max 5 members)
     invite: protectedProcedure.input(z.object({
       email: z.string().email(),
-      role: z.enum(["manager", "kasir", "gudang", "viewer"]),
+      role: z.enum(["admin", "manager", "finance", "kasir", "gudang", "viewer"]),
       permissions: z.record(z.string(), z.boolean()).optional(),
     })).mutation(async ({ ctx, input }) => {
       const biz = (await resolveBusinessForUser(ctx.user.id, ctx.requestedBusinessId, ctx.user.role))?.business;
@@ -3446,13 +3550,18 @@ Penting: Kembalikan HANYA JSON valid, tidak ada teks penjelasan.`,
       });
       // Mark invite as accepted
       await updateTeamInviteStatus(invite.id, "accepted");
-      return { success: true, businessId: invite.businessId };
+      // Mark user as team_member if they don't own a business
+      const ownBiz = await getBusinessByOwnerId(ctx.user.id);
+      if (!ownBiz) {
+        await updateUserAccountType(ctx.user.id, "team_member");
+      }
+      return { success: true, businessId: invite.businessId, role: invite.role };
     }),
 
     // Update member role/permissions (owner only)
     updateMember: protectedProcedure.input(z.object({
       memberId: z.number(),
-      role: z.enum(["manager", "kasir", "gudang", "viewer"]).optional(),
+      role: z.enum(["admin", "manager", "finance", "kasir", "gudang", "viewer"]).optional(),
       permissions: z.record(z.string(), z.boolean()).optional(),
       status: z.enum(["active", "suspended"]).optional(),
       defaultCashAccountId: z.number().nullable().optional(),
@@ -3505,6 +3614,7 @@ Penting: Kembalikan HANYA JSON valid, tidak ada teks penjelasan.`,
     })).mutation(async ({ ctx, input }) => {
       const resolved = await resolveBusinessForUser(ctx.user.id, ctx.requestedBusinessId, ctx.user.role);
       if (!resolved) throw new TRPCError({ code: "NOT_FOUND" });
+      if (!resolved.isOwner) await checkFeaturePermission(ctx.user.id, resolved.business.id, "pos");
       const bizId = resolved.business.id;
 
       // Check if already has an open shift
@@ -3683,6 +3793,7 @@ Penting: Kembalikan HANYA JSON valid, tidak ada teks penjelasan.`,
     })).mutation(async ({ ctx, input }) => {
       const resolved = await resolveBusinessForUser(ctx.user.id, ctx.requestedBusinessId, ctx.user.role);
       if (!resolved) throw new TRPCError({ code: "NOT_FOUND" });
+      if (!resolved.isOwner) await checkFeaturePermission(ctx.user.id, resolved.business.id, "pos");
       const bizId = resolved.business.id;
       const saleDate = input.date || new Date().toISOString().slice(0, 10);
 
@@ -4395,6 +4506,7 @@ Penting: Kembalikan HANYA JSON valid, tidak ada teks penjelasan.`,
     })).mutation(async ({ ctx, input }) => {
       const resolved = await resolveBusinessForUser(ctx.user.id, ctx.requestedBusinessId, ctx.user.role);
       if (!resolved) throw new TRPCError({ code: "NOT_FOUND" });
+      if (!resolved.isOwner) await checkFeaturePermission(ctx.user.id, resolved.business.id, "stok");
       return createSupplier({ businessId: resolved.business.id, ...input });
     }),
     update: protectedProcedure.input(z.object({
@@ -4406,12 +4518,18 @@ Penting: Kembalikan HANYA JSON valid, tidak ada teks penjelasan.`,
       address: z.string().optional(),
       notes: z.string().optional(),
       isActive: z.boolean().optional(),
-    })).mutation(async ({ input }) => {
+    })).mutation(async ({ ctx, input }) => {
+      const resolved = await resolveBusinessForUser(ctx.user.id, ctx.requestedBusinessId, ctx.user.role);
+      if (!resolved) throw new TRPCError({ code: "NOT_FOUND" });
+      if (!resolved.isOwner) await checkFeaturePermission(ctx.user.id, resolved.business.id, "stok");
       const { id, ...data } = input;
       await updateSupplier(id, data);
       return { success: true };
     }),
-    delete: protectedProcedure.input(z.object({ id: z.number() })).mutation(async ({ input }) => {
+    delete: protectedProcedure.input(z.object({ id: z.number() })).mutation(async ({ ctx, input }) => {
+      const resolved = await resolveBusinessForUser(ctx.user.id, ctx.requestedBusinessId, ctx.user.role);
+      if (!resolved) throw new TRPCError({ code: "NOT_FOUND" });
+      if (!resolved.isOwner) await checkFeaturePermission(ctx.user.id, resolved.business.id, "stok");
       await deleteSupplier(input.id);
       return { success: true };
     }),
@@ -4445,6 +4563,7 @@ Penting: Kembalikan HANYA JSON valid, tidak ada teks penjelasan.`,
     })).mutation(async ({ ctx, input }) => {
       const resolved = await resolveBusinessForUser(ctx.user.id, ctx.requestedBusinessId, ctx.user.role);
       if (!resolved) throw new TRPCError({ code: "NOT_FOUND" });
+      if (!resolved.isOwner) await checkFeaturePermission(ctx.user.id, resolved.business.id, "stok");
       const poNumber = await generatePONumber(resolved.business.id);
       const total = input.items?.reduce((s, i) => s + i.totalPrice, 0) ?? input.totalAmount;
       const po = await createPurchaseOrder({
@@ -4472,6 +4591,7 @@ Penting: Kembalikan HANYA JSON valid, tidak ada teks penjelasan.`,
     })).mutation(async ({ ctx, input }) => {
       const resolved = await resolveBusinessForUser(ctx.user.id, ctx.requestedBusinessId, ctx.user.role);
       if (!resolved) throw new TRPCError({ code: "NOT_FOUND" });
+      if (!resolved.isOwner) await checkFeaturePermission(ctx.user.id, resolved.business.id, "stok");
       const businessId = resolved.business.id;
 
       // Fetch current PO state before update
@@ -4697,6 +4817,7 @@ Penting: Kembalikan HANYA JSON valid, tidak ada teks penjelasan.`,
       const { id } = input;
       const resolved = await resolveBusinessForUser(ctx.user.id, ctx.requestedBusinessId, ctx.user.role);
       if (!resolved) throw new TRPCError({ code: "NOT_FOUND" });
+      if (!resolved.isOwner) await checkFeaturePermission(ctx.user.id, resolved.business.id, "stok");
       const businessId = resolved.business.id;
 
       // ─── 1. Get PO data before delete ───

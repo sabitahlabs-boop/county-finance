@@ -6,6 +6,7 @@ import { Loader2, CheckCircle2, XCircle, Users2 } from "lucide-react";
 import { useLocation } from "wouter";
 import { useAuth } from "@/_core/hooks/useAuth";
 import { getLoginUrl } from "@/const";
+import { getDefaultPathForRole } from "../../../shared/permissions";
 
 export default function AcceptInvite() {
   const [, setLocation] = useLocation();
@@ -13,6 +14,7 @@ export default function AcceptInvite() {
   const [token, setToken] = useState("");
   const [status, setStatus] = useState<"loading" | "ready" | "accepting" | "success" | "error">("loading");
   const [errorMsg, setErrorMsg] = useState("");
+  const [acceptedRole, setAcceptedRole] = useState<string | null>(null);
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
@@ -27,9 +29,15 @@ export default function AcceptInvite() {
   }, []);
 
   const acceptMut = trpc.team.acceptInvite.useMutation({
-    onSuccess: () => {
+    onSuccess: (data) => {
       setStatus("success");
-      setTimeout(() => setLocation("/"), 2000);
+      setAcceptedRole(data.role ?? null);
+      // Redirect to the appropriate page based on role
+      const targetPath = data.role ? getDefaultPathForRole(data.role) : "/";
+      setTimeout(() => {
+        // Force full page reload to re-fetch business context
+        window.location.href = targetPath;
+      }, 2000);
     },
     onError: (err) => {
       setStatus("error");

@@ -21,6 +21,7 @@ export const users = mysqlTable("users", {
   email: varchar("email", { length: 320 }),
   loginMethod: varchar("loginMethod", { length: 64 }),
   role: mysqlEnum("role", ["user", "admin"]).default("user").notNull(),
+  accountType: mysqlEnum("accountType", ["owner", "team_member"]).default("owner").notNull(),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
   updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
   lastSignedIn: timestamp("lastSignedIn").defaultNow().notNull(),
@@ -439,7 +440,7 @@ export const teamMembers = mysqlTable("team_members", {
   id: int("id").autoincrement().primaryKey(),
   businessId: int("businessId").notNull(),
   userId: int("userId").notNull(), // references users.id
-  role: mysqlEnum("role", ["owner", "manager", "kasir", "gudang", "viewer"]).notNull().default("viewer"),
+  role: mysqlEnum("role", ["owner", "admin", "manager", "finance", "kasir", "gudang", "viewer"]).notNull().default("viewer"),
   // Granular permissions as JSON: { dashboard, transaksi, stok, gudang, pos, client, hutang, anggaran, analitik, laporan, pajak, pengaturan }
   permissions: json("permissions").$type<Record<string, boolean>>().notNull(),
   defaultCashAccountId: int("defaultCashAccountId"), // FK → bank_accounts.id (accountType=cash) for POS Tunai
@@ -457,7 +458,7 @@ export const teamInvites = mysqlTable("team_invites", {
   id: int("id").autoincrement().primaryKey(),
   businessId: int("businessId").notNull(),
   email: varchar("email", { length: 320 }).notNull(),
-  role: mysqlEnum("role", ["manager", "kasir", "gudang", "viewer"]).notNull().default("viewer"),
+  role: mysqlEnum("role", ["admin", "manager", "finance", "kasir", "gudang", "viewer"]).notNull().default("viewer"),
   permissions: json("permissions").$type<Record<string, boolean>>().notNull(),
   token: varchar("token", { length: 64 }).notNull().unique(),
   invitedBy: int("invitedBy").notNull(), // userId of owner
