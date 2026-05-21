@@ -137,18 +137,23 @@ function useBusinessGuard() {
   // For team members: business.mine returns null (they don't own one),
   // but they have a valid business via team membership in BusinessContext.
   // We use a synthetic business object so route guards know a business exists.
+  const isTeamMember = user?.accountType === "team_member";
+  const needsCtx = !ownBusiness && !bizLoading && isTeamMember;
+
   const { data: teamBizPlan } = trpc.business.getPlan.useQuery(undefined, {
-    enabled: !!user && !ownBusiness && !bizLoading && !!activeBusinessId,
+    enabled: !!user && needsCtx && !!activeBusinessId,
     retry: false,
   });
 
   const business = ownBusiness ?? (activeBusinessId ? {
     id: activeBusinessId,
     plan: teamBizPlan?.plan ?? "free",
-    // Minimal shape to satisfy route guards
   } as any : null);
 
-  return { user, authLoading, business, bizLoading: bizLoading || ctxLoading, refetch };
+  // Only wait for BusinessContext loading if we actually need team data
+  const loading = bizLoading || (needsCtx && ctxLoading);
+
+  return { user, authLoading, business, bizLoading: loading, refetch };
 }
 
 function AuthenticatedRoute({ component: Component, path }: { component: React.ComponentType; path?: string }) {
