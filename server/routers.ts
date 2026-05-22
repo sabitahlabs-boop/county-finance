@@ -214,10 +214,17 @@ export const appRouter = router({
           console.warn("[Team] Auto-accept invite failed:", e);
         }
       }
-      // IMPORTANT: Only return the user's OWN business here (where they are the owner).
+      // Return the user's OWN business (where they are the owner).
       // Team memberships are handled separately by team.myContext.
-      // Using resolveBusinessForUser here would cause team members' business to appear
-      // as "own" business, breaking sidebar permission filtering.
+      // If requestedBusinessId is set and user owns it, return that specific business.
+      // This supports multi-business owners (UMKM + Personal mode switching).
+      if (ctx.requestedBusinessId) {
+        const reqBiz = await getBusinessById(ctx.requestedBusinessId);
+        if (reqBiz && reqBiz.ownerId === ctx.user.id) {
+          return reqBiz;
+        }
+      }
+      // Default: return user's first owned business
       const ownBiz = await getBusinessByOwnerId(ctx.user.id);
       return ownBiz ?? null;
     }),

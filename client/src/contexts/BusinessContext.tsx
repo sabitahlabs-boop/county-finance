@@ -47,6 +47,7 @@ export function BusinessProvider({ children }: { children: ReactNode }) {
   const isAdmin = user?.role === "admin";
 
   const { data: ownBiz, isLoading: bizLoading } = trpc.business.mine.useQuery();
+  const { data: allOwnBiz, isLoading: allOwnLoading } = trpc.business.listOwn.useQuery();
   const { data: teamCtx, isLoading: teamLoading } = trpc.team.myContext.useQuery();
   const { data: adminBizList, isLoading: adminBizLoading } = trpc.team.adminAllBusinesses.useQuery(undefined, {
     enabled: isAdmin,
@@ -65,12 +66,16 @@ export function BusinessProvider({ children }: { children: ReactNode }) {
 
   const businesses = useMemo(() => {
     const list: BusinessOption[] = [];
-    if (ownBiz) {
-      list.push({ id: ownBiz.id, name: ownBiz.businessName, isOwn: true, role: "owner" });
+    // Add ALL owned businesses (supports UMKM + Personal mode switching)
+    const ownedBizzes = allOwnBiz ?? (ownBiz ? [ownBiz] : []);
+    const ownedIds = new Set<number>();
+    for (const b of ownedBizzes) {
+      ownedIds.add(b.id);
+      list.push({ id: b.id, name: b.businessName, isOwn: true, role: "owner" });
     }
     if (teamCtx?.memberships) {
       for (const m of teamCtx.memberships) {
-        if (ownBiz && m.businessId === ownBiz.id) continue;
+        if (ownedIds.has(m.businessId)) continue;
         list.push({
           id: m.businessId,
           name: m.businessName,
@@ -96,10 +101,10 @@ export function BusinessProvider({ children }: { children: ReactNode }) {
       }
     }
     return list;
-  }, [ownBiz, teamCtx, isAdmin, adminBizList]);
+  }, [ownBiz, allOwnBiz, teamCtx, isAdmin, adminBizList]);
 
   useEffect(() => {
-    if (bizLoading || teamLoading) return;
+    if (bizLoading || allOwnLoading || teamLoading) return;
     // Admin: also wait for adminBizList to load before validating,
     // otherwise impersonated business gets reset before it's in the list
     if (isAdmin && adminBizLoading) return;
@@ -112,7 +117,7 @@ export function BusinessProvider({ children }: { children: ReactNode }) {
       localStorage.removeItem(ADMIN_IMPERSONATE_KEY);
       setImpersonating(false);
     }
-  }, [bizLoading, teamLoading, isAdmin, adminBizLoading, businesses, activeBusinessId]);
+  }, [bizLoading, allOwnLoading, teamLoading, isAdmin, adminBizLoading, businesses, activeBusinessId]);
 
   const switchBusiness = useCallback((businessId: number) => {
     setActiveBusinessId(businessId);
@@ -156,11 +161,11 @@ export function BusinessProvider({ children }: { children: ReactNode }) {
     activePermissions: activeBiz?.permissions ?? null,
     businesses,
     switchBusiness,
-    isLoading: bizLoading || teamLoading || (isAdmin && adminBizLoading),
+    isLoading: bizLoading || allOwnLoading || teamLoading || (isAdmin && adminBizLoading),
     hasMultipleBusinesses: businesses.length > 1,
     isAdminImpersonating,
     stopImpersonating,
-  }), [activeBusinessId, activeBiz, businesses, switchBusiness, bizLoading, teamLoading, isAdmin, adminBizLoading, isAdminImpersonating, stopImpersonating]);
+  }), [activeBusinessId, activeBiz, businesses, switchBusiness, bizLoading, allOwnLoading, teamLoading, isAdmin, adminBizLoading, isAdminImpersonating, stopImpersonating]);
 
   return (
     <BusinessContext.Provider value={value}>
